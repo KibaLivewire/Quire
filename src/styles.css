@@ -667,8 +667,6 @@ html[data-theme="leather"] {
     color: black !important;
   }
 }
-  color: var(--color-decal);
-}
 
 .paper-corner svg {
   width: 100%;
