@@ -1,0 +1,315 @@
+import { useEffect, useMemo, useState } from "react";
+import { formatDistanceToNow } from "date-fns";
+import {
+  ArrowLeft,
+  Copy,
+  Download,
+  FolderInput,
+  Maximize2,
+  Minimize2,
+  Minus,
+  MoreHorizontal,
+  Pin,
+  Plus,
+  Settings,
+  Trash2,
+} from "lucide-react";
+import { toast } from "sonner";
+import { RichEditor } from "@/components/rich-editor";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Slider } from "@/components/ui/slider";
+import { notePages } from "@/lib/pages";
+import { useNotebookStore } from "@/lib/store";
+import { cn, debounce, escapeHtml, plainText, wordCount } from "@/lib/utils";
+
+function exportNote(title: string, content: string) {
+  const safe = title.replace(/[^\w\s-]+/g, "").trim() || "untitled";
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<style>
+  body { font: 1.125rem/1.7 Georgia, serif; color: #1c1917; max-width: 42rem; margin: 3rem auto; padding: 0 1.25rem; }
+  img { max-width: 100%; height: auto; }
+  blockquote { border-left: 2px solid #3f534c; padding-left: 1rem; color: #6e6860; font-style: italic; }
+</style>
+</head>
+<body>
+<h1>${escapeHtml(title)}</h1>
+${content}
+</body>
+</html>`;
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${safe}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function EditorPane({
+  onBack,
+  onOpenSettings,
+  className,
+}: {
+  onBack?: () => void;
+  onOpenSettings?: () => void;
+  className?: string;
+}) {
+  const notes = useNotebookStore((s) => s.notes);
+  const notebooks = useNotebookStore((s) => s.notebooks);
+  const activeNoteId = useNotebookStore((s) => s.activeNoteId);
+  const focusMode = useNotebookStore((s) => s.focusMode);
+  const setFocusMode = useNotebookStore((s) => s.setFocusMode);
+  const prefs = useNotebookStore((s) => s.prefs);
+  const setPrefs = useNotebookStore((s) => s.setPrefs);
+  const createNote = useNotebookStore((s) => s.createNote);
+  const updateNote = useNotebookStore((s) => s.updateNote);
+  const updateNotePage = useNotebookStore((s) => s.updateNotePage);
+  const deleteNote = useNotebookStore((s) => s.deleteNote);
+  const duplicateNote = useNotebookStore((s) => s.duplicateNote);
+  const togglePin = useNotebookStore((s) => s.togglePin);
+  const moveNote = useNotebookStore((s) => s.moveNote);
+
+  const note = notes.find((item) => item.id === activeNoteId) ?? null;
+  const [title, setTitle] = useState(note?.title ?? "");
+  const [pageIndex, setPageIndex] = useState(0);
+  const [saveState, setSaveState] = useState<"saved" | "saving">("saved");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  useEffect(() => {
+    setTitle(note?.title ?? "");
+    setPageIndex(0);
+    setSaveState("saved");
+  }, [note?.id]);
+
+  const save = useMemo(
+    () =>
+      debounce((id: string, patch: { title?: string; content?: string }) => {
+        updateNote(id, patch);
+        setSaveState("saved");
+      }, 400),
+    [updateNote],
+  );
+
+  const savePage = useMemo(
+    () =>
+      debounce((id: string, index: number, content: string) => {
+        updateNotePage(id, index, content);
+        setSaveState("saved");
+      }, 400),
+    [updateNotePage],
+  );
+
+  useEffect(() => () => {
+    save.flush();
+    savePage.flush();
+  }, [save, savePage]);
+
+  if (!note) {
+    return (
+      <section className={cn("flex h-full min-h-0 flex-col quire-page", className)}>
+        {onBack ? (
+          <div className="flex items-center px-2 pt-3 md:hidden">
+            <Button variant="ghost" size="icon" aria-label="Back to pages" onClick={onBack}>
+              <ArrowLeft />
+            </Button>
+          </div>
+        ) : null}
+        <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+          <h2 className="font-display text-2xl font-semibold tracking-tight text-ink">A blank desk</h2>
+          <p className="mt-2 max-w-sm text-pretty text-ink-muted">
+            Start a page in this notebook, or choose one from the list.
+          </p>
+          <Button className="mt-5" onClick={() => createNote()}>
+            New page
+          </Button>
+        </div>
+      </section>
+    );
+  }
+
+  const allHtml = notePages(note).join(" ");
+  const words = wordCount(allHtml);
+  const chars = plainText(allHtml).length;
+  const zoomPct = Math.round(prefs.zoom * 100);
+
+  return (
+    <section className={cn("flex h-full min-h-0 flex-col bg-paper quire-page", className)}>
+      <header className="flex items-center gap-1 border-b border-rule/80 bg-paper-raised/80 px-2 py-1.5">
+        {onBack ? (
+          <Button variant="ghost" size="icon" className="md:hidden" aria-label="Back to pages" onClick={onBack}>
+            <ArrowLeft />
+          </Button>
+        ) : null}
+        <p className="min-w-0 flex-1 truncate px-2 text-sm text-ink-muted">
+          {saveState === "saving" ? "Saving" : "Saved on this device"}
+        </p>
+        {onOpenSettings ? (
+          <Button variant="ghost" size="icon-sm" aria-label="Desk settings" onClick={onOpenSettings}>
+            <Settings />
+          </Button>
+        ) : null}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={focusMode ? "Exit focus" : "Focus"}
+          onClick={() => setFocusMode(!focusMode)}
+          className="hidden md:inline-flex"
+        >
+          {focusMode ? <Minimize2 /> : <Maximize2 />}
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Page actions">
+              <MoreHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => togglePin(note.id)}>
+              <Pin className="size-4" />
+              {note.pinned ? "Unpin" : "Pin"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => duplicateNote(note.id)}>
+              <Copy className="size-4" />
+              Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <FolderInput className="mr-2 size-4" />
+                Move to
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {notebooks.map((nb) => (
+                  <DropdownMenuItem
+                    key={nb.id}
+                    disabled={nb.id === note.notebookId}
+                    onSelect={() => moveNote(note.id, nb.id)}
+                  >
+                    {nb.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuItem onSelect={() => exportNote(title || "Untitled", allHtml)}>
+              <Download className="size-4" />
+              Export HTML
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+              <Trash2 className="size-4" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </header>
+
+      <RichEditor
+        key={`${note.id}:${pageIndex}`}
+        note={note}
+        title={title}
+        pageIndex={pageIndex}
+        onPageIndexChange={setPageIndex}
+        onTitleChange={(next) => {
+          setTitle(next);
+          setSaveState("saving");
+          save(note.id, { title: next.trim() || "Untitled" });
+        }}
+        onChange={(next, index) => {
+          setSaveState("saving");
+          savePage(note.id, index, next);
+        }}
+      />
+
+      <footer className="flex items-center justify-between gap-3 border-t border-rule/80 px-3 py-2 text-xs text-ink-subtle">
+        <span className="min-w-0 truncate tabular-nums">
+          {prefs.showWordCount ? (
+            <>
+              {words} {words === 1 ? "word" : "words"}
+              <span className="text-ink-subtle/70"> · {chars} characters</span>
+            </>
+          ) : (
+            <span suppressHydrationWarning>Edited {formatDistanceToNow(note.updatedAt, { addSuffix: true })}</span>
+          )}
+        </span>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Zoom out"
+            className="size-8"
+            onClick={() => setPrefs({ zoom: Math.max(0.7, Math.round((prefs.zoom - 0.1) * 10) / 10) })}
+          >
+            <Minus className="size-3.5" />
+          </Button>
+          <Slider
+            className="w-24"
+            min={70}
+            max={160}
+            step={5}
+            value={[zoomPct]}
+            onValueChange={([value]) => setPrefs({ zoom: value / 100 })}
+            aria-label="Page zoom"
+          />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Zoom in"
+            className="size-8"
+            onClick={() => setPrefs({ zoom: Math.min(1.6, Math.round((prefs.zoom + 0.1) * 10) / 10) })}
+          >
+            <Plus className="size-3.5" />
+          </Button>
+          <span className="w-9 text-right tabular-nums">{zoomPct}%</span>
+        </div>
+      </footer>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this page?</AlertDialogTitle>
+            <AlertDialogDescription>
+              “{title || "Untitled"}” will be removed from this device.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                deleteNote(note.id);
+                toast("Page deleted");
+                onBack?.();
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </section>
+  );
+}

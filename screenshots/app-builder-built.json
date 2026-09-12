@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Quire",
+      "hasCanvas": false,
+      "bodyTextLen": 1779,
+      "bodyTextHash": "b9b855305e26755b6d024a762899923055cc85b0cd75bffd9d50fc879bc570f8",
+      "bodyTextPrefix": "Quire A private notebook NOTEBOOKS Personal Reading Work Desk Ne",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Quire",
+      "hasCanvas": false,
+      "bodyTextLen": 623,
+      "bodyTextHash": "fa59cc870c6bee0df1337baaec368f09254865ecb7f7d81ac0d145cc6be06a34",
+      "bodyTextPrefix": "Saved on this device A quiet notebook for sentences that want a ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}
