@@ -40,7 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Slider } from "@/components/ui/slider";
-import { exportHtml, exportMarkdown, exportText } from "@/lib/export-note";
+import { exportDoc, exportDocx, exportHtml, exportMarkdown, exportPdf, exportRtf, exportText } from "@/lib/export-note";
 import { notePages } from "@/lib/pages";
 import { useNotebookStore } from "@/lib/store";
 import { cn, debounce, plainText, wordCount } from "@/lib/utils";
@@ -195,7 +195,23 @@ export function EditorPane({
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => exportText(title || "Untitled", allHtml)}>
               <FileText className="size-4" />
-              Export text
+              Export .TXT
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => exportRtf(title || "Untitled", allHtml)}>
+              <FileText className="size-4" />
+              Export .RTF
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => exportDoc(title || "Untitled", allHtml)}>
+              <FileText className="size-4" />
+              Export .DOC
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void exportDocx(title || "Untitled", allHtml)}>
+              <FileText className="size-4" />
+              Export .DOCX
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => exportPdf(title || "Untitled", allHtml)}>
+              <FileText className="size-4" />
+              Export .PDF
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => exportMarkdown(title || "Untitled", allHtml)}>
               <Download className="size-4" />

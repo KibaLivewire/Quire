@@ -526,6 +526,11 @@ html[data-theme="leather"] {
   width: min(100%, var(--page-w, 8.5in));
 }
 
+.page-frame.is-bare {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .ruler-corner {
   display: flex;
   align-items: center;

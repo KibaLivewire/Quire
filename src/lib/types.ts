@@ -68,6 +68,7 @@ export type Prefs = {
   pageOrientation: PageOrientation;
   pageWidth: number;
   pageHeight: number;
+  showRuler: boolean;
   customThemes: CustomTheme[];
   plugins: QuirePlugin[];
 };
@@ -83,6 +84,7 @@ export const DEFAULT_PREFS: Prefs = {
   pageOrientation: "portrait",
   pageWidth: 8.5,
   pageHeight: 11,
+  showRuler: true,
   customThemes: [],
   plugins: [],
 };

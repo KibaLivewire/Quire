@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
 import { EditorPane } from "@/components/editor-pane";
+import { MenuBar } from "@/components/menu-bar";
 import { NoteList } from "@/components/note-list";
 import { NotebookRail } from "@/components/notebook-rail";
 import { SettingsPanel } from "@/components/settings-panel";
@@ -76,7 +77,9 @@ export function AppShell() {
 
   return (
     <TooltipProvider>
-      <div className="flex h-dvh overflow-hidden bg-paper text-ink">
+      <div className="flex h-dvh flex-col overflow-hidden bg-paper text-ink">
+        <MenuBar onOpenSettings={() => setSettingsOpen(true)} />
+        <div className="flex min-h-0 flex-1 overflow-hidden">
         <NotebookRail
           className={cn("hidden w-52 shrink-0 md:flex", focusMode && "md:hidden")}
           onOpenSettings={() => setSettingsOpen(true)}
@@ -95,6 +98,7 @@ export function AppShell() {
           onBack={() => setMobileList(true)}
           onOpenSettings={() => setSettingsOpen(true)}
         />
+        </div>
       </div>
 
       <Sheet open={notebooksOpen} onOpenChange={setNotebooksOpen}>

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { editorExtensions } from "@/lib/editor-extensions";
 import { collectImageFiles, insertImages } from "@/lib/image";
 import { isHttpUrl, openExternal } from "@/lib/desktop";
+import { registerEditorCommands } from "@/lib/editor-commands";
 import { isPageEmpty, notePages, splitOverflow } from "@/lib/pages";
 import { useNotebookStore } from "@/lib/store";
 import type { Note } from "@/lib/types";
@@ -91,6 +92,35 @@ export function RichEditor({
   });
 
   editorRef.current = editor;
+
+  useEffect(() => {
+    if (!editor) return;
+    return registerEditorCommands((command) => {
+      if (command === "undo") return editor.chain().focus().undo().run();
+      if (command === "redo") return editor.chain().focus().redo().run();
+      if (command === "bold") return editor.chain().focus().toggleBold().run();
+      if (command === "italic") return editor.chain().focus().toggleItalic().run();
+      if (command === "underline") return editor.chain().focus().toggleUnderline().run();
+      if (command === "selectAll") return editor.chain().focus().selectAll().run();
+      if (command === "copy") {
+        const { from, to } = editor.state.selection;
+        void navigator.clipboard.writeText(editor.state.doc.textBetween(from, to, " "));
+        return true;
+      }
+      if (command === "cut") {
+        const { from, to } = editor.state.selection;
+        void navigator.clipboard.writeText(editor.state.doc.textBetween(from, to, " "));
+        return editor.chain().focus().deleteSelection().run();
+      }
+      if (command === "paste") {
+        void navigator.clipboard.readText().then((text) => {
+          if (text) editor.chain().focus().insertContent(text).run();
+        });
+        return true;
+      }
+      return false;
+    });
+  }, [editor]);
 
   useEffect(() => {
     if (!editor) return;
@@ -279,6 +309,7 @@ export function RichEditor({
             oversized={oversized}
             width={pageWidth}
             height={pageHeight}
+            showRuler={prefs.showRuler !== false}
             className="print-sheet"
           >
             <div

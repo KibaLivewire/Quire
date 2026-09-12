@@ -28,6 +28,7 @@ export function PageSheet({
   oversized,
   width = 8.5,
   height = 11,
+  showRuler = true,
   children,
   className,
 }: {
@@ -35,6 +36,7 @@ export function PageSheet({
   oversized?: boolean;
   width?: number;
   height?: number;
+  showRuler?: boolean;
   children: React.ReactNode;
   className?: string;
 }) {
@@ -54,15 +56,40 @@ export function PageSheet({
     });
   }
 
+  const frameStyle = {
+    "--page-w": `${width}in`,
+    "--page-h": `${height}in`,
+  } as CSSProperties;
+
+  const sheet = (
+    <div
+      ref={sheetRef}
+      data-border={border}
+      className={cn("paper-sheet", oversized && "is-oversized", className)}
+    >
+      {border === "vine" ? (
+        <>
+          <VineCorner className="top-1 left-1" />
+          <VineCorner className="top-1 right-1 rotate-90" />
+          <VineCorner className="bottom-1 left-1 -rotate-90" />
+          <VineCorner className="right-1 bottom-1 rotate-180" />
+        </>
+      ) : null}
+      {children}
+    </div>
+  );
+
+  if (!showRuler) {
+    return (
+      <div className="page-frame is-bare" style={frameStyle}>
+        {sheet}
+      </div>
+    );
+  }
   return (
     <div
       className="page-frame"
-      style={
-        {
-          "--page-w": `${width}in`,
-          "--page-h": `${height}in`,
-        } as CSSProperties
-      }
+      style={frameStyle}
       onPointerMove={track}
       onPointerLeave={() => setPos(null)}
     >
@@ -95,21 +122,7 @@ export function PageSheet({
           </span>
         ) : null}
       </div>
-      <div
-        ref={sheetRef}
-        data-border={border}
-        className={cn("paper-sheet", oversized && "is-oversized", className)}
-      >
-        {border === "vine" ? (
-          <>
-            <VineCorner className="top-1 left-1" />
-            <VineCorner className="top-1 right-1 rotate-90" />
-            <VineCorner className="bottom-1 left-1 -rotate-90" />
-            <VineCorner className="right-1 bottom-1 rotate-180" />
-          </>
-        ) : null}
-        {children}
-      </div>
+      {sheet}
     </div>
   );
 }

@@ -124,6 +124,7 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
   const grammarOn = useNotebookStore((s) => s.prefs.grammar);
   const pageOrientation = useNotebookStore((s) => s.prefs.pageOrientation) || "portrait";
   const pageBorder = useNotebookStore((s) => s.prefs.border);
+  const showRuler = useNotebookStore((s) => s.prefs.showRuler) !== false;
   const setPrefs = useNotebookStore((s) => s.setPrefs);
   const savedWord = useRef("");
 
@@ -627,6 +628,14 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
                 <span className="text-[10px] text-ink-subtle">11 × 8.5 in</span>
               </button>
             </div>
+            <label className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-paper px-2 py-2 text-sm">
+              Ruler
+              <input
+                type="checkbox"
+                checked={showRuler}
+                onChange={(event) => setPrefs({ showRuler: event.target.checked })}
+              />
+            </label>
             <p className="mt-3 px-0.5 pb-1.5 text-xs font-medium tracking-wide text-ink-subtle uppercase">Border</p>
             <div className="grid grid-cols-5 gap-1.5">
               {BORDER_META.map((item) => (
