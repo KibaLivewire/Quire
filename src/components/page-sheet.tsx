@@ -1,4 +1,4 @@
-import type { BorderId } from "@/lib/types";
+import type { BorderId, PageOrientation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 function VineCorner({ className }: { className?: string }) {
@@ -21,17 +21,20 @@ function VineCorner({ className }: { className?: string }) {
 export function PageSheet({
   border,
   oversized,
+  orientation = "portrait",
   children,
   className,
 }: {
   border: BorderId;
   oversized?: boolean;
+  orientation?: PageOrientation;
   children: React.ReactNode;
   className?: string;
 }) {
   return (
     <div
       data-border={border}
+      data-page={orientation}
       className={cn("paper-sheet", oversized && "is-oversized", className)}
     >
       {border === "vine" ? (

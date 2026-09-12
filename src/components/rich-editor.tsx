@@ -7,6 +7,7 @@ import { PageSheet } from "@/components/page-sheet";
 import { Button } from "@/components/ui/button";
 import { editorExtensions } from "@/lib/editor-extensions";
 import { collectImageFiles, insertImages } from "@/lib/image";
+import { isHttpUrl, openExternal } from "@/lib/desktop";
 import { isPageEmpty, notePages, splitOverflow } from "@/lib/pages";
 import { useNotebookStore } from "@/lib/store";
 import type { Note } from "@/lib/types";
@@ -74,8 +75,10 @@ export function RichEditor({
       },
       handleClick(_view, _pos, event) {
         const target = event.target as HTMLElement | null;
-        if (target?.closest("a.quire-image-link")) {
+        const link = target?.closest("a[href]") as HTMLAnchorElement | null;
+        if (link?.href && (event.metaKey || event.ctrlKey || event.altKey)) {
           event.preventDefault();
+          void openExternal(link.href);
           return true;
         }
         return false;
@@ -101,6 +104,88 @@ export function RichEditor({
       },
     });
   }, [editor, prefs.spellcheck]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const root = editor.view.dom;
+    let drag: { img: HTMLImageElement; x: number; y: number; ox: number; oy: number } | null = null;
+
+    function down(event: MouseEvent) {
+      const img = (event.target as HTMLElement | null)?.closest?.("img.quire-image") as HTMLImageElement | null;
+      if (!img || event.button !== 0) return;
+      if ((event.target as HTMLElement).closest("[data-resize-handle], .resize-handle")) return;
+      drag = {
+        img,
+        x: event.clientX,
+        y: event.clientY,
+        ox: Number(img.getAttribute("data-ox") || 0),
+        oy: Number(img.getAttribute("data-oy") || 0),
+      };
+    }
+    function move(event: MouseEvent) {
+      if (!drag) return;
+      const ox = Math.round(drag.ox + event.clientX - drag.x);
+      const oy = Math.round(drag.oy + event.clientY - drag.y);
+      drag.img.setAttribute("data-ox", String(ox));
+      drag.img.setAttribute("data-oy", String(oy));
+      drag.img.style.position = "relative";
+      drag.img.style.left = `${ox}px`;
+      drag.img.style.top = `${oy}px`;
+    }
+    function up() {
+      if (!drag || !editor) {
+        drag = null;
+        return;
+      }
+      const ox = Number(drag.img.getAttribute("data-ox") || 0);
+      const oy = Number(drag.img.getAttribute("data-oy") || 0);
+      try {
+        const pos = editor.view.posAtDOM(drag.img, 0);
+        editor.chain().setNodeSelection(pos).updateAttributes("image", { ox, oy }).run();
+      } catch {
+        editor.chain().updateAttributes("image", { ox, oy }).run();
+      }
+      drag = null;
+    }
+    root.addEventListener("mousedown", down);
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    return () => {
+      root.removeEventListener("mousedown", down);
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+  }, [editor]);
+
+  const [linkChip, setLinkChip] = useState<{ href: string; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!editor) return;
+    const root = editor.view.dom;
+    function onMove(event: MouseEvent) {
+      const hit = (event.target as HTMLElement | null)?.closest?.("a[href], img[data-href]") as HTMLElement | null;
+      if (!hit) {
+        setLinkChip(null);
+        return;
+      }
+      const href = hit.getAttribute("href") || hit.getAttribute("data-href") || "";
+      if (!isHttpUrl(href)) {
+        setLinkChip(null);
+        return;
+      }
+      const rect = hit.getBoundingClientRect();
+      setLinkChip({ href, x: rect.left, y: rect.top });
+    }
+    function onLeave() {
+      setLinkChip(null);
+    }
+    root.addEventListener("mousemove", onMove);
+    root.addEventListener("mouseleave", onLeave);
+    return () => {
+      root.removeEventListener("mousemove", onMove);
+      root.removeEventListener("mouseleave", onLeave);
+    };
+  }, [editor]);
 
   useEffect(() => {
     if (!editor) return;
@@ -164,7 +249,10 @@ export function RichEditor({
       )}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div
-          className="mx-auto w-full max-w-3xl px-4 pt-5 pb-16 md:px-6"
+          className={cn(
+            "mx-auto w-full px-4 pt-5 pb-16 md:px-6",
+            prefs.pageOrientation === "landscape" ? "max-w-[12in]" : "max-w-[9in]",
+          )}
           style={{ zoom } as React.CSSProperties}
         >
           <textarea
@@ -186,7 +274,7 @@ export function RichEditor({
             }}
             className="mb-4 w-full resize-none bg-transparent font-display text-3xl leading-tight font-semibold tracking-tight text-ink placeholder:text-ink-subtle focus:outline-none"
           />
-          <PageSheet border={prefs.border} oversized={oversized}>
+          <PageSheet border={prefs.border} oversized={oversized} orientation={prefs.pageOrientation} className="print-sheet">
             <div
               ref={sheetRef}
               className={cn("paper-body px-6 py-6 md:px-8", oversized && "is-oversized")}
@@ -198,6 +286,17 @@ export function RichEditor({
               )}
             </div>
           </PageSheet>
+          {linkChip ? (
+            <div
+              className="link-chip"
+              style={{ left: Math.max(8, linkChip.x), top: Math.max(8, linkChip.y - 36) }}
+            >
+              <span className="min-w-0 truncate">{linkChip.href}</span>
+              <Button size="sm" className="h-7 px-2" onClick={() => void openExternal(linkChip.href)}>
+                Open
+              </Button>
+            </div>
+          ) : null}
           <div className="mt-3 flex items-center justify-center gap-2 text-sm text-ink-muted">
             <Button
               variant="ghost"

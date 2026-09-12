@@ -25,8 +25,24 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
-    applyTheme(prefs.theme);
-  }, [prefs.theme]);
+    applyTheme(prefs.theme, prefs.customThemes ?? []);
+  }, [prefs.theme, prefs.customThemes]);
+
+  useEffect(() => {
+    const id = "quire-plugin-css";
+    const css = (prefs.plugins ?? []).map((plugin) => plugin.css || "").join("\n");
+    let el = document.getElementById(id) as HTMLStyleElement | null;
+    if (!css.trim()) {
+      el?.remove();
+      return;
+    }
+    if (!el) {
+      el = document.createElement("style");
+      el.id = id;
+      document.head.appendChild(el);
+    }
+    el.textContent = css;
+  }, [prefs.plugins]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {

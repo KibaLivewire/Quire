@@ -1,6 +1,10 @@
+import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { BORDER_META } from "@/lib/borders";
-import { THEME_META } from "@/lib/theme";
-import { THEMES, type BorderId, type ThemeId } from "@/lib/types";
+import { checkForUpdates, appVersion } from "@/lib/desktop";
+import { parsePlugin, pluginTemplate } from "@/lib/plugins";
+import { allThemes } from "@/lib/theme";
+import { type CustomTheme } from "@/lib/types";
 import { useNotebookStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -11,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
@@ -23,32 +28,152 @@ export function SettingsPanel({
 }) {
   const prefs = useNotebookStore((s) => s.prefs);
   const setPrefs = useNotebookStore((s) => s.setPrefs);
+  const pluginRef = useRef<HTMLInputElement>(null);
+  const [draft, setDraft] = useState<CustomTheme>({
+    id: "",
+    label: "",
+    desk: "#0c0b0a",
+    paper: "#1a1714",
+    ink: "#ece6dc",
+    accent: "#8fa399",
+  });
+  const [updateNote, setUpdateNote] = useState("");
+
+  const themes = allThemes(prefs.customThemes ?? []);
+
+  function savePersonalTheme() {
+    const label = draft.label.trim();
+    if (!label) {
+      toast.error("Name the theme first.");
+      return;
+    }
+    const next: CustomTheme = { ...draft, id: draft.id || crypto.randomUUID(), label };
+    const customThemes = [...(prefs.customThemes ?? []).filter((item) => item.id !== next.id), next];
+    setPrefs({ customThemes, theme: next.id });
+    toast("Theme saved on this device");
+  }
+
+  function importPlugin(file: File | undefined) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = parsePlugin(JSON.parse(String(reader.result || "{}")));
+        if (!parsed) {
+          toast.error("That file is not a Quire add-on.");
+          return;
+        }
+        const plugins = [...(prefs.plugins ?? []).filter((item) => item.id !== parsed.id), parsed];
+        const extraThemes = parsed.themes ?? [];
+        setPrefs({
+          plugins,
+          customThemes: [
+            ...(prefs.customThemes ?? []).filter((theme) => !extraThemes.some((item) => item.id === theme.id)),
+            ...extraThemes,
+          ],
+        });
+        toast(`Added ${parsed.name}`);
+      } catch {
+        toast.error("Could not read that add-on.");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  async function onCheckUpdates() {
+    setUpdateNote("Checking…");
+    const info = await checkForUpdates();
+    if (info.error) {
+      setUpdateNote(info.error);
+      return;
+    }
+    if (info.latest && info.latest !== info.current) {
+      setUpdateNote(`Version ${info.latest} is available (you have ${info.current}).`);
+    } else {
+      setUpdateNote(`Quire ${info.current} is up to date.`);
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(calc(100%-1.5rem),32rem)] max-h-[85dvh] overflow-y-auto">
+      <DialogContent className="w-[min(calc(100%-1.5rem),36rem)] max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Desk</DialogTitle>
-          <DialogDescription>Theme, page frame, and writing tools for this device.</DialogDescription>
+          <DialogDescription>Theme, page, and writing tools for this device. Quire {appVersion()}</DialogDescription>
         </DialogHeader>
 
         <section className="px-1 pb-4">
           <h3 className="text-xs font-medium tracking-wide text-ink-subtle uppercase">Mode</h3>
           <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {THEMES.map((id) => (
+            {themes.map((item) => (
               <ThemeCard
-                key={id}
-                id={id}
-                active={prefs.theme === id}
-                onSelect={() => setPrefs({ theme: id })}
+                key={item.id}
+                id={item.id}
+                label={item.label}
+                desk={item.desk}
+                paper={item.paper}
+                accent={item.accent}
+                active={prefs.theme === item.id}
+                onSelect={() => setPrefs({ theme: item.id })}
+                onRemove={
+                  "builtin" in item && !item.builtin
+                    ? () => {
+                        setPrefs({
+                          customThemes: (prefs.customThemes ?? []).filter((theme) => theme.id !== item.id),
+                          theme: prefs.theme === item.id ? "dark" : prefs.theme,
+                        });
+                      }
+                    : undefined
+                }
               />
             ))}
           </div>
         </section>
 
         <section className="px-1 pb-4">
-          <h3 className="text-xs font-medium tracking-wide text-ink-subtle uppercase">Page border</h3>
-          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <h3 className="text-xs font-medium tracking-wide text-ink-subtle uppercase">Personal palette</h3>
+          <p className="mt-1 text-xs text-ink-muted">Save desk, paper, and ink colors as a new style beside the four defaults.</p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <label className="text-xs text-ink-muted">
+              Name
+              <Input className="mt-1" value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
+            </label>
+            <div />
+            <ColorField label="Desk" value={draft.desk} onChange={(desk) => setDraft({ ...draft, desk })} />
+            <ColorField label="Paper" value={draft.paper} onChange={(paper) => setDraft({ ...draft, paper })} />
+            <ColorField label="Text" value={draft.ink} onChange={(ink) => setDraft({ ...draft, ink })} />
+            <ColorField label="Accent" value={draft.accent} onChange={(accent) => setDraft({ ...draft, accent })} />
+          </div>
+          <Button className="mt-2" variant="outline" size="sm" onClick={savePersonalTheme}>
+            Save as personal theme
+          </Button>
+        </section>
+
+        <section className="px-1 pb-4">
+          <h3 className="text-xs font-medium tracking-wide text-ink-subtle uppercase">Page</h3>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              className={cn(
+                "rounded-xl border px-3 py-2 text-sm",
+                prefs.pageOrientation === "portrait" ? "border-forest bg-paper-inset" : "border-rule",
+              )}
+              onClick={() => setPrefs({ pageOrientation: "portrait" })}
+            >
+              Portrait letter
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "rounded-xl border px-3 py-2 text-sm",
+                prefs.pageOrientation === "landscape" ? "border-forest bg-paper-inset" : "border-rule",
+              )}
+              onClick={() => setPrefs({ pageOrientation: "landscape" })}
+            >
+              Landscape letter
+            </button>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
             {BORDER_META.map((item) => (
               <button
                 key={item.id}
@@ -60,14 +185,14 @@ export function SettingsPanel({
                   prefs.border === item.id ? "border-forest bg-paper-inset" : "border-rule hover:bg-paper-inset",
                 )}
               >
-                <BorderSwatch id={item.id} />
+                <span data-border={item.id} className="border-swatch" />
                 <p className="mt-1.5 text-xs font-medium text-ink">{item.label}</p>
               </button>
             ))}
           </div>
         </section>
 
-        <section className="grid gap-3 px-1 pb-2">
+        <section className="grid gap-3 px-1 pb-4">
           <h3 className="text-xs font-medium tracking-wide text-ink-subtle uppercase">Writing tools</h3>
           <ToggleRow
             label="Word count"
@@ -82,17 +207,112 @@ export function SettingsPanel({
             onCheckedChange={(checked) => setPrefs({ spellcheck: checked })}
           />
           <ToggleRow
+            label="Grammar check"
+            hint="Look up grammar suggestions (sends the page text to LanguageTool)"
+            checked={prefs.grammar}
+            onCheckedChange={(checked) => setPrefs({ grammar: checked })}
+          />
+          <ToggleRow
             label="Word suggestions"
             hint="Synonyms, antonyms, and a short sense for a selected word"
             checked={prefs.suggestions}
             onCheckedChange={(checked) => setPrefs({ suggestions: checked })}
           />
         </section>
+
+        <section className="px-1 pb-4">
+          <h3 className="text-xs font-medium tracking-wide text-ink-subtle uppercase">Add-ons</h3>
+          <p className="mt-1 text-xs text-ink-muted">
+            Import a JSON add-on other people share. Add-ons can bring extra themes and CSS. They cannot run programs.
+          </p>
+          <input
+            ref={pluginRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              importPlugin(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => pluginRef.current?.click()}>
+              Import add-on
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const blob = new Blob([pluginTemplate()], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "quire-addon.json";
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              Download template
+            </Button>
+          </div>
+          <ul className="mt-2 space-y-1">
+            {(prefs.plugins ?? []).map((plugin) => (
+              <li key={plugin.id} className="flex items-center justify-between rounded-lg bg-paper px-2 py-1.5 text-sm">
+                <span>
+                  {plugin.name}
+                  {plugin.version ? <span className="text-ink-subtle"> · {plugin.version}</span> : null}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPrefs({ plugins: (prefs.plugins ?? []).filter((item) => item.id !== plugin.id) })}
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="px-1 pb-2">
+          <h3 className="text-xs font-medium tracking-wide text-ink-subtle uppercase">About</h3>
+          <p className="mt-1 text-sm text-ink-muted">Quire {appVersion()} · Start menu name: Quire</p>
+          <Button className="mt-2" variant="outline" size="sm" onClick={() => void onCheckUpdates()}>
+            Check for updates
+          </Button>
+          {updateNote ? <p className="mt-1 text-xs text-ink-muted">{updateNote}</p> : null}
+        </section>
+
         <div className="flex justify-end px-1 pt-1">
           <Button onClick={() => onOpenChange(false)}>Done</Button>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ColorField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="text-xs text-ink-muted">
+      {label}
+      <span className="mt-1 flex items-center gap-2">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="size-8 cursor-pointer rounded border border-rule bg-transparent"
+        />
+        <Input value={value} onChange={(e) => onChange(e.target.value)} />
+      </span>
+    </label>
   );
 }
 
@@ -120,36 +340,40 @@ function ToggleRow({
 
 function ThemeCard({
   id,
+  label,
+  desk,
+  paper,
+  accent,
   active,
   onSelect,
+  onRemove,
 }: {
-  id: ThemeId;
+  id: string;
+  label: string;
+  desk: string;
+  paper: string;
+  accent: string;
   active: boolean;
   onSelect: () => void;
+  onRemove?: () => void;
 }) {
-  const meta = THEME_META[id];
   return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onSelect}
-      className={cn(
-        "rounded-xl border p-2 text-left transition-colors duration-150",
-        active ? "border-forest" : "border-rule hover:bg-paper-inset",
-      )}
-    >
-      <span
-        className="block h-12 rounded-lg"
-        style={{
-          background: `linear-gradient(180deg, ${meta.desk} 38%, ${meta.paper} 38%)`,
-          boxShadow: `inset 0 0 0 1px ${meta.accent}55`,
-        }}
-      />
-      <span className="mt-1.5 block text-xs font-medium text-ink">{meta.label}</span>
-    </button>
+    <div className={cn("rounded-xl border p-2", active ? "border-forest" : "border-rule")}>
+      <button type="button" aria-pressed={active} onClick={onSelect} className="block w-full text-left">
+        <span
+          className="block h-12 rounded-lg"
+          style={{
+            background: `linear-gradient(180deg, ${desk} 38%, ${paper} 38%)`,
+            boxShadow: `inset 0 0 0 1px ${accent}55`,
+          }}
+        />
+        <span className="mt-1.5 block text-xs font-medium text-ink">{label}</span>
+      </button>
+      {onRemove ? (
+        <button type="button" className="mt-1 text-[11px] text-ink-subtle hover:text-ink" onClick={onRemove}>
+          Remove
+        </button>
+      ) : null}
+    </div>
   );
-}
-
-function BorderSwatch({ id }: { id: BorderId }) {
-  return <span data-border={id} className="border-swatch" />;
 }

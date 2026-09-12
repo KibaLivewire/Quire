@@ -4,6 +4,27 @@ export type NotebookHue = (typeof NOTEBOOK_HUES)[number];
 export const THEMES = ["dark", "light", "navy", "leather"] as const;
 export type ThemeId = (typeof THEMES)[number];
 
+export const PAGE_ORIENTATIONS = ["portrait", "landscape"] as const;
+export type PageOrientation = (typeof PAGE_ORIENTATIONS)[number];
+
+export type CustomTheme = {
+  id: string;
+  label: string;
+  desk: string;
+  paper: string;
+  ink: string;
+  accent: string;
+};
+
+export type QuirePlugin = {
+  id: string;
+  name: string;
+  version?: string;
+  author?: string;
+  css?: string;
+  themes?: CustomTheme[];
+};
+
 export const BORDERS = [
   "none",
   "hairline",
@@ -37,12 +58,16 @@ export type Note = {
 };
 
 export type Prefs = {
-  theme: ThemeId;
+  theme: string;
   border: BorderId;
   zoom: number;
   showWordCount: boolean;
   spellcheck: boolean;
   suggestions: boolean;
+  grammar: boolean;
+  pageOrientation: PageOrientation;
+  customThemes: CustomTheme[];
+  plugins: QuirePlugin[];
 };
 
 export const DEFAULT_PREFS: Prefs = {
@@ -52,4 +77,8 @@ export const DEFAULT_PREFS: Prefs = {
   showWordCount: true,
   spellcheck: true,
   suggestions: true,
+  grammar: true,
+  pageOrientation: "portrait",
+  customThemes: [],
+  plugins: [],
 };

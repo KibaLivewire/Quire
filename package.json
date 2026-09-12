@@ -1,6 +1,8 @@
 {
   "name": "app-builder-workspace",
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "description": "A quiet notebook for writing on this device.",
+  "author": "KibaLivewire",
   "private": true,
   "sideEffects": false,
   "type": "module",
@@ -119,11 +121,12 @@
     "appId": "com.kibalivewire.quire",
     "productName": "Quire",
     "copyright": "Copyright © 2026",
+    "icon": "electron/icon.png",
     "directories": {
       "output": "release"
     },
     "files": [
-      "electron/main.cjs",
+      "electron/**/*",
       "package.json"
     ],
     "extraResources": [
@@ -146,7 +149,8 @@
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Quire"
+      "shortcutName": "Quire",
+      "uninstallDisplayName": "Quire"
     }
   }
 }

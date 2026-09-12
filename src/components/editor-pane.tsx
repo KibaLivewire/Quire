@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Copy,
   Download,
+  FileText,
   FolderInput,
   Maximize2,
   Minimize2,
@@ -11,6 +12,7 @@ import {
   MoreHorizontal,
   Pin,
   Plus,
+  Printer,
   Settings,
   Trash2,
 } from "lucide-react";
@@ -38,37 +40,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Slider } from "@/components/ui/slider";
+import { exportHtml, exportMarkdown, exportText } from "@/lib/export-note";
 import { notePages } from "@/lib/pages";
 import { useNotebookStore } from "@/lib/store";
-import { cn, debounce, escapeHtml, plainText, wordCount } from "@/lib/utils";
-
-function exportNote(title: string, content: string) {
-  const safe = title.replace(/[^\w\s-]+/g, "").trim() || "untitled";
-  const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(title)}</title>
-<style>
-  body { font: 1.125rem/1.7 Georgia, serif; color: #1c1917; max-width: 42rem; margin: 3rem auto; padding: 0 1.25rem; }
-  img { max-width: 100%; height: auto; }
-  blockquote { border-left: 2px solid #3f534c; padding-left: 1rem; color: #6e6860; font-style: italic; }
-</style>
-</head>
-<body>
-<h1>${escapeHtml(title)}</h1>
-${content}
-</body>
-</html>`;
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${safe}.html`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+import { cn, debounce, plainText, wordCount } from "@/lib/utils";
 
 export function EditorPane({
   onBack,
@@ -214,9 +189,21 @@ export function EditorPane({
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuItem onSelect={() => exportNote(title || "Untitled", allHtml)}>
+            <DropdownMenuItem onSelect={() => exportHtml(title || "Untitled", allHtml)}>
               <Download className="size-4" />
               Export HTML
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => exportText(title || "Untitled", allHtml)}>
+              <FileText className="size-4" />
+              Export text
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => exportMarkdown(title || "Untitled", allHtml)}>
+              <Download className="size-4" />
+              Export Markdown
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => window.print()}>
+              <Printer className="size-4" />
+              Print
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>

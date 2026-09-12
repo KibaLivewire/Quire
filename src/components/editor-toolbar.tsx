@@ -14,20 +14,26 @@ import {
   Heading3,
   Highlighter,
   ImagePlus,
+  IndentDecrease,
+  IndentIncrease,
   Italic,
   Link2,
   List,
   ListOrdered,
   Minus,
   Quote,
+  Redo2,
   Search,
+  SpellCheck,
   Strikethrough,
   Underline,
+  Undo2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { FontPicker } from "@/components/font-picker";
 import { ImageEditor } from "@/components/image-editor";
 import { fetchSense, WordLookupCard } from "@/components/word-lookup";
+import { checkGrammar, type GrammarIssue } from "@/lib/grammar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -108,7 +114,11 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
   const [lookupOpen, setLookupOpen] = useState(false);
   const [sense, setSense] = useState<WordSense | null>(null);
   const [looking, setLooking] = useState(false);
+  const [grammarOpen, setGrammarOpen] = useState(false);
+  const [grammarIssues, setGrammarIssues] = useState<GrammarIssue[]>([]);
+  const [grammarBusy, setGrammarBusy] = useState(false);
   const suggestions = useNotebookStore((s) => s.prefs.suggestions);
+  const grammarOn = useNotebookStore((s) => s.prefs.grammar);
 
   const ui = useEditorState({
     editor,
@@ -137,6 +147,11 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
       imageSize: (ed.getAttributes("image").size as string | undefined) ?? null,
       imageAlign: (ed.getAttributes("image").align as string | undefined) ?? "center",
       imageWrap: (ed.getAttributes("image").wrap as string | undefined) ?? null,
+      indent: Number(ed.getAttributes("paragraph").indent || ed.getAttributes("heading").indent || 0),
+      lineHeight: (ed.getAttributes("paragraph").lineHeight || ed.getAttributes("heading").lineHeight) as string | null,
+      paraSpace: (ed.getAttributes("paragraph").paraSpace || ed.getAttributes("heading").paraSpace) as string | null,
+      canUndo: ed.can().undo(),
+      canRedo: ed.can().redo(),
     }),
   });
 
@@ -198,13 +213,71 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
     setLookupOpen(false);
   }
 
+  function setBlock(patch: Record<string, unknown>) {
+    editor.chain().focus().updateAttributes("paragraph", patch).updateAttributes("heading", patch).run();
+  }
+
   function setImageLayout(patch: Record<string, string | null>) {
     editor.chain().focus().updateAttributes("image", patch).run();
+  }
+
+  function bumpIndent(delta: number) {
+    if (delta > 0 && editor.can().sinkListItem("listItem")) {
+      editor.chain().focus().sinkListItem("listItem").run();
+      return;
+    }
+    if (delta < 0 && editor.can().liftListItem("listItem")) {
+      editor.chain().focus().liftListItem("listItem").run();
+      return;
+    }
+    const current = Number(ui.indent || 0);
+    setBlock({ indent: Math.max(0, Math.min(8, current + delta)) });
+  }
+
+  async function runGrammar() {
+    setGrammarOpen(true);
+    setGrammarBusy(true);
+    try {
+      setGrammarIssues(await checkGrammar(editor.getText()));
+    } catch {
+      toast.error("Could not reach the grammar service.");
+      setGrammarIssues([]);
+    } finally {
+      setGrammarBusy(false);
+    }
+  }
+
+  function applyGrammarFix(issue: GrammarIssue, replacement: string) {
+    const text = editor.getText();
+    const fromPlain = issue.offset;
+    const toPlain = issue.offset + issue.length;
+    let seen = 0;
+    let from = 0;
+    let to = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (!node.isText || !node.text) return;
+      const next = seen + node.text.length;
+      if (!from && fromPlain >= seen && fromPlain <= next) from = pos + (fromPlain - seen);
+      if (toPlain >= seen && toPlain <= next) to = pos + (toPlain - seen);
+      seen = next;
+    });
+    if (from && to && to > from) {
+      editor.chain().focus().insertContentAt({ from, to }, replacement).run();
+    } else {
+      editor.chain().focus().insertContent(replacement).run();
+    }
   }
 
   return (
     <div className="border-b border-rule bg-paper-raised/90 backdrop-blur-sm">
       <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5">
+        <ToolBtn label="Undo" onClick={() => editor.chain().focus().undo().run()}>
+          <Undo2 />
+        </ToolBtn>
+        <ToolBtn label="Redo" onClick={() => editor.chain().focus().redo().run()}>
+          <Redo2 />
+        </ToolBtn>
+        <Separator orientation="vertical" className="mx-1 h-5" />
         <ToolBtn label="Bold" active={ui.bold} onClick={() => editor.chain().focus().toggleBold().run()}>
           <Bold />
         </ToolBtn>
@@ -424,6 +497,65 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
           </PopoverContent>
         </Popover>
 
+        <ToolBtn label="Decrease indent" onClick={() => bumpIndent(-1)}>
+          <IndentDecrease />
+        </ToolBtn>
+        <ToolBtn label="Increase indent" onClick={() => bumpIndent(1)}>
+          <IndentIncrease />
+        </ToolBtn>
+
+        <Popover>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="ghost" size="sm" className="h-9 px-2 text-ink-muted" aria-label="Line spacing">
+                  Spacing
+                </Button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Line & paragraph spacing</TooltipContent>
+          </Tooltip>
+          <PopoverContent className="w-52 p-2">
+            <p className="px-1 pb-1 text-xs font-medium tracking-wide text-ink-subtle uppercase">Line</p>
+            {[
+              ["1", "Single"],
+              ["1.15", "1.15"],
+              ["1.5", "1.5"],
+              ["2", "Double"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={cn(
+                  "flex w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-paper-inset",
+                  ui.lineHeight === value && "bg-paper-inset",
+                )}
+                onClick={() => setBlock({ lineHeight: value })}
+              >
+                {label}
+              </button>
+            ))}
+            <p className="mt-2 px-1 pb-1 text-xs font-medium tracking-wide text-ink-subtle uppercase">Paragraph</p>
+            {[
+              ["tight", "Tight"],
+              ["normal", "Normal"],
+              ["loose", "Loose"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={cn(
+                  "flex w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-paper-inset",
+                  ui.paraSpace === value && "bg-paper-inset",
+                )}
+                onClick={() => setBlock({ paraSpace: value })}
+              >
+                {label}
+              </button>
+            ))}
+          </PopoverContent>
+        </Popover>
+
         <Separator orientation="vertical" className="mx-1 h-5" />
 
         <input
@@ -540,6 +672,54 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
             </Tooltip>
             <PopoverContent className="w-80">
               <WordLookupCard sense={sense} loading={looking} onReplace={replaceSelection} />
+            </PopoverContent>
+          </Popover>
+        ) : null}
+
+        {grammarOn ? (
+          <Popover open={grammarOpen} onOpenChange={setGrammarOpen}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Spelling and grammar"
+                    className="text-ink-muted"
+                    onClick={() => void runGrammar()}
+                  >
+                    <SpellCheck />
+                  </Button>
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Spelling & grammar</TooltipContent>
+            </Tooltip>
+            <PopoverContent className="w-80 max-h-80 overflow-y-auto">
+              <p className="pb-2 text-xs font-medium tracking-wide text-ink-subtle uppercase">Grammar</p>
+              {grammarBusy ? <p className="text-sm text-ink-muted">Checking…</p> : null}
+              {!grammarBusy && grammarIssues.length === 0 ? (
+                <p className="text-sm text-ink-muted">No issues found, or the checker is offline.</p>
+              ) : null}
+              <ul className="space-y-2">
+                {grammarIssues.map((issue, index) => (
+                  <li key={`${issue.offset}-${index}`} className="rounded-lg bg-paper px-2 py-2">
+                    <p className="text-sm text-ink">{issue.message}</p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {issue.replacements.map((item) => (
+                        <button
+                          key={item}
+                          type="button"
+                          className="rounded-full bg-paper-inset px-2 py-0.5 text-xs hover:text-ink"
+                          onClick={() => applyGrammarFix(issue, item)}
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </PopoverContent>
           </Popover>
         ) : null}
