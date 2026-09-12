@@ -66,6 +66,8 @@ export type Prefs = {
   suggestions: boolean;
   grammar: boolean;
   pageOrientation: PageOrientation;
+  pageWidth: number;
+  pageHeight: number;
   customThemes: CustomTheme[];
   plugins: QuirePlugin[];
 };
@@ -79,6 +81,8 @@ export const DEFAULT_PREFS: Prefs = {
   suggestions: true,
   grammar: true,
   pageOrientation: "portrait",
+  pageWidth: 8.5,
+  pageHeight: 11,
   customThemes: [],
   plugins: [],
 };

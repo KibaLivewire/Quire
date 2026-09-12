@@ -603,7 +603,7 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
               <button
                 type="button"
                 aria-pressed={pageOrientation === "portrait"}
-                onClick={() => setPrefs({ pageOrientation: "portrait" })}
+                onClick={() => setPrefs({ pageOrientation: "portrait", pageWidth: 8.5, pageHeight: 11 })}
                 className={cn(
                   "flex flex-col items-center gap-2 rounded-xl border px-2 py-3 text-sm",
                   pageOrientation === "portrait" ? "border-forest bg-paper-inset text-ink" : "border-rule text-ink-muted hover:text-ink",
@@ -616,7 +616,7 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
               <button
                 type="button"
                 aria-pressed={pageOrientation === "landscape"}
-                onClick={() => setPrefs({ pageOrientation: "landscape" })}
+                onClick={() => setPrefs({ pageOrientation: "landscape", pageWidth: 11, pageHeight: 8.5 })}
                 className={cn(
                   "flex flex-col items-center gap-2 rounded-xl border px-2 py-3 text-sm",
                   pageOrientation === "landscape" ? "border-forest bg-paper-inset text-ink" : "border-rule text-ink-muted hover:text-ink",

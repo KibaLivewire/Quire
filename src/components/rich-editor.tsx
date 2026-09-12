@@ -237,9 +237,11 @@ export function RichEditor({
       editor.view.dom.removeEventListener("load", onLoad, true);
       ro.disconnect();
     };
-  }, [editor, note.id, safeIndex, onPageIndexChange, setNotePages, prefs.pageOrientation]);
+  }, [editor, note.id, safeIndex, onPageIndexChange, setNotePages, prefs.pageOrientation, prefs.pageWidth, prefs.pageHeight]);
 
   const zoom = prefs.zoom;
+  const pageWidth = prefs.pageWidth || (prefs.pageOrientation === "landscape" ? 11 : 8.5);
+  const pageHeight = prefs.pageHeight || (prefs.pageOrientation === "landscape" ? 8.5 : 11);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -272,7 +274,13 @@ export function RichEditor({
             }}
             className="mb-4 w-full min-w-[min(100%,8.5in)] resize-none bg-transparent font-display text-3xl leading-tight font-semibold tracking-tight text-ink placeholder:text-ink-subtle focus:outline-none"
           />
-          <PageSheet border={prefs.border} oversized={oversized} orientation={prefs.pageOrientation} className="print-sheet">
+          <PageSheet
+            border={prefs.border}
+            oversized={oversized}
+            width={pageWidth}
+            height={pageHeight}
+            className="print-sheet"
+          >
             <div
               ref={sheetRef}
               className={cn("paper-body px-6 py-6 md:px-8", oversized && "is-oversized")}
@@ -309,7 +317,7 @@ export function RichEditor({
               Sheet {safeIndex + 1} of {pageCount}
               <span className="text-ink-subtle">
                 {" "}
-                · Letter {prefs.pageOrientation === "landscape" ? "landscape" : "portrait"}
+                · {pageWidth} × {pageHeight} in
               </span>
             </span>
             <Button

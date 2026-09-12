@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { BORDER_META } from "@/lib/borders";
 import { checkForUpdates, appVersion } from "@/lib/desktop";
 import { parsePlugin, pluginTemplate } from "@/lib/plugins";
 import { allThemes } from "@/lib/theme";
@@ -99,7 +98,7 @@ export function SettingsPanel({
       <DialogContent className="w-[min(calc(100%-1.5rem),36rem)] max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Desk</DialogTitle>
-          <DialogDescription>Theme, page, and writing tools for this device. Quire {appVersion()}</DialogDescription>
+          <DialogDescription>Theme and writing tools for this device. Quire {appVersion()}</DialogDescription>
         </DialogHeader>
 
         <section className="px-1 pb-4">
@@ -147,49 +146,6 @@ export function SettingsPanel({
           <Button className="mt-2" variant="outline" size="sm" onClick={savePersonalTheme}>
             Save as personal theme
           </Button>
-        </section>
-
-        <section className="px-1 pb-4">
-          <h3 className="text-xs font-medium tracking-wide text-ink-subtle uppercase">Page</h3>
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              className={cn(
-                "rounded-xl border px-3 py-2 text-sm",
-                prefs.pageOrientation === "portrait" ? "border-forest bg-paper-inset" : "border-rule",
-              )}
-              onClick={() => setPrefs({ pageOrientation: "portrait" })}
-            >
-              Portrait letter
-            </button>
-            <button
-              type="button"
-              className={cn(
-                "rounded-xl border px-3 py-2 text-sm",
-                prefs.pageOrientation === "landscape" ? "border-forest bg-paper-inset" : "border-rule",
-              )}
-              onClick={() => setPrefs({ pageOrientation: "landscape" })}
-            >
-              Landscape letter
-            </button>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
-            {BORDER_META.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                aria-pressed={prefs.border === item.id}
-                onClick={() => setPrefs({ border: item.id })}
-                className={cn(
-                  "rounded-xl border px-2 py-2 text-left transition-colors duration-150",
-                  prefs.border === item.id ? "border-forest bg-paper-inset" : "border-rule hover:bg-paper-inset",
-                )}
-              >
-                <span data-border={item.id} className="border-swatch" />
-                <p className="mt-1.5 text-xs font-medium text-ink">{item.label}</p>
-              </button>
-            ))}
-          </div>
         </section>
 
         <section className="grid gap-3 px-1 pb-4">

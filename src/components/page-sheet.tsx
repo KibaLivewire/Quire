@@ -1,4 +1,5 @@
-import type { BorderId, PageOrientation } from "@/lib/types";
+import type { CSSProperties } from "react";
+import type { BorderId } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 function VineCorner({ className }: { className?: string }) {
@@ -18,34 +19,86 @@ function VineCorner({ className }: { className?: string }) {
   );
 }
 
+function inchTicks(length: number) {
+  const ticks: { at: number; kind: "inch" | "half" | "quarter" }[] = [];
+  const steps = Math.round(length * 4);
+  for (let i = 0; i <= steps; i += 1) {
+    const at = i / 4;
+    ticks.push({
+      at,
+      kind: i % 4 === 0 ? "inch" : i % 2 === 0 ? "half" : "quarter",
+    });
+  }
+  return ticks;
+}
+
 export function PageSheet({
   border,
   oversized,
-  orientation = "portrait",
+  width = 8.5,
+  height = 11,
   children,
   className,
 }: {
   border: BorderId;
   oversized?: boolean;
-  orientation?: PageOrientation;
+  width?: number;
+  height?: number;
   children: React.ReactNode;
   className?: string;
 }) {
+  const across = inchTicks(width);
+  const down = inchTicks(height);
+
   return (
     <div
-      data-border={border}
-      data-page={orientation}
-      className={cn("paper-sheet", oversized && "is-oversized", className)}
+      className="page-frame"
+      style={
+        {
+          "--page-w": `${width}in`,
+          "--page-h": `${height}in`,
+        } as CSSProperties
+      }
     >
-      {border === "vine" ? (
-        <>
-          <VineCorner className="top-1 left-1" />
-          <VineCorner className="top-1 right-1 rotate-90" />
-          <VineCorner className="bottom-1 left-1 -rotate-90" />
-          <VineCorner className="right-1 bottom-1 rotate-180" />
-        </>
-      ) : null}
-      {children}
+      <div className="ruler-corner" aria-hidden>
+        in
+      </div>
+      <div className="ruler ruler-x" aria-hidden>
+        {across.map((tick) => (
+          <span
+            key={`x-${tick.at}`}
+            className={`ruler-tick is-${tick.kind}`}
+            style={{ left: `${(tick.at / width) * 100}%` }}
+          >
+            {tick.kind === "inch" ? <span className="ruler-label">{tick.at}</span> : null}
+          </span>
+        ))}
+      </div>
+      <div className="ruler ruler-y" aria-hidden>
+        {down.map((tick) => (
+          <span
+            key={`y-${tick.at}`}
+            className={`ruler-tick is-${tick.kind}`}
+            style={{ top: `${(tick.at / height) * 100}%` }}
+          >
+            {tick.kind === "inch" ? <span className="ruler-label">{tick.at}</span> : null}
+          </span>
+        ))}
+      </div>
+      <div
+        data-border={border}
+        className={cn("paper-sheet", oversized && "is-oversized", className)}
+      >
+        {border === "vine" ? (
+          <>
+            <VineCorner className="top-1 left-1" />
+            <VineCorner className="top-1 right-1 rotate-90" />
+            <VineCorner className="bottom-1 left-1 -rotate-90" />
+            <VineCorner className="right-1 bottom-1 rotate-180" />
+          </>
+        ) : null}
+        {children}
+      </div>
     </div>
   );
 }
