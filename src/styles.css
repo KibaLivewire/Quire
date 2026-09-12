@@ -521,14 +521,18 @@ html[data-theme="leather"] {
 
 .page-frame {
   display: grid;
-  grid-template-columns: 1.5rem minmax(0, 1fr);
-  grid-template-rows: 1.15rem minmax(0, 1fr);
-  width: min(100%, var(--page-w, 8.5in));
+  grid-template-columns: 1.5rem var(--page-w, 8.5in);
+  grid-template-rows: 1.15rem var(--page-h, 11in);
+  width: calc(var(--page-w, 8.5in) + 1.5rem);
+  min-width: calc(var(--page-w, 8.5in) + 1.5rem);
+  flex-shrink: 0;
 }
 
 .page-frame.is-bare {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: var(--page-w, 8.5in);
+  grid-template-rows: var(--page-h, 11in);
+  width: var(--page-w, 8.5in);
+  min-width: var(--page-w, 8.5in);
 }
 
 .ruler-corner {
@@ -652,9 +656,12 @@ html[data-theme="leather"] {
 
 .paper-sheet {
   position: relative;
-  width: 100%;
-  aspect-ratio: var(--page-w, 8.5in) / var(--page-h, 11in);
-  height: auto;
+  width: var(--page-w, 8.5in);
+  height: var(--page-h, 11in);
+  min-width: var(--page-w, 8.5in);
+  min-height: var(--page-h, 11in);
+  max-width: none;
+  aspect-ratio: auto;
   background: var(--color-paper-raised);
   color: var(--color-ink);
   box-shadow: var(--shadow-lift);

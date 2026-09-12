@@ -270,8 +270,8 @@ export function RichEditor({
   }, [editor, note.id, safeIndex, onPageIndexChange, setNotePages, prefs.pageOrientation, prefs.pageWidth, prefs.pageHeight]);
 
   const zoom = prefs.zoom;
-  const pageWidth = prefs.pageWidth || (prefs.pageOrientation === "landscape" ? 11 : 8.5);
-  const pageHeight = prefs.pageHeight || (prefs.pageOrientation === "landscape" ? 8.5 : 11);
+  const pageWidth = Number(prefs.pageWidth) > 0 ? Number(prefs.pageWidth) : 8.5;
+  const pageHeight = Number(prefs.pageHeight) > 0 ? Number(prefs.pageHeight) : 11;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -280,9 +280,9 @@ export function RichEditor({
       ) : (
         <div className="h-12 border-b border-rule bg-paper-raised" />
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-auto">
         <div
-          className="mx-auto w-fit max-w-full px-4 pt-5 pb-16 md:px-6"
+          className="mx-auto flex w-full max-w-full flex-col items-center px-4 pt-5 pb-16 md:px-6"
           style={{ zoom } as React.CSSProperties}
         >
           <textarea
@@ -302,7 +302,7 @@ export function RichEditor({
                 editor?.commands.focus("start");
               }
             }}
-            className="mb-4 w-full min-w-[min(100%,8.5in)] resize-none bg-transparent font-display text-3xl leading-tight font-semibold tracking-tight text-ink placeholder:text-ink-subtle focus:outline-none"
+            className="mb-4 w-full max-w-[8.5in] resize-none bg-transparent font-display text-3xl leading-tight font-semibold tracking-tight text-ink placeholder:text-ink-subtle focus:outline-none"
           />
           <PageSheet
             border={prefs.border}
