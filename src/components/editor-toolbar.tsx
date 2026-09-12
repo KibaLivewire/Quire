@@ -28,6 +28,8 @@ import {
   Strikethrough,
   Underline,
   Undo2,
+  RectangleHorizontal,
+  RectangleVertical,
 } from "lucide-react";
 import { toast } from "sonner";
 import { FontPicker } from "@/components/font-picker";
@@ -40,6 +42,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FONT_SIZES, HIGHLIGHTS, INK_COLORS } from "@/lib/fonts";
+import { BORDER_META } from "@/lib/borders";
 import { collectImageFiles, IMAGE_ACCEPT, insertImages, selectedImageSrc } from "@/lib/image";
 import { useNotebookStore } from "@/lib/store";
 import type { WordSense } from "@/lib/word-tools";
@@ -119,6 +122,9 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
   const [grammarBusy, setGrammarBusy] = useState(false);
   const suggestions = useNotebookStore((s) => s.prefs.suggestions);
   const grammarOn = useNotebookStore((s) => s.prefs.grammar);
+  const pageOrientation = useNotebookStore((s) => s.prefs.pageOrientation) || "portrait";
+  const pageBorder = useNotebookStore((s) => s.prefs.border);
+  const setPrefs = useNotebookStore((s) => s.setPrefs);
   const savedWord = useRef("");
 
   useEffect(() => {
@@ -568,6 +574,77 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
                 {label}
               </button>
             ))}
+          </PopoverContent>
+        </Popover>
+
+        <Popover>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Page formatting"
+                  className="h-9 gap-1.5 px-2 text-ink-muted"
+                >
+                  {pageOrientation === "landscape" ? <RectangleHorizontal /> : <RectangleVertical />}
+                  Page
+                </Button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Page formatting</TooltipContent>
+          </Tooltip>
+          <PopoverContent className="w-72 p-3">
+            <p className="px-0.5 pb-2 text-xs font-medium tracking-wide text-ink-subtle uppercase">
+              Page formatting
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                aria-pressed={pageOrientation === "portrait"}
+                onClick={() => setPrefs({ pageOrientation: "portrait" })}
+                className={cn(
+                  "flex flex-col items-center gap-2 rounded-xl border px-2 py-3 text-sm",
+                  pageOrientation === "portrait" ? "border-forest bg-paper-inset text-ink" : "border-rule text-ink-muted hover:text-ink",
+                )}
+              >
+                <span className="block h-14 w-10 rounded-sm bg-paper-raised shadow-[inset_0_0_0_1px_var(--color-rule)]" />
+                Portrait
+                <span className="text-[10px] text-ink-subtle">8.5 × 11 in</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={pageOrientation === "landscape"}
+                onClick={() => setPrefs({ pageOrientation: "landscape" })}
+                className={cn(
+                  "flex flex-col items-center gap-2 rounded-xl border px-2 py-3 text-sm",
+                  pageOrientation === "landscape" ? "border-forest bg-paper-inset text-ink" : "border-rule text-ink-muted hover:text-ink",
+                )}
+              >
+                <span className="block h-10 w-14 rounded-sm bg-paper-raised shadow-[inset_0_0_0_1px_var(--color-rule)]" />
+                Landscape
+                <span className="text-[10px] text-ink-subtle">11 × 8.5 in</span>
+              </button>
+            </div>
+            <p className="mt-3 px-0.5 pb-1.5 text-xs font-medium tracking-wide text-ink-subtle uppercase">Border</p>
+            <div className="grid grid-cols-5 gap-1.5">
+              {BORDER_META.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  title={item.label}
+                  aria-pressed={pageBorder === item.id}
+                  onClick={() => setPrefs({ border: item.id })}
+                  className={cn(
+                    "rounded-lg border p-1",
+                    pageBorder === item.id ? "border-forest" : "border-rule hover:bg-paper-inset",
+                  )}
+                >
+                  <span data-border={item.id} className="border-swatch !h-6" />
+                </button>
+              ))}
+            </div>
           </PopoverContent>
         </Popover>
 

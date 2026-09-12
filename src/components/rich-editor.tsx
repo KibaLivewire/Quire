@@ -230,13 +230,14 @@ export function RichEditor({
     });
     const ro = new ResizeObserver(() => checkOverflow());
     ro.observe(editor.view.dom);
+    if (sheetRef.current) ro.observe(sheetRef.current);
     return () => {
       window.clearTimeout(timer);
       editor.off("update", checkOverflow);
       editor.view.dom.removeEventListener("load", onLoad, true);
       ro.disconnect();
     };
-  }, [editor, note.id, safeIndex, onPageIndexChange, setNotePages]);
+  }, [editor, note.id, safeIndex, onPageIndexChange, setNotePages, prefs.pageOrientation]);
 
   const zoom = prefs.zoom;
 
@@ -249,10 +250,7 @@ export function RichEditor({
       )}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div
-          className={cn(
-            "mx-auto w-full px-4 pt-5 pb-16 md:px-6",
-            prefs.pageOrientation === "landscape" ? "max-w-[12in]" : "max-w-[9in]",
-          )}
+          className="mx-auto w-fit max-w-full px-4 pt-5 pb-16 md:px-6"
           style={{ zoom } as React.CSSProperties}
         >
           <textarea
@@ -272,7 +270,7 @@ export function RichEditor({
                 editor?.commands.focus("start");
               }
             }}
-            className="mb-4 w-full resize-none bg-transparent font-display text-3xl leading-tight font-semibold tracking-tight text-ink placeholder:text-ink-subtle focus:outline-none"
+            className="mb-4 w-full min-w-[min(100%,8.5in)] resize-none bg-transparent font-display text-3xl leading-tight font-semibold tracking-tight text-ink placeholder:text-ink-subtle focus:outline-none"
           />
           <PageSheet border={prefs.border} oversized={oversized} orientation={prefs.pageOrientation} className="print-sheet">
             <div
@@ -309,6 +307,10 @@ export function RichEditor({
             </Button>
             <span className="tabular-nums">
               Sheet {safeIndex + 1} of {pageCount}
+              <span className="text-ink-subtle">
+                {" "}
+                · Letter {prefs.pageOrientation === "landscape" ? "landscape" : "portrait"}
+              </span>
             </span>
             <Button
               variant="ghost"

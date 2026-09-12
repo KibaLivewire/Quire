@@ -522,9 +522,8 @@ html[data-theme="leather"] {
 .paper-sheet {
   position: relative;
   width: min(100%, 8.5in);
-  height: 11in;
-  max-height: min(11in, calc(100dvh - 13.5rem));
-  min-height: 28rem;
+  aspect-ratio: 8.5 / 11;
+  height: auto;
   margin-inline: auto;
   background: var(--color-paper-raised);
   color: var(--color-ink);
@@ -532,10 +531,14 @@ html[data-theme="leather"] {
   overflow: hidden;
 }
 
+.paper-sheet[data-page="portrait"] {
+  width: min(100%, 8.5in);
+  aspect-ratio: 8.5 / 11;
+}
+
 .paper-sheet[data-page="landscape"] {
   width: min(100%, 11in);
-  height: 8.5in;
-  max-height: min(8.5in, calc(100dvh - 13.5rem));
+  aspect-ratio: 11 / 8.5;
 }
 
 .paper-sheet.is-oversized {
@@ -648,6 +651,10 @@ html[data-theme="leather"] {
 }
 
 @media print {
+  @page {
+    size: letter;
+    margin: 0.5in;
+  }
   body * {
     visibility: hidden !important;
   }
