@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { useEditorState } from "@tiptap/react";
 import {
@@ -119,6 +119,20 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
   const [grammarBusy, setGrammarBusy] = useState(false);
   const suggestions = useNotebookStore((s) => s.prefs.suggestions);
   const grammarOn = useNotebookStore((s) => s.prefs.grammar);
+  const savedWord = useRef("");
+
+  useEffect(() => {
+    function remember() {
+      const text = selectedText(editor);
+      if (text) savedWord.current = text;
+    }
+    editor.on("selectionUpdate", remember);
+    editor.on("update", remember);
+    return () => {
+      editor.off("selectionUpdate", remember);
+      editor.off("update", remember);
+    };
+  }, [editor]);
 
   const ui = useEditorState({
     editor,
@@ -197,12 +211,13 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
   }
 
   async function openLookup() {
-    const word = selectedText(editor);
+    const word = selectedText(editor) || savedWord.current;
     setLookupOpen(true);
     if (!word) {
       setSense(null);
       return;
     }
+    savedWord.current = word;
     setLooking(true);
     setSense(await fetchSense(word));
     setLooking(false);
@@ -662,6 +677,11 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
                     size="icon-sm"
                     aria-label="Look up word"
                     className="text-ink-muted"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      const text = selectedText(editor);
+                      if (text) savedWord.current = text;
+                    }}
                     onClick={() => void openLookup()}
                   >
                     <BookOpen />
@@ -670,7 +690,7 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
               </TooltipTrigger>
               <TooltipContent>Look up word</TooltipContent>
             </Tooltip>
-            <PopoverContent className="w-80">
+            <PopoverContent className="w-96 max-h-96 overflow-y-auto">
               <WordLookupCard sense={sense} loading={looking} onReplace={replaceSelection} />
             </PopoverContent>
           </Popover>

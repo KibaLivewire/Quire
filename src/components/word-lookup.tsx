@@ -34,18 +34,31 @@ export function WordLookupCard({
     return <p className="px-1 py-2 text-sm text-ink-muted">Looking that word up…</p>;
   }
   if (!sense) {
-    return <p className="px-1 py-2 text-sm text-ink-muted">Select a word to see senses and kin.</p>;
+    return (
+      <p className="px-1 py-2 text-sm text-ink-muted">
+        Select a word on the page, then click Look up word.
+      </p>
+    );
   }
   return (
     <div className="grid gap-3 px-1 py-1">
       <div>
-        <p className="font-display text-lg font-semibold tracking-tight">{sense.word}</p>
-        {sense.definition ? <p className="mt-1 text-sm leading-snug text-ink-muted">{sense.definition}</p> : null}
+        <p className="font-display text-xl font-semibold tracking-tight capitalize">{sense.word}</p>
+        <p className="mt-0.5 text-sm text-ink-muted">
+          {sense.phonetic ? <span className="mr-2">{sense.phonetic}</span> : null}
+          {sense.partOfSpeech ? (
+            <span className="rounded-full bg-paper-inset px-2 py-0.5 text-[11px] tracking-wide uppercase">
+              {sense.partOfSpeech}
+            </span>
+          ) : null}
+        </p>
+        {sense.definition ? <p className="mt-2 text-sm leading-relaxed text-ink">{sense.definition}</p> : null}
+        {sense.example ? (
+          <p className="mt-2 text-sm leading-relaxed text-ink-muted italic">“{sense.example}”</p>
+        ) : null}
       </div>
       <List title="Synonyms" items={sense.synonyms} onPick={onReplace} />
       <List title="Antonyms" items={sense.antonyms} onPick={onReplace} />
-      <List title="Similar" items={sense.similar} onPick={onReplace} />
-      <List title="Nearby phrases" items={sense.phrases} />
     </div>
   );
 }
