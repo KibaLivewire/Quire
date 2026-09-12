@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import type { BorderId } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -19,17 +19,8 @@ function VineCorner({ className }: { className?: string }) {
   );
 }
 
-function inchTicks(length: number) {
-  const ticks: { at: number; kind: "inch" | "half" | "quarter" }[] = [];
-  const steps = Math.round(length * 4);
-  for (let i = 0; i <= steps; i += 1) {
-    const at = i / 4;
-    ticks.push({
-      at,
-      kind: i % 4 === 0 ? "inch" : i % 2 === 0 ? "half" : "quarter",
-    });
-  }
-  return ticks;
+function formatIn(value: number) {
+  return value.toFixed(2).replace(/\.?0+$/, "") || "0";
 }
 
 export function PageSheet({
@@ -47,8 +38,21 @@ export function PageSheet({
   children: React.ReactNode;
   className?: string;
 }) {
-  const across = inchTicks(width);
-  const down = inchTicks(height);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+
+  function track(event: PointerEvent<HTMLDivElement>) {
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    const rect = sheet.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return;
+    const x = ((event.clientX - rect.left) / rect.width) * width;
+    const y = ((event.clientY - rect.top) / rect.height) * height;
+    setPos({
+      x: Math.min(width, Math.max(0, x)),
+      y: Math.min(height, Math.max(0, y)),
+    });
+  }
 
   return (
     <div
@@ -59,33 +63,40 @@ export function PageSheet({
           "--page-h": `${height}in`,
         } as CSSProperties
       }
+      onPointerMove={track}
+      onPointerLeave={() => setPos(null)}
     >
       <div className="ruler-corner" aria-hidden>
-        in
+        {pos ? (
+          <span>
+            {formatIn(pos.x)}×{formatIn(pos.y)}
+          </span>
+        ) : (
+          <span>
+            {formatIn(width)}×{formatIn(height)}
+          </span>
+        )}
       </div>
       <div className="ruler ruler-x" aria-hidden>
-        {across.map((tick) => (
-          <span
-            key={`x-${tick.at}`}
-            className={`ruler-tick is-${tick.kind}`}
-            style={{ left: `${(tick.at / width) * 100}%` }}
-          >
-            {tick.kind === "inch" ? <span className="ruler-label">{tick.at}</span> : null}
+        <span className="ruler-end is-start">0</span>
+        <span className="ruler-end is-finish">{formatIn(width)}</span>
+        {pos ? (
+          <span className="ruler-cursor" style={{ left: `${(pos.x / width) * 100}%` }}>
+            <span className="ruler-readout">{formatIn(pos.x)} in</span>
           </span>
-        ))}
+        ) : null}
       </div>
       <div className="ruler ruler-y" aria-hidden>
-        {down.map((tick) => (
-          <span
-            key={`y-${tick.at}`}
-            className={`ruler-tick is-${tick.kind}`}
-            style={{ top: `${(tick.at / height) * 100}%` }}
-          >
-            {tick.kind === "inch" ? <span className="ruler-label">{tick.at}</span> : null}
+        <span className="ruler-end is-start">0</span>
+        <span className="ruler-end is-finish">{formatIn(height)}</span>
+        {pos ? (
+          <span className="ruler-cursor" style={{ top: `${(pos.y / height) * 100}%` }}>
+            <span className="ruler-readout">{formatIn(pos.y)} in</span>
           </span>
-        ))}
+        ) : null}
       </div>
       <div
+        ref={sheetRef}
         data-border={border}
         className={cn("paper-sheet", oversized && "is-oversized", className)}
       >
