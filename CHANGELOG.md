@@ -1,3 +1,15 @@
+# Quire 1.6.1
+
+Released 13 September 2026.
+
+A small trust fix for the Desk ritual release.
+
+- **About / shelf version** — Quire now shows the real app version (1.6.x) instead of a stuck 1.5.1 label
+
+Installer: Quire-Setup-1.6.1.exe
+
+---
+
 # Quire 1.6.0 — Desk ritual
 
 Released 13 September 2026.
