@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { childFolders, descendantIds, itemColor } from "@/lib/folders";
+import { appVersion } from "@/lib/desktop";
 import { useNotebookStore } from "@/lib/store";
 import type { Notebook } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -227,7 +228,7 @@ export function NotebookRail({
         <QuireMark className="text-cream" />
         <div className="min-w-0">
           <p className="font-display text-lg leading-tight font-semibold tracking-tight">Quire</p>
-          <p className="text-xs text-cream/45">A private notebook</p>
+          <p className="text-xs text-cream/45">Version {appVersion()}</p>
         </div>
       </div>
 
