@@ -15,8 +15,8 @@ import { startAmbient, stopAmbient, toggleAmbientMute } from "@/lib/ambient";
 import { applyTheme } from "@/lib/theme";
 import { stopSharedReading } from "@/components/read-back-chip";
 import { getActiveEditor } from "@/lib/editor-commands";
-import { hydrateAppVersion } from "@/lib/desktop";
-import { useNotebookStore } from "@/lib/store";
+import { hydrateAppVersion, notifyDesktopFlushDone, onDesktopFlushRequest } from "@/lib/desktop";
+import { flushNotebookPersist, useNotebookStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 export function AppShell() {
@@ -60,8 +60,9 @@ export function AppShell() {
   }, [hasHydrated, prefs.ambient, prefs.ambientVolume, prefs.theme, prefs.bootLeaves, booting]);
 
   useEffect(() => {
+    if (!hasHydrated) return;
     applyTheme(prefs.theme, prefs.customThemes ?? []);
-  }, [prefs.theme, prefs.customThemes]);
+  }, [hasHydrated, prefs.theme, prefs.customThemes]);
 
   useEffect(() => {
     document.documentElement.dataset.inkOnly = prefs.inkOnly ? "true" : "false";
@@ -75,11 +76,40 @@ export function AppShell() {
   }, [prefs.inkOnly, focusMode]);
 
   useEffect(() => {
-    function onQuit() {
-      stopSharedReading();
+    let flushing = false;
+    async function flushPersist() {
+      if (flushing) return;
+      flushing = true;
+      try {
+        stopSharedReading();
+        await flushNotebookPersist();
+      } finally {
+        flushing = false;
+      }
     }
+
+    function onQuit() {
+      void flushPersist();
+    }
+
+    function onVisibility() {
+      if (document.visibilityState === "hidden") void flushPersist();
+    }
+
     window.addEventListener("beforeunload", onQuit);
-    return () => window.removeEventListener("beforeunload", onQuit);
+    window.addEventListener("pagehide", onQuit);
+    document.addEventListener("visibilitychange", onVisibility);
+    const stopFlushListener = onDesktopFlushRequest(async () => {
+      await flushPersist();
+      notifyDesktopFlushDone();
+    });
+
+    return () => {
+      window.removeEventListener("beforeunload", onQuit);
+      window.removeEventListener("pagehide", onQuit);
+      document.removeEventListener("visibilitychange", onVisibility);
+      stopFlushListener();
+    };
   }, []);
 
   useEffect(() => {

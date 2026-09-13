@@ -6,6 +6,7 @@ import { alignPageMeta, applyRecipeToMeta, defaultPageMeta, softCapRibbons } fro
 import { notePages } from "./pages";
 import { descendantIds, isAlive, isDescendant } from "./folders";
 import { WELCOME_HTML, WELCOME_VERSION } from "./welcome";
+import { readDesktopPrefs, writeDesktopPrefs } from "./desktop";
 
 const DB_NAME = "quire";
 const STORE_NAME = "kv";
@@ -90,37 +91,97 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
+/** Skip IDB writes until rehydrate getItem finishes so defaults cannot clobber saved desk. */
+let persistEnabled = false;
+let writeTail: Promise<void> = Promise.resolve();
+let pendingFilePrefs: Partial<Prefs> | null = null;
+
+function enqueueWrite(task: () => Promise<void>): Promise<void> {
+  writeTail = writeTail.then(task, task);
+  return writeTail;
+}
+
+async function idbGet(name: string): Promise<StorageValue<PersistedSlice> | null> {
+  try {
+    const db = await openDb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const req = tx.objectStore(STORE_NAME).get(name);
+      req.onsuccess = () =>
+        resolve((req.result as StorageValue<PersistedSlice> | undefined) ?? null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function idbPut(name: string, value: StorageValue<PersistedSlice>): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.objectStore(STORE_NAME).put(value, name);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbDelete(name: string): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.objectStore(STORE_NAME).delete(name);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+function takePendingFilePrefs(): Partial<Prefs> | null {
+  const next = pendingFilePrefs;
+  pendingFilePrefs = null;
+  return next;
+}
+
+async function persistValue(name: string, value: StorageValue<PersistedSlice>): Promise<void> {
+  await idbPut(name, value);
+  const prefs = value.state?.prefs;
+  if (prefs) {
+    await writeDesktopPrefs(prefs);
+  }
+}
+
 const idbStorage: PersistStorage<PersistedSlice> = {
   getItem: async (name) => {
     try {
-      const db = await openDb();
-      return await new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, "readonly");
-        const req = tx.objectStore(STORE_NAME).get(name);
-        req.onsuccess = () =>
-          resolve((req.result as StorageValue<PersistedSlice> | undefined) ?? null);
-        req.onerror = () => reject(req.error);
-      });
+      const stored = await idbGet(name);
+      const filePrefs = await readDesktopPrefs();
+      persistEnabled = true;
+      if (filePrefs && stored?.state) {
+        return {
+          ...stored,
+          state: {
+            ...stored.state,
+            prefs: { ...DEFAULT_PREFS, ...stored.state.prefs, ...filePrefs },
+          },
+        };
+      }
+      if (filePrefs && !stored) {
+        pendingFilePrefs = filePrefs;
+      }
+      return stored;
     } catch {
+      persistEnabled = true;
       return null;
     }
   },
   setItem: async (name, value) => {
-    const db = await openDb();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, "readwrite");
-      tx.objectStore(STORE_NAME).put(value, name);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
+    if (!persistEnabled) return;
+    await enqueueWrite(() => persistValue(name, value));
   },
   removeItem: async (name) => {
-    const db = await openDb();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, "readwrite");
-      tx.objectStore(STORE_NAME).delete(name);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+    if (!persistEnabled) return;
+    await enqueueWrite(async () => {
+      await idbDelete(name);
     });
   },
 };
@@ -168,7 +229,7 @@ export const useNotebookStore = create<NotebookState>()(
     (set, get) => ({
       ...createSeed(),
       initialized: true,
-      hasHydrated: true,
+      hasHydrated: false,
       focusMode: false,
       quillOpen: false,
       pageMapOpen: false,
@@ -179,13 +240,21 @@ export const useNotebookStore = create<NotebookState>()(
         set((state) => {
           if (!state.initialized) {
             const seed = createSeed();
-            return { ...seed, initialized: true, hasHydrated: true, prefs: { ...DEFAULT_PREFS }, session: { ...DEFAULT_SESSION } };
+            const filePrefs = takePendingFilePrefs();
+            return {
+              ...seed,
+              initialized: true,
+              hasHydrated: true,
+              prefs: { ...DEFAULT_PREFS, ...filePrefs },
+              session: { ...DEFAULT_SESSION },
+            };
           }
           const notes = state.notes.map(migrateNote);
           const notebooks = state.notebooks.map(migrateNotebook);
           const purged = purgeExpired(notebooks, notes);
           const today = todayKey();
-          const prefs = { ...DEFAULT_PREFS, ...state.prefs };
+          const filePrefs = takePendingFilePrefs();
+          const prefs = { ...DEFAULT_PREFS, ...state.prefs, ...filePrefs };
           if (prefs.wordsDate !== today) {
             prefs.wordsToday = 0;
             prefs.wordsDate = today;
@@ -229,15 +298,19 @@ export const useNotebookStore = create<NotebookState>()(
       setQuillOpen: (value) => set({ quillOpen: value }),
       setPageMapOpen: (value) => set({ pageMapOpen: value }),
 
-      setPrefs: (patch) =>
+      setPrefs: (patch) => {
+        if (!get().hasHydrated) return;
         set((state) => ({
           prefs: { ...state.prefs, ...patch },
-        })),
+        }));
+      },
 
-      setSession: (patch) =>
+      setSession: (patch) => {
+        if (!get().hasHydrated) return;
         set((state) => ({
           session: { ...state.session, ...patch },
-        })),
+        }));
+      },
 
       recordWords: (added) => {
         if (added <= 0) return;
@@ -660,6 +733,7 @@ export const useNotebookStore = create<NotebookState>()(
         session: state.session,
       }),
       onRehydrateStorage: () => (state) => {
+        persistEnabled = true;
         state?.completeHydration();
       },
       merge: (persisted, current) => {
@@ -676,3 +750,24 @@ export const useNotebookStore = create<NotebookState>()(
     },
   ),
 );
+
+/** Await pending IDB (+ desktop prefs) writes; force one more snapshot if hydrated. */
+export async function flushNotebookPersist(): Promise<void> {
+  const state = useNotebookStore.getState();
+  if (!state.hasHydrated) {
+    await writeTail;
+    return;
+  }
+  persistEnabled = true;
+  const slice: PersistedSlice = {
+    notebooks: state.notebooks,
+    notes: state.notes,
+    activeNotebookId: state.activeNotebookId,
+    activeNoteId: state.activeNoteId,
+    initialized: state.initialized,
+    prefs: state.prefs,
+    session: state.session,
+  };
+  await enqueueWrite(() => persistValue("quire-v1", { state: slice }));
+}
+

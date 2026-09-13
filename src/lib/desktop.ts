@@ -1,9 +1,14 @@
 import { version as PACKAGE_VERSION } from "../../package.json";
+import type { Prefs } from "./types";
 
 type QuireBridge = {
   version?: () => Promise<string>;
   openExternal?: (url: string) => Promise<void>;
   checkUpdates?: () => Promise<{ current: string; latest: string | null; url?: string; error?: string }>;
+  readPrefs?: () => Promise<Partial<Prefs> | null>;
+  writePrefs?: (prefs: Prefs | Partial<Prefs>) => Promise<boolean>;
+  onFlushRequest?: (handler: () => void | Promise<void>) => () => void;
+  notifyFlushDone?: () => void;
 };
 
 declare global {
@@ -51,4 +56,36 @@ export async function checkForUpdates() {
     return window.quire.checkUpdates();
   }
   return { current: appVersion(), latest: appVersion() as string | null };
+}
+
+/** Durable prefs mirror under Electron userData (survives IDB quirks on quit). */
+export async function readDesktopPrefs(): Promise<Partial<Prefs> | null> {
+  if (typeof window === "undefined" || !window.quire?.readPrefs) return null;
+  try {
+    const value = await window.quire.readPrefs();
+    if (!value || typeof value !== "object") return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeDesktopPrefs(prefs: Prefs | Partial<Prefs>): Promise<void> {
+  if (typeof window === "undefined" || !window.quire?.writePrefs) return;
+  try {
+    await window.quire.writePrefs(prefs);
+  } catch {
+    /* offline / non-electron is fine */
+  }
+}
+
+/** Packaged Electron asks the renderer to flush before closing the window. */
+export function onDesktopFlushRequest(handler: () => void | Promise<void>): () => void {
+  if (typeof window === "undefined" || !window.quire?.onFlushRequest) return () => {};
+  return window.quire.onFlushRequest(handler);
+}
+
+export function notifyDesktopFlushDone(): void {
+  if (typeof window === "undefined" || !window.quire?.notifyFlushDone) return;
+  window.quire.notifyFlushDone();
 }
