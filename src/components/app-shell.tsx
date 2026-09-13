@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Toaster } from "sonner";
 import { BootLeaves } from "@/components/boot-leaves";
 import { EditorPane } from "@/components/editor-pane";
@@ -33,6 +33,8 @@ export function AppShell() {
   const [mobileList, setMobileList] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [booting, setBooting] = useState(true);
+  const bootingRef = useRef(true);
+  bootingRef.current = booting;
 
   useEffect(() => {
     void useNotebookStore.persist.rehydrate();
@@ -43,10 +45,19 @@ export function AppShell() {
     if (prefs.bootLeaves === false) {
       setBooting(false);
       window.dispatchEvent(new Event("quire-desk-ready"));
-      if (prefs.ambient !== false) void startAmbient(prefs.ambientVolume ?? 0.22);
-      else stopAmbient();
     }
-  }, [hasHydrated, prefs.bootLeaves, prefs.ambient, prefs.ambientVolume]);
+  }, [hasHydrated, prefs.bootLeaves]);
+
+  useEffect(() => {
+    if (!hasHydrated) return;
+    if (prefs.ambient === false) {
+      stopAmbient();
+      return;
+    }
+    if (prefs.bootLeaves === false || !booting) {
+      void startAmbient(prefs.ambientVolume ?? 0.22, prefs.theme);
+    }
+  }, [hasHydrated, prefs.ambient, prefs.ambientVolume, prefs.theme, prefs.bootLeaves, booting]);
 
   useEffect(() => {
     applyTheme(prefs.theme, prefs.customThemes ?? []);
@@ -95,8 +106,15 @@ export function AppShell() {
         openRecipeChooser({ mode: "create" });
         setMobileList(false);
       }
-      if (event.key === "Escape" && useNotebookStore.getState().focusMode) {
-        setFocusMode(false);
+      if (event.key === "Escape") {
+        if (bootingRef.current) {
+          event.preventDefault();
+          window.dispatchEvent(new Event("quire-boot-skip"));
+          return;
+        }
+        if (useNotebookStore.getState().focusMode) {
+          setFocusMode(false);
+        }
       }
       if (meta && (event.key === "=" || event.key === "+")) {
         event.preventDefault();

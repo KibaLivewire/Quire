@@ -2,7 +2,7 @@ import { THEMES, type CustomTheme, type ThemeId } from "./types";
 
 export const THEME_META: Record<
   ThemeId,
-  { label: string; paper: string; ink: string; accent: string; desk: string }
+  { label: string; paper: string; ink: string; accent: string; desk: string; gathering: string }
 > = {
   dark: {
     label: "Dark",
@@ -10,6 +10,7 @@ export const THEME_META: Record<
     ink: "#ece6dc",
     accent: "#8fa399",
     desk: "#0c0b0a",
+    gathering: "Night finds the desk",
   },
   light: {
     label: "Light",
@@ -17,6 +18,7 @@ export const THEME_META: Record<
     ink: "#1c1917",
     accent: "#3f534c",
     desk: "#241f1c",
+    gathering: "Something warm for you",
   },
   navy: {
     label: "Navy",
@@ -24,6 +26,7 @@ export const THEME_META: Record<
     ink: "#e8eef6",
     accent: "#8eb4dc",
     desk: "#0a1220",
+    gathering: "The tide is settling",
   },
   leather: {
     label: "Leather",
@@ -31,6 +34,7 @@ export const THEME_META: Record<
     ink: "#f3e6d4",
     accent: "#c4a574",
     desk: "#120d0a",
+    gathering: "The desk is gathering",
   },
 };
 

@@ -290,13 +290,13 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             checked={prefs.bootLeaves !== false}
             onCheckedChange={(checked) => setPrefs({ bootLeaves: checked })}
           >
-            Falling leaves
+            Opening scene
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={prefs.ambient !== false}
             onCheckedChange={(checked) => setPrefs({ ambient: checked })}
           >
-            Wind chimes
+            Room sound
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={prefs.quill !== false}
@@ -336,7 +336,7 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           <DialogHeader>
             <DialogTitle>Quire {appVersion()}</DialogTitle>
             <DialogDescription>
-              A notebook for pages you keep on this device. Wind chimes: Epidemic Sound, used under their royalty-free license.
+              A notebook for pages you keep on this device. Room sound follows your theme. Leather chimes: Epidemic Sound. Ocean, night, and café beds are CC0 (BigSoundBank).
             </DialogDescription>
           </DialogHeader>
           <ul className="space-y-1 text-sm text-ink-muted">

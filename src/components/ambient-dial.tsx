@@ -28,8 +28,8 @@ export function AmbientDial() {
 
   useEffect(() => {
     if (prefs.ambient === false) stopAmbient();
-    else void startAmbient(prefs.ambientVolume ?? 0.22);
-  }, [prefs.ambient, prefs.ambientVolume]);
+    else void startAmbient(prefs.ambientVolume ?? 0.22, prefs.theme);
+  }, [prefs.ambient, prefs.ambientVolume, prefs.theme]);
 
   if (prefs.ambient === false) return null;
 
@@ -39,7 +39,7 @@ export function AmbientDial() {
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label={muted ? "Unmute chimes" : "Mute chimes"}
+        aria-label={muted ? "Unmute the room" : "Mute the room"}
         onClick={() => {
           toggleAmbientMute();
         }}
@@ -57,9 +57,9 @@ export function AmbientDial() {
           setPrefs({ ambient: true, ambientVolume: next });
           setAmbientMuted(next === 0);
           setAmbientVolume(next);
-          if (next > 0) void startAmbient(next);
+          if (next > 0) void startAmbient(next, prefs.theme);
         }}
-        aria-label="Chime volume"
+        aria-label="Room volume"
       />
     </div>
   );
