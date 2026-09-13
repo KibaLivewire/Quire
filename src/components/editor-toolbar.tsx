@@ -306,7 +306,6 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
   }
 
   function applyGrammarFix(issue: GrammarIssue, replacement: string) {
-    const text = editor.getText();
     const fromPlain = issue.offset;
     const toPlain = issue.offset + issue.length;
     let seen = 0;

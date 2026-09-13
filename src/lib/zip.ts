@@ -106,11 +106,10 @@ export async function unzip(buffer: ArrayBuffer) {
     const flags = view.getUint16(i + 6, true);
     const method = view.getUint16(i + 8, true);
     let compact = view.getUint32(i + 18, true);
-    let size = view.getUint32(i + 22, true);
     const nameLen = view.getUint16(i + 26, true);
     const extraLen = view.getUint16(i + 28, true);
     const name = decoder.decode(bytes.subarray(i + 30, i + 30 + nameLen));
-    let dataStart = i + 30 + nameLen + extraLen;
+    const dataStart = i + 30 + nameLen + extraLen;
     if (flags & 0x08) {
       let scan = dataStart;
       while (scan + 16 <= bytes.length) {
@@ -120,7 +119,6 @@ export async function unzip(buffer: ArrayBuffer) {
       }
       if (view.getUint32(scan, true) === 0x08074b50) {
         compact = view.getUint32(scan + 8, true);
-        size = view.getUint32(scan + 12, true);
       }
     }
     const packed = bytes.subarray(dataStart, dataStart + compact);

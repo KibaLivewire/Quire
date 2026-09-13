@@ -46,11 +46,16 @@ export function exportMarkdown(title: string, content: string) {
 }
 
 function rtfEscape(value: string) {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/\{/g, "\\{")
-    .replace(/\}/g, "\\}")
-    .replace(/[^\x00-\x7f]/g, (char) => `\\u${char.charCodeAt(0)}?`);
+  let out = "";
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    if (char === "\\") out += "\\\\";
+    else if (char === "{") out += "\\{";
+    else if (char === "}") out += "\\}";
+    else if (code > 127) out += `\\u${code}?`;
+    else out += char;
+  }
+  return out;
 }
 
 function htmlToRtf(html: string) {

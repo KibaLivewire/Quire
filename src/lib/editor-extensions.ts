@@ -264,7 +264,9 @@ const QuireImage = Image.extend({
         if (!drag.moved && dx * dx + dy * dy < 36) return;
         drag.moved = true;
         event.preventDefault();
-        box.style.position = "relative";
+        if (box.dataset.flow !== "behind" && box.dataset.flow !== "front") {
+          box.style.position = "relative";
+        }
         box.style.left = `${drag.ox + dx}px`;
         box.style.top = `${drag.oy + dy}px`;
         box.classList.add("is-dragging");

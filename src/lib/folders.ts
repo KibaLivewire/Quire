@@ -59,7 +59,8 @@ export function folderPath(notebooks: Notebook[], id: string | null): Notebook[]
 }
 
 export function noteBytes(note: Note): number {
-  return (note.title || "").length + (note.content || "").length + (note.pages || []).join("").length;
+  const body = note.pages?.length ? note.pages.join("") : note.content || "";
+  return (note.title || "").length + body.length;
 }
 
 export function folderUpdated(notebooks: Notebook[], notes: Note[], folderId: string): number {

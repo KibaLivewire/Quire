@@ -295,7 +295,7 @@ function ToggleRow({
 }
 
 function ThemeCard({
-  id,
+  id: _id,
   label,
   desk,
   paper,
