@@ -1,3 +1,15 @@
+# Quire 1.4.0
+
+Released 13 September 2026.
+
+## Print
+- File → Print preview (Ctrl+P) shows the page as a letter sheet before it hits the printer
+- Walk pages with arrows, switch Portrait or Landscape for this print job
+- Print sends only the page, not the whole Quire window
+- Esc closes the preview
+
+---
+
 # Quire 1.3.0
 
 Released 12 September 2026.
