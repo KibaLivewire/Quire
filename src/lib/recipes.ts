@@ -1,3 +1,4 @@
+import { normalizeDrafts } from "./earlier-drafts";
 import type { BorderId, PageMeta, PageRecipeId, RibbonBookmark } from "./types";
 import { PAGE_RECIPES } from "./types";
 
@@ -20,7 +21,7 @@ export function isPageRecipeId(value: unknown): value is PageRecipeId {
 
 export function defaultPageMeta(recipe: PageRecipeId = "freewrite"): PageMeta {
   const meta = RECIPE_META.find((item) => item.id === recipe) ?? RECIPE_META[4];
-  return { recipe: meta.id, border: meta.border, ribbons: [] };
+  return { recipe: meta.id, border: meta.border, ribbons: [], drafts: [] };
 }
 
 export function alignPageMeta(pages: string[], existing?: PageMeta[] | null): PageMeta[] {
@@ -31,6 +32,7 @@ export function alignPageMeta(pages: string[], existing?: PageMeta[] | null): Pa
         recipe: prev.recipe,
         border: prev.border ?? null,
         ribbons: Array.isArray(prev.ribbons) ? prev.ribbons : [],
+        drafts: normalizeDrafts(prev.drafts),
       };
     }
     return defaultPageMeta("freewrite");
@@ -59,6 +61,7 @@ export function applyRecipeToMeta(prev: PageMeta | undefined, recipe: PageRecipe
   return {
     ...base,
     ribbons: prev?.ribbons ?? [],
+    drafts: prev?.drafts ?? [],
   };
 }
 

@@ -24,6 +24,7 @@ import {
   Minus,
   Quote,
   Redo2,
+  Clock,
   ListTree,
   Search,
   SpellCheck,
@@ -176,6 +177,9 @@ export function EditorToolbar({
   const setQuillOpen = useNotebookStore((s) => s.setQuillOpen);
   const pageMapOpen = useNotebookStore((s) => s.pageMapOpen);
   const setPageMapOpen = useNotebookStore((s) => s.setPageMapOpen);
+  const draftsOpen = useNotebookStore((s) => s.draftsOpen);
+  const setDraftsOpen = useNotebookStore((s) => s.setDraftsOpen);
+  const focusMode = useNotebookStore((s) => s.focusMode);
   const inkOnly = useNotebookStore((s) => s.prefs.inkOnly);
   const savedWord = useRef("");
 
@@ -889,6 +893,11 @@ export function EditorToolbar({
         <ToolBtn label="Page map" active={pageMapOpen} onClick={() => setPageMapOpen(!pageMapOpen)}>
           <ListTree />
         </ToolBtn>
+        {!(inkOnly && focusMode) ? (
+          <ToolBtn label="Earlier drafts" active={draftsOpen} onClick={() => setDraftsOpen(!draftsOpen)}>
+            <Clock />
+          </ToolBtn>
+        ) : null}
         <RibbonBookmarksControl editor={editor} note={note} pageIndex={pageIndex} />
         <ReadBackControls editor={editor} />
         {quillOn ? (

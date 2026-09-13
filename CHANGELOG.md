@@ -1,3 +1,11 @@
+# Quire 1.7.0 — Earlier drafts (in progress)
+
+Local snapshots you can peek and restore — trust without cloud.
+
+- **Earlier drafts** — Soft auto-keeps after a quiet pause, plus **Keep this draft**. Peek read-only, or restore with your current words saved first. About twenty drafts per page; oldest drop away. Lives only on this computer.
+
+---
+
 # Quire 1.6.0 — Desk ritual
 
 Released 13 September 2026.

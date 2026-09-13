@@ -65,6 +65,8 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const focusMode = useNotebookStore((s) => s.focusMode);
   const pageMapOpen = useNotebookStore((s) => s.pageMapOpen);
   const setPageMapOpen = useNotebookStore((s) => s.setPageMapOpen);
+  const draftsOpen = useNotebookStore((s) => s.draftsOpen);
+  const setDraftsOpen = useNotebookStore((s) => s.setDraftsOpen);
   const activeNoteId = useNotebookStore((s) => s.activeNoteId);
   const session = useNotebookStore((s) => s.session);
 
@@ -263,6 +265,12 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             onCheckedChange={setPageMapOpen}
           >
             Page map
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={draftsOpen}
+            onCheckedChange={setDraftsOpen}
+          >
+            Earlier drafts
           </DropdownMenuCheckboxItem>
           <DropdownMenuItem
             onSelect={() => {

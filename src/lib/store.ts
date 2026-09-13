@@ -1,7 +1,14 @@
 import { create } from "zustand";
 import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 import { createSeed, DEMO_FOLDER_IDS, DEMO_NOTE_IDS } from "./seed";
-import { NOTEBOOK_HUES, DEFAULT_PREFS, DEFAULT_SESSION, type Note, type Notebook, type NotebookHue, type PageMeta, type PageRecipeId, type Prefs, type RibbonBookmark, type Session } from "./types";
+import { NOTEBOOK_HUES, DEFAULT_PREFS, DEFAULT_SESSION, type Note, type Notebook, type NotebookHue, type PageDraft, type PageMeta, type PageRecipeId, type Prefs, type RibbonBookmark, type Session } from "./types";
+import {
+  draftMatchesLatest,
+  isDraftHtmlTooLarge,
+  makePageDraft,
+  shouldSkipDraft,
+  softCapDrafts,
+} from "./earlier-drafts";
 import { alignPageMeta, applyRecipeToMeta, defaultPageMeta, softCapRibbons } from "./recipes";
 import { notePages } from "./pages";
 import { descendantIds, isAlive, isDescendant } from "./folders";
@@ -37,12 +44,14 @@ export type NotebookState = {
   focusMode: boolean;
   quillOpen: boolean;
   pageMapOpen: boolean;
+  draftsOpen: boolean;
   prefs: Prefs;
   session: Session;
   completeHydration: () => void;
   setFocusMode: (value: boolean) => void;
   setQuillOpen: (value: boolean) => void;
   setPageMapOpen: (value: boolean) => void;
+  setDraftsOpen: (value: boolean) => void;
   setPrefs: (patch: Partial<Prefs>) => void;
   setSession: (patch: Partial<Session>) => void;
   recordWords: (added: number) => void;
@@ -63,6 +72,8 @@ export type NotebookState = {
   placeRibbon: (noteId: string, pageIndex: number, ribbon: Omit<RibbonBookmark, "id" | "createdAt"> & { id?: string; createdAt?: number }) => string | null;
   untieRibbon: (noteId: string, pageIndex: number, ribbonId: string) => void;
   renameRibbon: (noteId: string, pageIndex: number, ribbonId: string, label: string) => void;
+  keepPageDraft: (noteId: string, pageIndex: number, html: string, source?: PageDraft["source"]) => PageDraft | null;
+  restorePageDraft: (noteId: string, pageIndex: number, draftId: string, currentHtml: string) => boolean;
   deleteNote: (id: string) => void;
   restoreNote: (id: string) => void;
   purgeForever: (kind: "note" | "folder", id: string) => void;
@@ -172,6 +183,7 @@ export const useNotebookStore = create<NotebookState>()(
       focusMode: false,
       quillOpen: false,
       pageMapOpen: false,
+      draftsOpen: false,
       prefs: { ...DEFAULT_PREFS },
       session: { ...DEFAULT_SESSION },
 
@@ -228,6 +240,7 @@ export const useNotebookStore = create<NotebookState>()(
       setFocusMode: (value) => set({ focusMode: value }),
       setQuillOpen: (value) => set({ quillOpen: value }),
       setPageMapOpen: (value) => set({ pageMapOpen: value }),
+      setDraftsOpen: (value) => set({ draftsOpen: value }),
 
       setPrefs: (patch) =>
         set((state) => ({
@@ -516,6 +529,7 @@ export const useNotebookStore = create<NotebookState>()(
         const pageMeta = alignPageMeta(pages, source.pageMeta).map((meta) => ({
           ...meta,
           ribbons: (meta.ribbons ?? []).map((ribbon) => ({ ...ribbon, id: crypto.randomUUID() })),
+          drafts: (meta.drafts ?? []).map((draft) => ({ ...draft, id: crypto.randomUUID() })),
         }));
         const copy: Note = {
           ...source,
@@ -633,6 +647,55 @@ export const useNotebookStore = create<NotebookState>()(
             return { ...note, pageMeta: meta, updatedAt: Date.now() };
           }),
         }));
+      },
+
+      keepPageDraft: (noteId, pageIndex, html, source = "manual") => {
+        if (shouldSkipDraft(html)) return null;
+        if (source === "auto" && isDraftHtmlTooLarge(html)) return null;
+        let created: PageDraft | null = null;
+        set((state) => ({
+          notes: state.notes.map((note) => {
+            if (note.id !== noteId) return note;
+            const pages = notePages(note);
+            const meta = alignPageMeta(pages, note.pageMeta);
+            const index = Math.max(0, Math.min(pageIndex, meta.length - 1));
+            const page = meta[index];
+            const drafts = [...(page.drafts ?? [])];
+            if (source === "auto" && draftMatchesLatest(drafts, html)) return note;
+            const draft = makePageDraft(html, source);
+            created = draft;
+            drafts.unshift(draft);
+            meta[index] = { ...page, drafts: softCapDrafts(drafts) };
+            return { ...note, pageMeta: meta, updatedAt: Date.now() };
+          }),
+        }));
+        return created;
+      },
+
+      restorePageDraft: (noteId, pageIndex, draftId, currentHtml) => {
+        let ok = false;
+        set((state) => ({
+          notes: state.notes.map((note) => {
+            if (note.id !== noteId) return note;
+            const pages = [...notePages(note)];
+            const meta = alignPageMeta(pages, note.pageMeta);
+            const index = Math.max(0, Math.min(pageIndex, meta.length - 1));
+            const page = meta[index];
+            const drafts = [...(page.drafts ?? [])];
+            const target = drafts.find((item) => item.id === draftId);
+            if (!target) return note;
+            // Always snapshot current as pre-restore before applying
+            if (!shouldSkipDraft(currentHtml) && !draftMatchesLatest(drafts, currentHtml)) {
+              drafts.unshift(makePageDraft(currentHtml, "pre-restore"));
+            }
+            while (pages.length <= index) pages.push("");
+            pages[index] = target.html;
+            meta[index] = { ...page, drafts: softCapDrafts(drafts) };
+            ok = true;
+            return withPagesAndMeta(note, pages, meta);
+          }),
+        }));
+        return ok;
       },
 
       replaceDesk: (payload) => {

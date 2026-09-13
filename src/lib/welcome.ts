@@ -1,4 +1,4 @@
-export const WELCOME_VERSION = 3;
+export const WELCOME_VERSION = 4;
 
 export const WELCOME_HTML = `
 <p>Quire is a notebook that lives on this computer. Nothing is uploaded. This page is a field guide — every mark below is a real example of a tool you can use.</p>
@@ -21,7 +21,7 @@ export const WELCOME_HTML = `
 
 <h2>Desk ritual</h2>
 <p>When you start a page, Quire asks <em>What are you writing?</em> — Letter, Journal, Poem, List, or Freewrite. Freewrite is the loose scrap; Letter is a proper sheet. Change recipe anytime from the page menu. Dates stay yours to stamp.</p>
-<p><strong>Ink only</strong> leaves just paper and typing (borders and rulers tuck away). It stacks with Focus; Esc still only leaves Focus. The <strong>Page map</strong> lists headings on this sheet. <strong>Ribbons</strong> pin a spot to return to. <strong>Read back</strong> speaks the page aloud with a voice on this computer.</p>
+<p><strong>Ink only</strong> leaves just paper and typing (borders and rulers tuck away). It stacks with Focus; Esc still only leaves Focus. The <strong>Page map</strong> lists headings on this sheet. <strong>Earlier drafts</strong> quietly keeps local snapshots so you can peek and restore. <strong>Ribbons</strong> pin a spot to return to. <strong>Read back</strong> speaks the page aloud with a voice on this computer.</p>
 
 <h2>Focus, find, and print</h2>
 <p><strong>Focus</strong> (the expand button, or View) hides the shelf so only the page remains. Typewriter scroll keeps the line you are on near the middle. A daily word aim can sit in the corner — a count, not a streak.</p>

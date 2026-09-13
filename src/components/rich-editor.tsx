@@ -3,6 +3,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { EditorToolbar } from "@/components/editor-toolbar";
+import { EarlierDraftsPanel, useEarlierDraftAutosave } from "@/components/earlier-drafts";
 import { PageMapPanel } from "@/components/page-map";
 import { PageSheet } from "@/components/page-sheet";
 import { ReadBackControls, useStopReadingOnPageChange } from "@/components/read-back-chip";
@@ -103,6 +104,8 @@ export function RichEditor({
   });
 
   editorRef.current = editor;
+
+  useEarlierDraftAutosave(editor, note, safeIndex);
 
   useEffect(() => {
     setActiveEditor(editor);
@@ -413,6 +416,7 @@ export function RichEditor({
         </div>
       </div>
       <PageMapPanel editor={editor} />
+      <EarlierDraftsPanel editor={editor} note={note} pageIndex={safeIndex} />
       </div>
     </div>
   );

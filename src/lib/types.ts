@@ -52,11 +52,21 @@ export type RibbonBookmark = {
   snippet?: string;
 };
 
+export type PageDraft = {
+  id: string;
+  createdAt: number;
+  html: string;
+  source: "auto" | "manual" | "pre-restore";
+  sniff: string;
+};
+
 export type PageMeta = {
   recipe: PageRecipeId;
   /** Optional page-local border; falls back to recipe default then prefs.border */
   border?: BorderId | null;
   ribbons?: RibbonBookmark[];
+  /** Local earlier drafts for this page (IndexedDB via zustand persist) */
+  drafts?: PageDraft[];
 };
 
 export type Notebook = {
