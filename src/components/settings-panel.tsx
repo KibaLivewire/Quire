@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { checkForUpdates, appVersion } from "@/lib/desktop";
 import { parsePlugin, pluginTemplate } from "@/lib/plugins";
@@ -17,6 +17,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import { clampTtsRate, listLocalVoices } from "@/lib/read-back";
 
 export function SettingsPanel({
   open,
@@ -181,6 +183,12 @@ export function SettingsPanel({
             onCheckedChange={(checked) => setPrefs({ typewriter: checked })}
           />
           <ToggleRow
+            label="Ink only"
+            hint="Just paper and typing. Hides borders and extra chrome."
+            checked={Boolean(prefs.inkOnly)}
+            onCheckedChange={(checked) => setPrefs({ inkOnly: checked })}
+          />
+          <ToggleRow
             label="Wind chimes"
             hint="A soft loop after the desk opens. Ctrl+M mutes"
             checked={prefs.ambient !== false}
@@ -194,7 +202,7 @@ export function SettingsPanel({
           />
           <ToggleRow
             label="Quill"
-            hint="A writing aide in the toolbar. Highlight a sentence and ask"
+            hint="A local helper in the toolbar. Highlight a sentence and ask"
             checked={prefs.quill !== false}
             onCheckedChange={(checked) => setPrefs({ quill: checked })}
           />
@@ -218,6 +226,8 @@ export function SettingsPanel({
             </div>
           </div>
         </section>
+
+        <ReadBackSettings />
 
         <section className="px-1 pb-4">
           <h3 className="text-xs font-medium tracking-wide text-ink-subtle uppercase">Add-ons</h3>
@@ -287,6 +297,63 @@ export function SettingsPanel({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ReadBackSettings() {
+  const prefs = useNotebookStore((s) => s.prefs);
+  const setPrefs = useNotebookStore((s) => s.setPrefs);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+  useEffect(() => {
+    function refresh() {
+      setVoices(listLocalVoices());
+    }
+    refresh();
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.addEventListener("voiceschanged", refresh);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", refresh);
+  }, []);
+
+  const rate = clampTtsRate(prefs.ttsRate);
+
+  return (
+    <section className="grid gap-3 px-1 pb-4">
+      <h3 className="text-xs font-medium tracking-wide text-ink-subtle uppercase">Read back</h3>
+      <div>
+        <Label>Read-back voice</Label>
+        <p className="text-xs text-ink-muted">Local voices on this computer — nothing is sent away.</p>
+        <select
+          className="mt-2 w-full rounded-lg border border-rule bg-paper px-2 py-2 text-sm text-ink"
+          value={prefs.ttsVoiceURI || ""}
+          onChange={(event) => setPrefs({ ttsVoiceURI: event.target.value || undefined })}
+        >
+          <option value="">Default voice</option>
+          {voices.map((voice) => (
+            <option key={voice.voiceURI} value={voice.voiceURI}>
+              {voice.name}
+              {voice.lang ? ` · ${voice.lang}` : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <Label>Reading pace</Label>
+        <p className="text-xs text-ink-muted">Gentle range — not a podcast scrubber.</p>
+        <div className="mt-2 flex items-center gap-3">
+          <Slider
+            className="flex-1"
+            min={80}
+            max={120}
+            step={5}
+            value={[Math.round(rate * 100)]}
+            onValueChange={([value]) => setPrefs({ ttsRate: clampTtsRate(value / 100) })}
+            aria-label="Read-back rate"
+          />
+          <span className="w-10 text-right text-xs tabular-nums text-ink-muted">{rate.toFixed(2)}</span>
+        </div>
+      </div>
+    </section>
   );
 }
 

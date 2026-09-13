@@ -1193,3 +1193,234 @@ html[data-theme="leather"] {
   margin-top: -0.55rem;
   margin-left: 0.55rem;
 }
+
+
+/* —— 1.6 Desk ritual · Milestone B —— */
+
+.recipe-chooser-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding-bottom: 0.25rem;
+}
+
+.recipe-chooser-grid > :nth-child(4) {
+  grid-column: 1;
+}
+
+.recipe-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  border-radius: 0.9rem;
+  border: 1px solid color-mix(in oklab, var(--color-rule) 80%, transparent);
+  background: var(--color-paper);
+  padding: 0.9rem 0.85rem 0.95rem;
+  text-align: left;
+  transition: background 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.recipe-card:hover {
+  background: color-mix(in oklab, var(--color-highlight-butter) 22%, var(--color-paper));
+}
+
+.recipe-card.is-last {
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--color-forest) 70%, transparent);
+}
+
+.recipe-card-icon {
+  margin-bottom: 0.15rem;
+}
+
+.recipe-chip {
+  align-self: flex-start;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--color-rule) 70%, transparent);
+  background: var(--color-paper-raised);
+  padding: 0.15rem 0.7rem;
+  font-size: 0.75rem;
+  color: var(--color-ink-muted);
+}
+
+.recipe-chip:hover {
+  color: var(--color-ink);
+  background: color-mix(in oklab, var(--color-highlight-butter) 18%, var(--color-paper-raised));
+}
+
+.paper-body.recipe-letter {
+  max-width: none;
+  line-height: 1.6;
+  padding-inline: clamp(1.5rem, 6%, 2.4rem);
+}
+
+.paper-body.recipe-journal .quire-doc,
+.paper-body.recipe-journal {
+  max-width: 70ch;
+  margin-inline: auto;
+  line-height: 1.5;
+  font-size: 0.97em;
+}
+
+.paper-body.recipe-poem .quire-doc,
+.paper-body.recipe-poem {
+  max-width: 44ch;
+  margin-inline: auto;
+  text-align: center;
+  line-height: 1.7;
+  font-size: 1.05em;
+}
+
+.paper-body.recipe-poem .quire-doc p {
+  margin-block: 0.85em;
+}
+
+.paper-body.recipe-list .quire-doc li {
+  margin-block: 0.35em;
+}
+
+.paper-body.recipe-freewrite {
+  max-width: none;
+}
+
+.page-map-panel {
+  display: flex;
+  width: min(16rem, 42vw);
+  flex-direction: column;
+  border-left: 1px solid color-mix(in oklab, var(--color-rule) 80%, transparent);
+  background: var(--color-paper);
+  box-shadow: -8px 0 24px color-mix(in oklab, var(--color-leather) 25%, transparent);
+}
+
+.page-map-panel.is-ink {
+  box-shadow: none;
+  border-left-color: color-mix(in oklab, var(--color-rule) 50%, transparent);
+}
+
+.page-map-row {
+  display: block;
+  width: 100%;
+  border-radius: 0.55rem;
+  padding: 0.4rem 0.65rem;
+  text-align: left;
+  color: var(--color-ink);
+}
+
+.page-map-row.is-h1 {
+  font-weight: 600;
+}
+
+.page-map-row.is-h2 {
+  padding-left: 1.1rem;
+  color: var(--color-ink-muted);
+}
+
+.page-map-row.is-h3 {
+  padding-left: 1.7rem;
+  color: var(--color-ink-subtle);
+  font-size: 0.92em;
+}
+
+.page-map-row.is-active {
+  background: color-mix(in oklab, var(--color-highlight-butter) 28%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-forest);
+}
+
+.page-map-row:hover {
+  background: color-mix(in oklab, var(--color-highlight-sage) 18%, transparent);
+}
+
+.ribbon-margin {
+  pointer-events: none;
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 1rem;
+}
+
+.ribbon-tick {
+  pointer-events: auto;
+  position: absolute;
+  left: -0.15rem;
+  width: 0.7rem;
+  height: 1.1rem;
+  border: 0;
+  border-radius: 0 0.35rem 0.35rem 0;
+  background: color-mix(in oklab, var(--color-highlight-blush) 75%, var(--color-forest));
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--color-leather) 35%, transparent);
+  transform: translateY(-50%);
+}
+
+.ribbon-margin.is-ink .ribbon-tick {
+  width: 0.35rem;
+  height: 0.7rem;
+  border-radius: 0 0.2rem 0.2rem 0;
+  background: color-mix(in oklab, var(--color-ink) 35%, transparent);
+  box-shadow: none;
+}
+
+.read-back-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--color-rule) 70%, transparent);
+  background: var(--color-paper-raised);
+  padding: 0.15rem 0.35rem 0.15rem 0.7rem;
+  box-shadow: var(--shadow-lift, 0 6px 18px color-mix(in oklab, var(--color-leather) 28%, transparent));
+}
+
+html[data-ink-only="true"] .paper-sheet {
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--color-rule) 35%, transparent);
+}
+
+html[data-ink-only="true"] .paper-sheet[data-border],
+html[data-ink-only="true"] .paper-sheet[data-border="folio"],
+html[data-ink-only="true"] .paper-sheet[data-border="gilt"],
+html[data-ink-only="true"] .paper-sheet[data-border="deckle"],
+html[data-ink-only="true"] .paper-sheet[data-border="hairline"],
+html[data-ink-only="true"] .paper-sheet[data-border="double"],
+html[data-ink-only="true"] .paper-sheet[data-border="stitch"],
+html[data-ink-only="true"] .paper-sheet[data-border="vine"],
+html[data-ink-only="true"] .paper-sheet[data-border="manuscript"],
+html[data-ink-only="true"] .paper-sheet[data-border="mat"] {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background-image: none !important;
+}
+
+html[data-ink-only="true"] .paper-corner,
+html[data-ink-only="true"] .ruler,
+html[data-ink-only="true"] .ruler-corner,
+html[data-ink-only="true"] .quire-resize-handle,
+html[data-ink-only="true"] .resize-handle {
+  display: none !important;
+}
+
+html[data-ink-only="true"] .quire-image-box.ProseMirror-selectednode,
+html[data-ink-only="true"] .quire-image-box:has(.ProseMirror-selectednode) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+html[data-ink-only="true"]:not([data-focus-mode="true"]) {
+  /* slight desk dim */
+}
+
+html[data-ink-only="true"] body,
+html[data-ink-only="true"] .quire-page {
+  /* keep selection colors */
+}
+
+html[data-focus-mode="true"][data-ink-only="true"] .paper-sheet {
+  box-shadow: none;
+}
+
+@media (max-width: 640px) {
+  .recipe-chooser-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .recipe-chooser-grid > :nth-child(4) {
+    grid-column: auto;
+  }
+}

@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 import { createSeed, DEMO_FOLDER_IDS, DEMO_NOTE_IDS } from "./seed";
-import { NOTEBOOK_HUES, DEFAULT_PREFS, DEFAULT_SESSION, type Note, type Notebook, type NotebookHue, type Prefs, type Session } from "./types";
+import { NOTEBOOK_HUES, DEFAULT_PREFS, DEFAULT_SESSION, type Note, type Notebook, type NotebookHue, type PageMeta, type PageRecipeId, type Prefs, type RibbonBookmark, type Session } from "./types";
+import { alignPageMeta, applyRecipeToMeta, defaultPageMeta, softCapRibbons } from "./recipes";
 import { notePages } from "./pages";
 import { descendantIds, isAlive, isDescendant } from "./folders";
 import { WELCOME_HTML, WELCOME_VERSION } from "./welcome";
@@ -35,11 +36,13 @@ export type NotebookState = {
   hasHydrated: boolean;
   focusMode: boolean;
   quillOpen: boolean;
+  pageMapOpen: boolean;
   prefs: Prefs;
   session: Session;
   completeHydration: () => void;
   setFocusMode: (value: boolean) => void;
   setQuillOpen: (value: boolean) => void;
+  setPageMapOpen: (value: boolean) => void;
   setPrefs: (patch: Partial<Prefs>) => void;
   setSession: (patch: Partial<Session>) => void;
   recordWords: (added: number) => void;
@@ -51,11 +54,15 @@ export type NotebookState = {
   moveNotebook: (id: string, parentId: string | null) => void;
   deleteNotebook: (id: string) => void;
   restoreNotebook: (id: string) => void;
-  createNote: (notebookId?: string) => string;
-  updateNote: (id: string, patch: Partial<Pick<Note, "title" | "content" | "pinned" | "notebookId" | "pages" | "color">>) => void;
+  createNote: (notebookId?: string, recipe?: PageRecipeId) => string;
+  updateNote: (id: string, patch: Partial<Pick<Note, "title" | "content" | "pinned" | "notebookId" | "pages" | "pageMeta" | "color">>) => void;
   updateNotePage: (id: string, pageIndex: number, html: string) => void;
-  insertNotePage: (id: string, atIndex: number, html?: string) => number;
+  insertNotePage: (id: string, atIndex: number, html?: string, recipe?: PageRecipeId) => number;
   setNotePages: (id: string, pages: string[], content?: string) => void;
+  setPageRecipe: (noteId: string, pageIndex: number, recipe: PageRecipeId) => void;
+  placeRibbon: (noteId: string, pageIndex: number, ribbon: Omit<RibbonBookmark, "id" | "createdAt"> & { id?: string; createdAt?: number }) => string | null;
+  untieRibbon: (noteId: string, pageIndex: number, ribbonId: string) => void;
+  renameRibbon: (noteId: string, pageIndex: number, ribbonId: string, label: string) => void;
   deleteNote: (id: string) => void;
   restoreNote: (id: string) => void;
   purgeForever: (kind: "note" | "folder", id: string) => void;
@@ -125,7 +132,13 @@ function nextHue(existing: Notebook[]): NotebookHue {
 
 function migrateNote(note: Note): Note {
   const pages = notePages(note);
-  return { ...note, pages, content: pages.join(""), color: note.color ?? null, deletedAt: note.deletedAt ?? null };
+  const pageMeta = alignPageMeta(pages, note.pageMeta);
+  return { ...note, pages, pageMeta, content: pages.join(""), color: note.color ?? null, deletedAt: note.deletedAt ?? null };
+}
+
+function withPagesAndMeta(note: Note, pages: string[], pageMeta?: PageMeta[]): Note {
+  const meta = alignPageMeta(pages, pageMeta ?? note.pageMeta);
+  return { ...note, pages, pageMeta: meta, content: pages.join(""), updatedAt: Date.now() };
 }
 
 function migrateNotebook(notebook: Notebook): Notebook {
@@ -147,7 +160,7 @@ function purgeExpired(notebooks: Notebook[], notes: Note[]) {
 }
 
 function withJoinedContent(note: Note, pages: string[]): Note {
-  return { ...note, pages, content: pages.join(""), updatedAt: Date.now() };
+  return withPagesAndMeta(note, pages);
 }
 
 export const useNotebookStore = create<NotebookState>()(
@@ -158,6 +171,7 @@ export const useNotebookStore = create<NotebookState>()(
       hasHydrated: true,
       focusMode: false,
       quillOpen: false,
+      pageMapOpen: false,
       prefs: { ...DEFAULT_PREFS },
       session: { ...DEFAULT_SESSION },
 
@@ -183,7 +197,15 @@ export const useNotebookStore = create<NotebookState>()(
           });
           if ((prefs.welcomeVersion || 0) < WELCOME_VERSION) {
             liveNotes = liveNotes.map((item) =>
-              item.id === "note_welcome" ? { ...item, title: "Welcome to Quire", pages: [WELCOME_HTML], content: WELCOME_HTML } : item,
+              item.id === "note_welcome"
+                ? {
+                    ...item,
+                    title: "Welcome to Quire",
+                    pages: [WELCOME_HTML],
+                    content: WELCOME_HTML,
+                    pageMeta: alignPageMeta([WELCOME_HTML], item.pageMeta),
+                  }
+                : item,
             );
             prefs.welcomeVersion = WELCOME_VERSION;
           }
@@ -205,6 +227,7 @@ export const useNotebookStore = create<NotebookState>()(
 
       setFocusMode: (value) => set({ focusMode: value }),
       setQuillOpen: (value) => set({ quillOpen: value }),
+      setPageMapOpen: (value) => set({ pageMapOpen: value }),
 
       setPrefs: (patch) =>
         set((state) => ({
@@ -342,17 +365,20 @@ export const useNotebookStore = create<NotebookState>()(
         }));
       },
 
-      createNote: (notebookId) => {
+      createNote: (notebookId, recipe = "freewrite") => {
         const id = crypto.randomUUID();
         const target = notebookId ?? get().activeNotebookId ?? get().notebooks.find(isAlive)?.id;
         if (!target) return id;
         const now = Date.now();
+        const pages = [""];
+        const pageMeta = [defaultPageMeta(recipe)];
         const note: Note = {
           id,
           notebookId: target,
           title: "Untitled",
           content: "",
-          pages: [""],
+          pages,
+          pageMeta,
           pinned: false,
           color: null,
           createdAt: now,
@@ -363,6 +389,8 @@ export const useNotebookStore = create<NotebookState>()(
           notes: [note, ...state.notes],
           activeNotebookId: target,
           activeNoteId: id,
+          prefs: { ...state.prefs, lastPageRecipe: recipe },
+          session: { ...state.session, noteId: id, notebookId: target, pageIndex: 0, cursor: 0 },
         }));
         return id;
       },
@@ -374,11 +402,15 @@ export const useNotebookStore = create<NotebookState>()(
             const next = { ...item, ...patch, updatedAt: Date.now() };
             if (patch.pages) {
               next.content = patch.pages.join("");
+              next.pageMeta = alignPageMeta(patch.pages, patch.pageMeta ?? item.pageMeta);
             } else if (patch.content !== undefined && !patch.pages) {
               const pages = [...notePages(item)];
               pages[0] = patch.content;
               next.pages = pages;
               next.content = pages.join("");
+              next.pageMeta = alignPageMeta(pages, patch.pageMeta ?? item.pageMeta);
+            } else if (patch.pageMeta) {
+              next.pageMeta = alignPageMeta(notePages(next), patch.pageMeta);
             }
             return next;
           }),
@@ -397,21 +429,29 @@ export const useNotebookStore = create<NotebookState>()(
         }));
       },
 
-      insertNotePage: (id, atIndex, html = "") => {
+      insertNotePage: (id, atIndex, html = "", recipe = "freewrite") => {
         const item = get().notes.find((note) => note.id === id);
         if (!item) return 0;
         const pages = [...notePages(item)];
+        const meta = alignPageMeta(pages, item.pageMeta);
         const index = Math.max(0, Math.min(atIndex, pages.length));
         pages.splice(index, 0, html);
+        meta.splice(index, 0, defaultPageMeta(recipe));
         set((state) => ({
-          notes: state.notes.map((note) => (note.id === id ? withJoinedContent(note, pages) : note)),
+          notes: state.notes.map((note) => (note.id === id ? withPagesAndMeta(note, pages, meta) : note)),
         }));
         return index;
       },
 
       setNotePages: (id, pages) => {
         set((state) => ({
-          notes: state.notes.map((note) => (note.id === id ? withJoinedContent(note, pages) : note)),
+          notes: state.notes.map((note) => {
+            if (note.id !== id) return note;
+            const prevMeta = alignPageMeta(notePages(note), note.pageMeta);
+            // Keep meta for overlapping indices; new trailing pages get freewrite
+            const nextMeta = pages.map((_, i) => prevMeta[i] ?? defaultPageMeta("freewrite"));
+            return withPagesAndMeta(note, pages, nextMeta);
+          }),
         }));
       },
 
@@ -473,6 +513,10 @@ export const useNotebookStore = create<NotebookState>()(
         const copyId = crypto.randomUUID();
         const now = Date.now();
         const pages = [...notePages(source)];
+        const pageMeta = alignPageMeta(pages, source.pageMeta).map((meta) => ({
+          ...meta,
+          ribbons: (meta.ribbons ?? []).map((ribbon) => ({ ...ribbon, id: crypto.randomUUID() })),
+        }));
         const copy: Note = {
           ...source,
           id: copyId,
@@ -482,6 +526,7 @@ export const useNotebookStore = create<NotebookState>()(
           updatedAt: now,
           deletedAt: null,
           pages,
+          pageMeta,
           content: pages.join(""),
         };
         set((state) => ({
@@ -506,6 +551,87 @@ export const useNotebookStore = create<NotebookState>()(
           ),
           activeNotebookId: notebookId,
           activeNoteId: id,
+        }));
+      },
+
+      setPageRecipe: (noteId, pageIndex, recipe) => {
+        set((state) => ({
+          notes: state.notes.map((note) => {
+            if (note.id !== noteId) return note;
+            const pages = notePages(note);
+            const meta = alignPageMeta(pages, note.pageMeta);
+            const index = Math.max(0, Math.min(pageIndex, meta.length - 1));
+            meta[index] = applyRecipeToMeta(meta[index], recipe);
+            return { ...note, pageMeta: meta, updatedAt: Date.now() };
+          }),
+          prefs: { ...state.prefs, lastPageRecipe: recipe },
+        }));
+      },
+
+      placeRibbon: (noteId, pageIndex, ribbon) => {
+        let createdId: string | null = null;
+        set((state) => ({
+          notes: state.notes.map((note) => {
+            if (note.id !== noteId) return note;
+            const pages = notePages(note);
+            const meta = alignPageMeta(pages, note.pageMeta);
+            const index = Math.max(0, Math.min(pageIndex, meta.length - 1));
+            const page = meta[index];
+            const ribbons = [...(page.ribbons ?? [])];
+            if (ribbons.length >= 20) return note;
+            const same = ribbons.find((item) => item.pos === ribbon.pos);
+            if (same) {
+              same.label = ribbon.label || same.label;
+              same.snippet = ribbon.snippet ?? same.snippet;
+              createdId = same.id;
+              meta[index] = { ...page, ribbons };
+              return { ...note, pageMeta: meta, updatedAt: Date.now() };
+            }
+            const id = ribbon.id || crypto.randomUUID();
+            createdId = id;
+            ribbons.push({
+              id,
+              pos: ribbon.pos,
+              label: ribbon.label || "Bookmark",
+              createdAt: ribbon.createdAt || Date.now(),
+              snippet: ribbon.snippet,
+            });
+            meta[index] = { ...page, ribbons: softCapRibbons(ribbons) };
+            return { ...note, pageMeta: meta, updatedAt: Date.now() };
+          }),
+        }));
+        return createdId;
+      },
+
+      untieRibbon: (noteId, pageIndex, ribbonId) => {
+        set((state) => ({
+          notes: state.notes.map((note) => {
+            if (note.id !== noteId) return note;
+            const pages = notePages(note);
+            const meta = alignPageMeta(pages, note.pageMeta);
+            const index = Math.max(0, Math.min(pageIndex, meta.length - 1));
+            const page = meta[index];
+            meta[index] = { ...page, ribbons: (page.ribbons ?? []).filter((item) => item.id !== ribbonId) };
+            return { ...note, pageMeta: meta, updatedAt: Date.now() };
+          }),
+        }));
+      },
+
+      renameRibbon: (noteId, pageIndex, ribbonId, label) => {
+        const trimmed = label.trim() || "Bookmark";
+        set((state) => ({
+          notes: state.notes.map((note) => {
+            if (note.id !== noteId) return note;
+            const pages = notePages(note);
+            const meta = alignPageMeta(pages, note.pageMeta);
+            const index = Math.max(0, Math.min(pageIndex, meta.length - 1));
+            const page = meta[index];
+            meta[index] = {
+              ...page,
+              ribbons: (page.ribbons ?? []).map((item) => (item.id === ribbonId ? { ...item, label: trimmed } : item)),
+            };
+            return { ...note, pageMeta: meta, updatedAt: Date.now() };
+          }),
         }));
       },
 

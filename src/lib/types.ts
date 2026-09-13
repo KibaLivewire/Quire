@@ -39,6 +39,26 @@ export const BORDERS = [
 ] as const;
 export type BorderId = (typeof BORDERS)[number];
 
+export const PAGE_RECIPES = ["letter", "journal", "poem", "list", "freewrite"] as const;
+export type PageRecipeId = (typeof PAGE_RECIPES)[number];
+
+export type RibbonBookmark = {
+  id: string;
+  /** TipTap document position at place time */
+  pos: number;
+  label: string;
+  createdAt: number;
+  /** ~32 chars around place time for recovery */
+  snippet?: string;
+};
+
+export type PageMeta = {
+  recipe: PageRecipeId;
+  /** Optional page-local border; falls back to recipe default then prefs.border */
+  border?: BorderId | null;
+  ribbons?: RibbonBookmark[];
+};
+
 export type Notebook = {
   id: string;
   name: string;
@@ -55,6 +75,7 @@ export type Note = {
   title: string;
   content: string;
   pages: string[];
+  pageMeta?: PageMeta[];
   pinned: boolean;
   color: string | null;
   createdAt: number;
@@ -100,6 +121,16 @@ export type Prefs = {
   quill: boolean;
   quillGreeting: boolean;
   welcomeVersion: number;
+  /** Bias recipe chooser highlight only */
+  lastPageRecipe?: PageRecipeId;
+  /** Just paper and typing — hides borders and extra chrome */
+  inkOnly: boolean;
+  /** Remember page map open (optional); default closed */
+  pageMapOpen?: boolean;
+  /** speechSynthesis voice.voiceURI */
+  ttsVoiceURI?: string;
+  /** default 1, clamp ~0.8–1.2 */
+  ttsRate?: number;
 };
 
 export const DEFAULT_PREFS: Prefs = {
@@ -109,7 +140,7 @@ export const DEFAULT_PREFS: Prefs = {
   showWordCount: true,
   spellcheck: true,
   suggestions: true,
-  grammar: true,
+  grammar: false,
   pageOrientation: "portrait",
   pageWidth: 8.5,
   pageHeight: 11,
@@ -126,4 +157,8 @@ export const DEFAULT_PREFS: Prefs = {
   quill: true,
   quillGreeting: true,
   welcomeVersion: 0,
+  lastPageRecipe: "freewrite",
+  inkOnly: false,
+  pageMapOpen: false,
+  ttsRate: 1,
 };

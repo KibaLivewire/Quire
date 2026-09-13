@@ -26,6 +26,7 @@ import {
   type SizeFilter,
   type SortKey,
 } from "@/lib/folders";
+import { openRecipeChooser } from "@/lib/recipe-chooser";
 import { useNotebookStore } from "@/lib/store";
 import { cn, plainText } from "@/lib/utils";
 
@@ -66,7 +67,6 @@ export function NoteList({
   const activeNoteId = useNotebookStore((s) => s.activeNoteId);
   const setActiveNotebook = useNotebookStore((s) => s.setActiveNotebook);
   const setActiveNote = useNotebookStore((s) => s.setActiveNote);
-  const createNote = useNotebookStore((s) => s.createNote);
   const createNotebook = useNotebookStore((s) => s.createNotebook);
   const updateNote = useNotebookStore((s) => s.updateNote);
 
@@ -153,7 +153,7 @@ export function NoteList({
           <DropdownMenuContent align="end">
             <DropdownMenuItem
               onSelect={() => {
-                createNote();
+                openRecipeChooser({ mode: "create" });
                 onOpenNote?.();
               }}
             >

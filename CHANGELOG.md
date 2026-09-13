@@ -1,3 +1,19 @@
+# Quire 1.6.0 — Desk ritual
+
+In progress · Milestone B.
+
+A quieter writing posture for the desk you already know.
+
+- **Page recipes** — New page asks what you are writing (Letter, Journal, Poem, List, Freewrite). Change recipe later; your words stay.
+- **Ink only** — Just paper and typing. Hides borders, rulers, and picture chrome. Stacks with Focus; Esc still leaves Focus only.
+- **Page map** — Jump to Heading 1–3 on this sheet (“On this page”).
+- **Ribbon bookmarks** — Place a ribbon at the caret, jump back, or untie it.
+- **Read back** — Local text-to-speech from caret or selection. Voice and pace live in Desk settings.
+
+No cloud writing, no collab chrome. Quill stays a local helper.
+
+---
+
 # Quire 1.5.1
 
 Released 13 September 2026.
