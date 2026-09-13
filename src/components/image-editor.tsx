@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { DEFAULT_ADJUST, renderEditedImage, type ImageAdjust, type ImageFilter } from "@/lib/image-edit";
+import { DEFAULT_ADJUST, editStyle, isGifSrc, renderEditedImage, type ImageAdjust, type ImageFilter } from "@/lib/image-edit";
 import { cn } from "@/lib/utils";
 
 const FILTERS: { id: ImageFilter; label: string }[] = [
@@ -39,10 +39,11 @@ export function ImageEditor({
   open: boolean;
   src: string | null;
   onOpenChange: (open: boolean) => void;
-  onApply: (nextSrc: string) => void;
+  onApply: (result: { src?: string; editStyle?: string | null }) => void;
 }) {
   const [adj, setAdj] = useState<ImageAdjust>(DEFAULT_ADJUST);
   const [busy, setBusy] = useState(false);
+  const gif = Boolean(src && isGifSrc(src));
 
   useEffect(() => {
     if (open) setAdj(DEFAULT_ADJUST);
@@ -66,8 +67,12 @@ export function ImageEditor({
     if (!src) return;
     setBusy(true);
     try {
-      const next = await renderEditedImage(src, adj);
-      onApply(next);
+      if (gif) {
+        onApply({ editStyle: editStyle(adj) });
+      } else {
+        const next = await renderEditedImage(src, adj);
+        onApply({ src: next, editStyle: null });
+      }
       onOpenChange(false);
     } catch {
       toast.error("Could not save that edit.");
@@ -81,7 +86,11 @@ export function ImageEditor({
       <DialogContent className="w-[min(calc(100%-1.5rem),36rem)]">
         <DialogHeader>
           <DialogTitle>Edit image</DialogTitle>
-          <DialogDescription>Crop, rotate, and tune a picture on this page.</DialogDescription>
+          <DialogDescription>
+          {gif
+            ? "This GIF will keep moving. Color, rotate, and flip are applied without freezing the frames. Crop is skipped."
+            : "Crop, rotate, and tune a picture on this page."}
+        </DialogDescription>
         </DialogHeader>
         <div className="overflow-hidden rounded-2xl bg-paper-inset">
           {src ? (
@@ -97,21 +106,23 @@ export function ImageEditor({
           ) : null}
         </div>
         <div className="grid gap-3 px-1 pt-2">
-          <div className="flex flex-wrap gap-1.5">
-            {ASPECTS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={cn(
-                  "rounded-full px-2.5 py-1 text-xs",
-                  adj.aspect === item.id ? "bg-forest text-forest-fg" : "bg-paper-inset text-ink-muted",
-                )}
-                onClick={() => setAdj((prev) => ({ ...prev, aspect: item.id }))}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+          {gif ? null : (
+            <div className="flex flex-wrap gap-1.5">
+              {ASPECTS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={cn(
+                    "rounded-full px-2.5 py-1 text-xs",
+                    adj.aspect === item.id ? "bg-forest text-forest-fg" : "bg-paper-inset text-ink-muted",
+                  )}
+                  onClick={() => setAdj((prev) => ({ ...prev, aspect: item.id }))}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex flex-wrap gap-1.5">
             {FILTERS.map((item) => (
               <button

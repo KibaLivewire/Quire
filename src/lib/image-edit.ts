@@ -22,6 +22,10 @@ export const DEFAULT_ADJUST: ImageAdjust = {
   aspect: "free",
 };
 
+export function isGifSrc(src: string) {
+  return /image\/gif/i.test(src) || /^data:image\/gif/i.test(src) || /\.gif(?:$|\?)/i.test(src);
+}
+
 function loadHtmlImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -44,7 +48,7 @@ function cropRect(width: number, height: number, aspect: ImageAdjust["aspect"]) 
   return { x: (width - w) / 2, y: (height - h) / 2, w, h };
 }
 
-function cssFilter(adj: ImageAdjust): string {
+export function cssFilter(adj: ImageAdjust): string {
   const parts = [
     `brightness(${adj.brightness}%)`,
     `contrast(${adj.contrast}%)`,
@@ -58,7 +62,18 @@ function cssFilter(adj: ImageAdjust): string {
   return parts.join(" ");
 }
 
+export function cssTransform(adj: ImageAdjust): string {
+  return `rotate(${adj.rotate}deg) scale(${adj.flipH ? -1 : 1}, ${adj.flipV ? -1 : 1})`;
+}
+
+export function editStyle(adj: ImageAdjust): string {
+  return `filter:${cssFilter(adj)};transform:${cssTransform(adj)}`;
+}
+
 export async function renderEditedImage(src: string, adj: ImageAdjust): Promise<string> {
+  if (isGifSrc(src)) {
+    throw new Error("gif");
+  }
   const img = await loadHtmlImage(src);
   const crop = cropRect(img.naturalWidth, img.naturalHeight, adj.aspect);
   const rotated = adj.rotate === 90 || adj.rotate === 270;

@@ -168,6 +168,7 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
       imageSize: (ed.getAttributes("image").size as string | undefined) ?? null,
       imageAlign: (ed.getAttributes("image").align as string | undefined) ?? "center",
       imageWrap: (ed.getAttributes("image").wrap as string | undefined) ?? null,
+      imageWatermark: (ed.getAttributes("image").watermark as string | undefined) ?? "",
       indent: Number(ed.getAttributes("paragraph").indent || ed.getAttributes("heading").indent || 0),
       lineHeight: (ed.getAttributes("paragraph").lineHeight || ed.getAttributes("heading").lineHeight) as string | null,
       paraSpace: (ed.getAttributes("paragraph").paraSpace || ed.getAttributes("heading").paraSpace) as string | null,
@@ -838,7 +839,7 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
           open={editOpen}
           src={ui.imageSrc}
           onOpenChange={setEditOpen}
-          onApply={(next) => editor.chain().focus().updateAttributes("image", { src: next }).run()}
+          onApply={(result) => editor.chain().focus().updateAttributes("image", result).run()}
         />
       </div>
 
@@ -862,8 +863,23 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
           />
           <Chip
             label="Watermark"
-            active={ui.imageFit === "watermark"}
-            onClick={() => setImageLayout({ fit: "watermark", size: null, align: "right", wrap: null })}
+            active={ui.imageFit === "watermark" || Boolean(ui.imageWatermark)}
+            onClick={() =>
+              setImageLayout({
+                fit: "watermark",
+                size: null,
+                wrap: "left",
+                watermark: ui.imageWatermark || "Quire",
+              })
+            }
+          />
+          <input
+            type="text"
+            value={ui.imageWatermark}
+            placeholder="Watermark text"
+            aria-label="Watermark text"
+            className="h-7 w-36 rounded-md border border-rule bg-paper px-2 text-xs text-ink"
+            onChange={(event) => setImageLayout({ watermark: event.target.value, fit: "watermark" })}
           />
           <Separator orientation="vertical" className="mx-1 h-5" />
           <Chip label="S" active={ui.imageSize === "small"} onClick={() => setImageLayout({ size: "small", fit: null })} />

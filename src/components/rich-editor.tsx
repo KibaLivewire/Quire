@@ -143,7 +143,7 @@ export function RichEditor({
     function down(event: MouseEvent) {
       const img = (event.target as HTMLElement | null)?.closest?.("img.quire-image") as HTMLImageElement | null;
       if (!img || event.button !== 0) return;
-      if ((event.target as HTMLElement).closest("[data-resize-handle], .resize-handle")) return;
+      if ((event.target as HTMLElement).closest("[data-resize-handle], .quire-resize-handle, .quire-resize-handle")) return;
       drag = {
         img,
         x: event.clientX,
