@@ -1,4 +1,4 @@
-export const WELCOME_VERSION = 3;
+export const WELCOME_VERSION = 4;
 
 export const WELCOME_HTML = `
 <p>Quire is a notebook that lives on this computer. Nothing is uploaded. This page is a field guide — every mark below is a real example of a tool you can use.</p>
@@ -35,7 +35,7 @@ export const WELCOME_HTML = `
 <p>The feather in the toolbar is <strong>Quill</strong>, a local helper on this desk. Highlight a sentence and ask him to shorten it, polish it, or fetch a better word. He greets you when Quire opens. Turn him off in Desk if you want the page alone.</p>
 
 <h2>Sound and first light</h2>
-<p>Wind chimes loop softly after falling leaves carry you onto the desk. Both are on by default. The dial in the bottom corner sets the volume; the speaker mutes. <strong>Ctrl+M</strong> mutes too. Desk settings can silence the chimes or skip the leaves.</p>
+<p>Each theme opens with its own quiet scene — a wave, a moon, a cup, or falling leaves — then fades onto the desk. Room sound follows the theme. The dial in the bottom corner sets the volume; the speaker mutes. <strong>Ctrl+M</strong> mutes too. Desk settings can silence the room or skip the opening.</p>
 
 <h2>A page, not a feed</h2>
 <p>Themes live in Desk — dark, light, navy, leather, or a palette you save. Borders follow the paper. Add-ons can bring extra themes. Pages never leave this device unless you export or back them up yourself.</p>

@@ -189,14 +189,14 @@ export function SettingsPanel({
             onCheckedChange={(checked) => setPrefs({ inkOnly: checked })}
           />
           <ToggleRow
-            label="Wind chimes"
-            hint="A soft loop after the desk opens. Ctrl+M mutes"
+            label="Room sound"
+            hint="A soft loop that follows your theme. Ctrl+M mutes"
             checked={prefs.ambient !== false}
             onCheckedChange={(checked) => setPrefs({ ambient: checked })}
           />
           <ToggleRow
-            label="Falling leaves"
-            hint="Leaves drift across the desk when Quire starts"
+            label="Opening scene"
+            hint="Opening scene and room sound follow your theme. Leather keeps leaves and wind chimes."
             checked={prefs.bootLeaves !== false}
             onCheckedChange={(checked) => setPrefs({ bootLeaves: checked })}
           />

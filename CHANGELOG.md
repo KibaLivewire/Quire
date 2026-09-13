@@ -1,3 +1,18 @@
+# Quire 1.6.2 — Cozy openings
+
+Released 13 September 2026.
+
+Each built-in theme now opens with its own quiet scene and room sound, then fades onto the desk.
+
+- **Navy** — a wave wash; ocean and distant birds
+- **Dark** — a moon and a paper owl; night insects and a soft hoot
+- **Light** — plate, bagel, and coffee handed to the desk; café room tone
+- **Leather** — the familiar falling leaves and wind chimes
+- Esc skips the opening; reduced motion shows a still card
+- Room sound follows the theme and crossfades when you change it
+
+---
+
 # Quire 1.6.1
 
 Released 13 September 2026.
