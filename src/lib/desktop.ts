@@ -1,4 +1,4 @@
-const APP_VERSION = "1.5.1";
+import { version as PACKAGE_VERSION } from "../../package.json";
 
 type QuireBridge = {
   version?: () => Promise<string>;
@@ -12,8 +12,19 @@ declare global {
   }
 }
 
+/** Prefer Electron's baked version when the bridge is ready; fall back to package.json. */
+let cachedVersion = PACKAGE_VERSION;
+
 export function appVersion(): string {
-  return APP_VERSION;
+  return cachedVersion;
+}
+
+/** Refresh from Electron so About / shelf match the installed build. */
+export function hydrateAppVersion(): void {
+  if (typeof window === "undefined" || !window.quire?.version) return;
+  void window.quire.version().then((value) => {
+    if (value?.trim()) cachedVersion = value.trim();
+  });
 }
 
 export function isHttpUrl(value: string): boolean {
@@ -39,5 +50,5 @@ export async function checkForUpdates() {
   if (typeof window !== "undefined" && window.quire?.checkUpdates) {
     return window.quire.checkUpdates();
   }
-  return { current: APP_VERSION, latest: APP_VERSION as string | null };
+  return { current: appVersion(), latest: appVersion() as string | null };
 }

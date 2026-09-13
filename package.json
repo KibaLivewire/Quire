@@ -1,6 +1,6 @@
 {
   "name": "app-builder-workspace",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "A quiet notebook for writing on this device.",
   "author": "KibaLivewire",
   "private": true,
@@ -120,7 +120,7 @@
   "build": {
     "appId": "com.kibalivewire.quire",
     "productName": "Quire",
-    "copyright": "Copyright © 2026",
+    "copyright": "Copyright \u00a9 2026",
     "icon": "electron/icon.png",
     "directories": {
       "output": "release"
@@ -139,7 +139,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "artifactName": "${productName}-Setup-${version}.${ext}"

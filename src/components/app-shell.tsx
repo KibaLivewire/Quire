@@ -15,10 +15,15 @@ import { startAmbient, stopAmbient, toggleAmbientMute } from "@/lib/ambient";
 import { applyTheme } from "@/lib/theme";
 import { stopSharedReading } from "@/components/read-back-chip";
 import { getActiveEditor } from "@/lib/editor-commands";
+import { hydrateAppVersion } from "@/lib/desktop";
 import { useNotebookStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 export function AppShell() {
+  useEffect(() => {
+    hydrateAppVersion();
+  }, []);
+
   const focusMode = useNotebookStore((s) => s.focusMode);
   const setFocusMode = useNotebookStore((s) => s.setFocusMode);
   const prefs = useNotebookStore((s) => s.prefs);
