@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
-import { AmbientDial } from "@/components/ambient-dial";
 import { BootLeaves } from "@/components/boot-leaves";
 import { EditorPane } from "@/components/editor-pane";
 import { MenuBar } from "@/components/menu-bar";
@@ -133,7 +132,6 @@ export function AppShell() {
           }}
         />
       ) : null}
-      <AmbientDial />
 
       <Sheet open={notebooksOpen} onOpenChange={setNotebooksOpen}>
         <SheetContent side="left">

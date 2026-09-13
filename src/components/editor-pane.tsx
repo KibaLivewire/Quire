@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { FindBar } from "@/components/find-bar";
+import { AmbientDial } from "@/components/ambient-dial";
 import { RichEditor } from "@/components/rich-editor";
 import {
   AlertDialog,
@@ -136,6 +137,11 @@ export function EditorPane({
             New page
           </Button>
         </div>
+        <footer className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-t border-rule/80 px-3 py-2">
+          <span />
+          <AmbientDial />
+          <span />
+        </footer>
       </section>
     );
   }
@@ -271,7 +277,7 @@ export function EditorPane({
         }}
       />
 
-      <footer className="flex items-center justify-between gap-3 border-t border-rule/80 px-3 py-2 text-xs text-ink-subtle">
+      <footer className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-t border-rule/80 px-3 py-2 text-xs text-ink-subtle">
         <span className="min-w-0 truncate tabular-nums">
           {prefs.showWordCount ? (
             <>
@@ -282,7 +288,8 @@ export function EditorPane({
             <span suppressHydrationWarning>Edited {formatDistanceToNow(note.updatedAt, { addSuffix: true })}</span>
           )}
         </span>
-        <div className="flex items-center gap-1.5">
+        <AmbientDial />
+        <div className="flex items-center justify-end gap-1.5">
           <Button
             variant="ghost"
             size="icon-sm"
