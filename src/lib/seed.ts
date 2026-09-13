@@ -14,9 +14,6 @@ function note(partial: Omit<Note, "pages" | "content" | "color" | "deletedAt"> &
 
 export const SEED_NOTEBOOKS: Notebook[] = [
   { id: "nb_personal", name: "Personal", hue: "forest", parentId: null, color: "#3d6b4f", createdAt: daysAgo(14), deletedAt: null },
-  { id: "nb_letters", name: "Letters", hue: "wine", parentId: "nb_personal", color: "#8a3d45", createdAt: daysAgo(12), deletedAt: null },
-  { id: "nb_reading", name: "Reading", hue: "umber", parentId: null, color: "#8a5a32", createdAt: daysAgo(10), deletedAt: null },
-  { id: "nb_work", name: "Work", hue: "slate", parentId: null, color: "#4f6f8f", createdAt: daysAgo(8), deletedAt: null },
 ];
 
 export const SEED_NOTES: Note[] = [
@@ -29,53 +26,10 @@ export const SEED_NOTES: Note[] = [
     updatedAt: daysAgo(0, 2),
     content: WELCOME_HTML,
   }),
-  note({
-    id: "note_september",
-    notebookId: "nb_personal",
-    title: "A September morning",
-    pinned: false,
-    createdAt: daysAgo(1, 5),
-    updatedAt: daysAgo(0, 6),
-    content: `
-<p>The window was open before the heat arrived. Coffee gone lukewarm. A jay arguing with the maple.</p>
-<p>I wrote three lines that were no good and one that was. That is the usual ratio, and I have made peace with it.</p>
-<h2>What I want from the week</h2>
-<ul>
-<li><p>Walk without the phone, twice</p></li>
-<li><p>Finish the letter to M.</p></li>
-<li><p>Read in the chair, not in bed</p></li>
-</ul>
-<p>The maple is already thinking about yellow. I am trying to notice that before it becomes a photograph of noticing.</p>
-`.trim(),
-  }),
-  note({
-    id: "note_keeping",
-    notebookId: "nb_reading",
-    title: "Why keep a notebook",
-    pinned: false,
-    createdAt: daysAgo(3),
-    updatedAt: daysAgo(1, 2),
-    content: `
-<p>A notebook is not a diary unless you need it to be. It is a pocket where a sentence can wait until it is ready to be true.</p>
-<p>I copy down phrases I do not yet understand. Weeks later they have arranged themselves. The page does the work I was too impatient to do.</p>
-<blockquote><p>Keep the scraps. The scraps remember what the polished paragraph forgets.</p></blockquote>
-<p>When I reread old pages I am not looking for wisdom. I am checking whether I was paying attention.</p>
-`.trim(),
-  }),
-  note({
-    id: "note_letter",
-    notebookId: "nb_letters",
-    title: "A letter I have not sent",
-    pinned: false,
-    color: "#8a3d45",
-    createdAt: daysAgo(6),
-    updatedAt: daysAgo(2),
-    content: `
-<p>I keep this in a folder inside Personal, the way a paper letter waits in a drawer.</p>
-<p>The folding is the point. Some sentences need a smaller room.</p>
-`.trim(),
-  }),
 ];
+
+export const DEMO_NOTE_IDS = new Set(["note_september", "note_keeping", "note_letter"]);
+export const DEMO_FOLDER_IDS = new Set(["nb_letters", "nb_reading", "nb_work"]);
 
 export function createSeed() {
   return {

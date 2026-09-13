@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
-import { createSeed } from "./seed";
+import { createSeed, DEMO_FOLDER_IDS, DEMO_NOTE_IDS } from "./seed";
 import { NOTEBOOK_HUES, DEFAULT_PREFS, DEFAULT_SESSION, type Note, type Notebook, type NotebookHue, type Prefs, type Session } from "./types";
 import { notePages } from "./pages";
 import { descendantIds, isAlive, isDescendant } from "./folders";
@@ -176,7 +176,11 @@ export const useNotebookStore = create<NotebookState>()(
             prefs.wordsToday = 0;
             prefs.wordsDate = today;
           }
-          let liveNotes = purged.notes;
+          let liveNotes = purged.notes.filter((item) => !DEMO_NOTE_IDS.has(item.id));
+          const liveNotebooks = purged.notebooks.filter((nb) => {
+            if (!DEMO_FOLDER_IDS.has(nb.id)) return true;
+            return liveNotes.some((item) => item.notebookId === nb.id);
+          });
           if ((prefs.welcomeVersion || 0) < WELCOME_VERSION) {
             liveNotes = liveNotes.map((item) =>
               item.id === "note_welcome" ? { ...item, title: "Welcome to Quire", pages: [WELCOME_HTML], content: WELCOME_HTML } : item,
@@ -185,17 +189,17 @@ export const useNotebookStore = create<NotebookState>()(
           }
           const session = { ...DEFAULT_SESSION, ...state.session };
           const noteOk = liveNotes.some((note) => note.id === (session.noteId || state.activeNoteId) && isAlive(note));
-          const notebookOk = purged.notebooks.some((nb) => nb.id === (session.notebookId || state.activeNotebookId) && isAlive(nb));
+          const notebookOk = liveNotebooks.some((nb) => nb.id === (session.notebookId || state.activeNotebookId) && isAlive(nb));
           return {
             hasHydrated: true,
             notes: liveNotes,
-            notebooks: purged.notebooks,
+            notebooks: liveNotebooks,
             prefs,
             session,
             activeNoteId: noteOk ? (session.noteId || state.activeNoteId) : liveNotes.find(isAlive)?.id ?? null,
             activeNotebookId: notebookOk
               ? (session.notebookId || state.activeNotebookId)
-              : purged.notebooks.find(isAlive)?.id ?? null,
+              : liveNotebooks.find(isAlive)?.id ?? null,
           };
         }),
 
