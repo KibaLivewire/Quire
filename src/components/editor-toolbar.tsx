@@ -95,6 +95,7 @@ function Chip({
       type="button"
       aria-pressed={active}
       onClick={onClick}
+      onMouseDown={(event) => event.preventDefault()}
       className={cn(
         "rounded-full px-2.5 py-1 text-xs transition-colors duration-150",
         active ? "bg-forest text-forest-fg" : "bg-paper-inset text-ink-muted hover:text-ink",
