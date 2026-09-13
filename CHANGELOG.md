@@ -1,27 +1,20 @@
-# Quire 1.5.1
-
-Cozy desk, finished.
-
-- Soft looping wind chimes, on by default, with a volume dial and mute (Ctrl+M) in the bottom corner
-- Falling leaves carry you onto the desk at launch, timed with the chimes (click to skip)
-- Both leaves and chimes can be turned off in Desk or View
-- Quill, a writing aide with a feather in the toolbar — highlight a sentence and ask for shorter, clearer, polish, or a better word
-- Quill greets you when the desk is ready; hide him anytime
-- Welcome page rewritten as a field guide with real examples of the tools
-
----
-
-# Quire 1.5.0
+# Quire 1.5.0 — Cozy Update
 
 Released 13 September 2026.
 
-A quieter desk you can trust.
+A quieter desk you can trust. Pages still live only on this computer.
 
-- Opens on the last page, last sentence, and last zoom
-- Deleted pages and folders wait in Trash for 30 days, then restore or let them go
-- File → Backup desk saves every notebook as a zip; Restore desk puts them back
-- Ctrl+F finds on this page; Replace is one click away
-- Focus hides the shelf and tools. Optional typewriter scroll. Optional daily word aim in the corner — no streaks
+- Opens on the last folder, page, sheet, cursor, and zoom
+- Deleted pages and folders wait in Trash for 30 days
+- File → Backup desk / Restore desk (local zip)
+- Ctrl+F find, Ctrl+H replace
+- Gentler Focus, typewriter scroll, daily word aim
+- Soft looping wind chimes with a corner volume dial and Ctrl+M mute
+- Falling leaves on launch, timed with the chimes
+- Quill, a writing aide in the toolbar
+- Welcome page rewritten as a field guide
+
+Installer: Quire-Setup-1.5.0.exe
 
 ---
 
