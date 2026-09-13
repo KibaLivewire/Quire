@@ -12,6 +12,10 @@ const RELEASE_PAGE = "https://github.com/KibaLivewire/Quire/releases/latest";
 
 let serverChild = null;
 
+function prefsPath() {
+  return path.join(app.getPath("userData"), "quire-prefs.json");
+}
+
 function waitForUrl(url, timeoutMs) {
   return new Promise((resolve, reject) => {
     const started = Date.now();
@@ -84,6 +88,36 @@ function createWindow(url) {
     void shell.openExternal(next);
     return { action: "deny" };
   });
+
+  let flushing = false;
+  win.on("close", (event) => {
+    if (flushing || win.__quireAllowClose) return;
+    const wc = win.webContents;
+    if (!wc || wc.isDestroyed() || wc.isLoadingMainFrame()) {
+      return;
+    }
+    event.preventDefault();
+    flushing = true;
+    const finish = () => {
+      win.__quireAllowClose = true;
+      flushing = false;
+      if (!win.isDestroyed()) win.close();
+    };
+    const timer = setTimeout(finish, 2500);
+    const onDone = () => {
+      clearTimeout(timer);
+      ipcMain.removeListener("quire:flush-done", onDone);
+      finish();
+    };
+    ipcMain.once("quire:flush-done", onDone);
+    try {
+      wc.send("quire:flush");
+    } catch {
+      clearTimeout(timer);
+      ipcMain.removeListener("quire:flush-done", onDone);
+      finish();
+    }
+  });
 }
 
 function parseVersion(tag) {
@@ -124,6 +158,26 @@ function wireIpc() {
     await shell.openExternal(href);
   });
   ipcMain.handle("quire:check-updates", async () => lookupLatest());
+  ipcMain.handle("quire:prefs-read", () => {
+    try {
+      const raw = fs.readFileSync(prefsPath(), "utf8");
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
+  });
+  ipcMain.handle("quire:prefs-write", (_event, prefs) => {
+    try {
+      const file = prefsPath();
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(prefs ?? {}), "utf8");
+      return true;
+    } catch (err) {
+      console.error("Failed to write Quire prefs:", err);
+      return false;
+    }
+  });
 }
 
 async function maybeNotifyUpdate() {

@@ -1,3 +1,15 @@
+# Quire 1.6.3
+
+Released 13 September 2026.
+
+A cozy trust fix: your desk remembers how you left it.
+
+- **Theme & Desk settings** survive a full quit and reopen (Navy, Dark, Light, Leather, ambient, opening scenes, and the rest)
+- **Opening ritual** follows the theme you saved — not a Dark flash-default
+- Pages and notebooks still live in the same local desk store
+
+---
+
 # Quire 1.6.2 — Cozy openings
 
 Released 13 September 2026.
