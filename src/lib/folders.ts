@@ -31,9 +31,13 @@ export function itemColor(item: { color?: string | null; hue?: string }): string
   return "#8a93a0";
 }
 
+export function isAlive<T extends { deletedAt?: number | null }>(item: T): boolean {
+  return !item.deletedAt;
+}
+
 export function childFolders(notebooks: Notebook[], parentId: string | null): Notebook[] {
   return notebooks
-    .filter((nb) => (nb.parentId ?? null) === parentId)
+    .filter((nb) => isAlive(nb) && (nb.parentId ?? null) === parentId)
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 

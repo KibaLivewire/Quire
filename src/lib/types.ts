@@ -46,6 +46,7 @@ export type Notebook = {
   parentId: string | null;
   color: string | null;
   createdAt: number;
+  deletedAt: number | null;
 };
 
 export type Note = {
@@ -58,6 +59,21 @@ export type Note = {
   color: string | null;
   createdAt: number;
   updatedAt: number;
+  deletedAt: number | null;
+};
+
+export type Session = {
+  notebookId: string | null;
+  noteId: string | null;
+  pageIndex: number;
+  cursor: number;
+};
+
+export const DEFAULT_SESSION: Session = {
+  notebookId: null,
+  noteId: null,
+  pageIndex: 0,
+  cursor: 0,
 };
 
 export type Prefs = {
@@ -74,6 +90,10 @@ export type Prefs = {
   showRuler: boolean;
   customThemes: CustomTheme[];
   plugins: QuirePlugin[];
+  typewriter: boolean;
+  wordGoal: number;
+  wordsToday: number;
+  wordsDate: string;
 };
 
 export const DEFAULT_PREFS: Prefs = {
@@ -90,4 +110,8 @@ export const DEFAULT_PREFS: Prefs = {
   showRuler: true,
   customThemes: [],
   plugins: [],
+  typewriter: true,
+  wordGoal: 500,
+  wordsToday: 0,
+  wordsDate: "",
 };

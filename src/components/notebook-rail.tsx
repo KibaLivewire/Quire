@@ -342,7 +342,7 @@ export function NotebookRail({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {deleting?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This folder, folders inside it, and every page they hold will be removed from this device.
+              This folder, folders inside it, and every page they hold will sit in Trash for 30 days.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

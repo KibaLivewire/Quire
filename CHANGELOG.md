@@ -1,3 +1,17 @@
+# Quire 1.5.0
+
+Released 13 September 2026.
+
+A quieter desk you can trust.
+
+- Opens on the last page, last sentence, and last zoom
+- Deleted pages and folders wait in Trash for 30 days, then restore or let them go
+- File → Backup desk saves every notebook as a zip; Restore desk puts them back
+- Ctrl+F finds on this page; Replace is one click away
+- Focus hides the shelf and tools. Optional typewriter scroll. Optional daily word aim in the corner — no streaks
+
+---
+
 # Quire 1.4.0
 
 Released 13 September 2026.

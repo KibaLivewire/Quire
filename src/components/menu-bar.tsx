@@ -20,6 +20,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { buildBackup, readBackupFile, saveBackup } from "@/lib/backup";
 import { appVersion, checkForUpdates } from "@/lib/desktop";
 import { runEditorCommand } from "@/lib/editor-commands";
 import {
@@ -30,10 +31,12 @@ import {
   exportRtf,
   exportText,
 } from "@/lib/export-note";
+import { openFindBar } from "@/lib/find";
 import { importDocument, OPEN_ACCEPT } from "@/lib/import-note";
 import { notePages } from "@/lib/pages";
 import { openPrintPreview } from "@/lib/print";
 import { useNotebookStore } from "@/lib/store";
+import { TrashPanel } from "@/components/trash-panel";
 
 function currentPage() {
   const { notes, activeNoteId } = useNotebookStore.getState();
@@ -47,13 +50,16 @@ function currentPage() {
 
 export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const restoreRef = useRef<HTMLInputElement>(null);
+  const replaceDesk = useNotebookStore((s) => s.replaceDesk);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const createNote = useNotebookStore((s) => s.createNote);
   const updateNote = useNotebookStore((s) => s.updateNote);
   const prefs = useNotebookStore((s) => s.prefs);
   const setPrefs = useNotebookStore((s) => s.setPrefs);
   const setFocusMode = useNotebookStore((s) => s.setFocusMode);
   const focusMode = useNotebookStore((s) => s.focusMode);
-  const [aboutOpen, setAboutOpen] = useState(false);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -71,6 +77,14 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       if (key === "p") {
         event.preventDefault();
         openPrintPreview();
+      }
+      if (key === "f") {
+        event.preventDefault();
+        openFindBar(false);
+      }
+      if (key === "h") {
+        event.preventDefault();
+        openFindBar(true);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -127,6 +141,24 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             event.target.value = "";
           }}
         />
+        <input
+          ref={restoreRef}
+          type="file"
+          accept=".zip,.json,application/zip,application/json"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (!file) return;
+            void readBackupFile(file)
+              .then((payload) => {
+                if (!window.confirm("Replace everything on this desk with the backup?")) return;
+                replaceDesk(payload);
+                toast("Desk restored from backup");
+              })
+              .catch((error) => toast.error(error instanceof Error ? error.message : "Could not restore that backup."));
+          }}
+        />
         <Menu label="File">
           <DropdownMenuItem onSelect={() => createNote()}>
             New page <Shortcut>Ctrl+N</Shortcut>
@@ -151,6 +183,20 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           <DropdownMenuItem onSelect={() => openPrintPreview()}>
             Print preview… <Shortcut>Ctrl+P</Shortcut>
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={() => {
+              const state = useNotebookStore.getState();
+              void saveBackup(buildBackup(state.notebooks, state.notes, state.prefs)).then(
+                () => toast("Backup saved"),
+                () => toast.error("Could not save the backup."),
+              );
+            }}
+          >
+            Backup desk…
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => restoreRef.current?.click()}>Restore desk…</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setTrashOpen(true)}>Trash…</DropdownMenuItem>
         </Menu>
         <Menu label="Edit">
           <DropdownMenuItem onSelect={() => runEditorCommand("undo")}>
@@ -167,6 +213,13 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             Select all <Shortcut>Ctrl+A</Shortcut>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => openFindBar(false)}>
+            Find on this page… <Shortcut>Ctrl+F</Shortcut>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => openFindBar(true)}>
+            Replace… <Shortcut>Ctrl+H</Shortcut>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => runEditorCommand("bold")}>Bold</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => runEditorCommand("italic")}>Italic</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => runEditorCommand("underline")}>Underline</DropdownMenuItem>
@@ -180,6 +233,12 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem checked={focusMode} onCheckedChange={setFocusMode}>
             Focus
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={prefs.typewriter !== false}
+            onCheckedChange={(checked) => setPrefs({ typewriter: checked })}
+          >
+            Typewriter scroll
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => setPrefs({ zoom: Math.min(1.6, Math.round((prefs.zoom + 0.1) * 10) / 10) })}>
@@ -217,12 +276,13 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             </DialogDescription>
           </DialogHeader>
           <ul className="space-y-1 text-sm text-ink-muted">
-            <li>Ctrl+N new page · Ctrl+O open · Ctrl+P print</li>
-            <li>Ctrl+Z undo · Ctrl+Y redo</li>
-            <li>View → Ruler shows width and height in inches</li>
+            <li>Ctrl+N new page · Ctrl+O open · Ctrl+F find · Ctrl+P print</li>
+            <li>Ctrl+Z undo · Esc leaves Focus</li>
+            <li>File → Backup desk keeps every notebook on this computer</li>
           </ul>
         </DialogContent>
       </Dialog>
+      <TrashPanel open={trashOpen} onOpenChange={setTrashOpen} />
     </>
   );
 }

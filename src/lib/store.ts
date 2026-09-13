@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 import { createSeed } from "./seed";
-import { NOTEBOOK_HUES, DEFAULT_PREFS, type Note, type Notebook, type NotebookHue, type Prefs } from "./types";
+import { NOTEBOOK_HUES, DEFAULT_PREFS, DEFAULT_SESSION, type Note, type Notebook, type NotebookHue, type Prefs, type Session } from "./types";
 import { notePages } from "./pages";
-import { descendantIds, isDescendant } from "./folders";
+import { descendantIds, isAlive, isDescendant } from "./folders";
 
 const DB_NAME = "quire";
 const STORE_NAME = "kv";
@@ -15,7 +15,15 @@ type PersistedSlice = {
   activeNoteId: string | null;
   initialized: boolean;
   prefs: Prefs;
+  session: Session;
 };
+
+const TRASH_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function todayKey(stamp = Date.now()) {
+  const date = new Date(stamp);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 
 export type NotebookState = {
   notebooks: Notebook[];
@@ -26,9 +34,12 @@ export type NotebookState = {
   hasHydrated: boolean;
   focusMode: boolean;
   prefs: Prefs;
+  session: Session;
   completeHydration: () => void;
   setFocusMode: (value: boolean) => void;
   setPrefs: (patch: Partial<Prefs>) => void;
+  setSession: (patch: Partial<Session>) => void;
+  recordWords: (added: number) => void;
   setActiveNotebook: (id: string) => void;
   setActiveNote: (id: string | null) => void;
   createNotebook: (name: string, parentId?: string | null) => string;
@@ -36,15 +47,20 @@ export type NotebookState = {
   colorNotebook: (id: string, color: string) => void;
   moveNotebook: (id: string, parentId: string | null) => void;
   deleteNotebook: (id: string) => void;
+  restoreNotebook: (id: string) => void;
   createNote: (notebookId?: string) => string;
   updateNote: (id: string, patch: Partial<Pick<Note, "title" | "content" | "pinned" | "notebookId" | "pages" | "color">>) => void;
   updateNotePage: (id: string, pageIndex: number, html: string) => void;
   insertNotePage: (id: string, atIndex: number, html?: string) => number;
   setNotePages: (id: string, pages: string[], content?: string) => void;
   deleteNote: (id: string) => void;
+  restoreNote: (id: string) => void;
+  purgeForever: (kind: "note" | "folder", id: string) => void;
+  emptyTrash: () => void;
   duplicateNote: (id: string) => string | null;
   togglePin: (id: string) => void;
   moveNote: (id: string, notebookId: string) => void;
+  replaceDesk: (payload: { notebooks: Notebook[]; notes: Note[]; prefs?: Partial<Prefs> }) => void;
 };
 
 function openDb(): Promise<IDBDatabase> {
@@ -106,7 +122,7 @@ function nextHue(existing: Notebook[]): NotebookHue {
 
 function migrateNote(note: Note): Note {
   const pages = notePages(note);
-  return { ...note, pages, content: pages.join(""), color: note.color ?? null };
+  return { ...note, pages, content: pages.join(""), color: note.color ?? null, deletedAt: note.deletedAt ?? null };
 }
 
 function migrateNotebook(notebook: Notebook): Notebook {
@@ -114,6 +130,16 @@ function migrateNotebook(notebook: Notebook): Notebook {
     ...notebook,
     parentId: notebook.parentId ?? null,
     color: notebook.color ?? null,
+    deletedAt: notebook.deletedAt ?? null,
+  };
+}
+
+function purgeExpired(notebooks: Notebook[], notes: Note[]) {
+  const cutoff = Date.now() - TRASH_MS;
+  const deadFolders = new Set(notebooks.filter((nb) => nb.deletedAt && nb.deletedAt < cutoff).map((nb) => nb.id));
+  return {
+    notebooks: notebooks.filter((nb) => !deadFolders.has(nb.id)),
+    notes: notes.filter((note) => !(note.deletedAt && note.deletedAt < cutoff) && !deadFolders.has(note.notebookId)),
   };
 }
 
@@ -129,18 +155,36 @@ export const useNotebookStore = create<NotebookState>()(
       hasHydrated: true,
       focusMode: false,
       prefs: { ...DEFAULT_PREFS },
+      session: { ...DEFAULT_SESSION },
 
       completeHydration: () =>
         set((state) => {
           if (!state.initialized) {
             const seed = createSeed();
-            return { ...seed, initialized: true, hasHydrated: true, prefs: { ...DEFAULT_PREFS } };
+            return { ...seed, initialized: true, hasHydrated: true, prefs: { ...DEFAULT_PREFS }, session: { ...DEFAULT_SESSION } };
           }
+          const notes = state.notes.map(migrateNote);
+          const notebooks = state.notebooks.map(migrateNotebook);
+          const purged = purgeExpired(notebooks, notes);
+          const today = todayKey();
+          const prefs = { ...DEFAULT_PREFS, ...state.prefs };
+          if (prefs.wordsDate !== today) {
+            prefs.wordsToday = 0;
+            prefs.wordsDate = today;
+          }
+          const session = { ...DEFAULT_SESSION, ...state.session };
+          const noteOk = purged.notes.some((note) => note.id === (session.noteId || state.activeNoteId) && isAlive(note));
+          const notebookOk = purged.notebooks.some((nb) => nb.id === (session.notebookId || state.activeNotebookId) && isAlive(nb));
           return {
             hasHydrated: true,
-            notes: state.notes.map(migrateNote),
-            notebooks: state.notebooks.map(migrateNotebook),
-            prefs: { ...DEFAULT_PREFS, ...state.prefs },
+            notes: purged.notes,
+            notebooks: purged.notebooks,
+            prefs,
+            session,
+            activeNoteId: noteOk ? (session.noteId || state.activeNoteId) : purged.notes.find(isAlive)?.id ?? null,
+            activeNotebookId: notebookOk
+              ? (session.notebookId || state.activeNotebookId)
+              : purged.notebooks.find(isAlive)?.id ?? null,
           };
         }),
 
@@ -151,8 +195,28 @@ export const useNotebookStore = create<NotebookState>()(
           prefs: { ...state.prefs, ...patch },
         })),
 
+      setSession: (patch) =>
+        set((state) => ({
+          session: { ...state.session, ...patch },
+        })),
+
+      recordWords: (added) => {
+        if (added <= 0) return;
+        const today = todayKey();
+        set((state) => {
+          const same = state.prefs.wordsDate === today;
+          return {
+            prefs: {
+              ...state.prefs,
+              wordsDate: today,
+              wordsToday: (same ? state.prefs.wordsToday : 0) + added,
+            },
+          };
+        });
+      },
+
       setActiveNotebook: (id) => {
-        const notes = get().notes.filter((note) => note.notebookId === id);
+        const notes = get().notes.filter((note) => note.notebookId === id && isAlive(note));
         const nextNote =
           notes.find((note) => note.id === get().activeNoteId) ??
           [...notes].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt)[0];
@@ -160,10 +224,15 @@ export const useNotebookStore = create<NotebookState>()(
           activeNotebookId: id,
           activeNoteId: nextNote?.id ?? null,
           focusMode: false,
+          session: { ...get().session, notebookId: id, noteId: nextNote?.id ?? null, pageIndex: 0, cursor: 0 },
         });
       },
 
-      setActiveNote: (id) => set({ activeNoteId: id }),
+      setActiveNote: (id) =>
+        set((state) => ({
+          activeNoteId: id,
+          session: { ...state.session, noteId: id, pageIndex: id === state.session.noteId ? state.session.pageIndex : 0 },
+        })),
 
       createNotebook: (name, parentId = null) => {
         const id = crypto.randomUUID();
@@ -175,6 +244,7 @@ export const useNotebookStore = create<NotebookState>()(
           parentId: parent,
           color: null,
           createdAt: Date.now(),
+          deletedAt: null,
         };
         set((state) => ({
           notebooks: [...state.notebooks, notebook],
@@ -212,22 +282,25 @@ export const useNotebookStore = create<NotebookState>()(
       deleteNotebook: (id) => {
         const { notebooks, notes, activeNotebookId } = get();
         const remove = new Set(descendantIds(notebooks, id));
-        let nextNotebooks = notebooks.filter((nb) => !remove.has(nb.id));
-        if (nextNotebooks.length === 0) {
-          nextNotebooks = [
-            {
-              id: crypto.randomUUID(),
-              name: "Pages",
-              hue: "forest",
-              parentId: null,
-              color: "#3d6b4f",
-              createdAt: Date.now(),
-            },
-          ];
+        const now = Date.now();
+        const nextNotebooks = notebooks.map((nb) => (remove.has(nb.id) ? { ...nb, deletedAt: now } : nb));
+        const nextNotes = notes.map((note) => (remove.has(note.notebookId) ? { ...note, deletedAt: now } : note));
+        let live = nextNotebooks.filter(isAlive);
+        if (live.length === 0) {
+          const fresh: Notebook = {
+            id: crypto.randomUUID(),
+            name: "Pages",
+            hue: "forest",
+            parentId: null,
+            color: "#3d6b4f",
+            createdAt: Date.now(),
+            deletedAt: null,
+          };
+          nextNotebooks.push(fresh);
+          live = [fresh];
         }
-        const nextActive = remove.has(activeNotebookId || "") ? nextNotebooks[0].id : activeNotebookId;
-        const nextNotes = notes.filter((note) => !remove.has(note.notebookId));
-        const inNotebook = nextNotes.filter((note) => note.notebookId === nextActive);
+        const nextActive = remove.has(activeNotebookId || "") ? live[0].id : activeNotebookId;
+        const inNotebook = nextNotes.filter((note) => note.notebookId === nextActive && isAlive(note));
         set({
           notebooks: nextNotebooks,
           notes: nextNotes,
@@ -236,9 +309,26 @@ export const useNotebookStore = create<NotebookState>()(
         });
       },
 
+      restoreNotebook: (id) => {
+        const notebooks = get().notebooks;
+        const chain = new Set<string>();
+        let current = notebooks.find((nb) => nb.id === id) ?? null;
+        while (current) {
+          chain.add(current.id);
+          current = notebooks.find((nb) => nb.id === current?.parentId) ?? null;
+        }
+        const kids = descendantIds(notebooks, id);
+        kids.forEach((kid) => chain.add(kid));
+        set((state) => ({
+          notebooks: state.notebooks.map((nb) => (chain.has(nb.id) ? { ...nb, deletedAt: null } : nb)),
+          notes: state.notes.map((note) => (chain.has(note.notebookId) ? { ...note, deletedAt: null } : note)),
+          activeNotebookId: id,
+        }));
+      },
+
       createNote: (notebookId) => {
         const id = crypto.randomUUID();
-        const target = notebookId ?? get().activeNotebookId ?? get().notebooks[0]?.id;
+        const target = notebookId ?? get().activeNotebookId ?? get().notebooks.find(isAlive)?.id;
         if (!target) return id;
         const now = Date.now();
         const note: Note = {
@@ -251,6 +341,7 @@ export const useNotebookStore = create<NotebookState>()(
           color: null,
           createdAt: now,
           updatedAt: now,
+          deletedAt: null,
         };
         set((state) => ({
           notes: [note, ...state.notes],
@@ -311,15 +402,53 @@ export const useNotebookStore = create<NotebookState>()(
       deleteNote: (id) => {
         const { notes, activeNoteId } = get();
         const target = notes.find((note) => note.id === id);
-        const remaining = notes.filter((note) => note.id !== id);
+        const now = Date.now();
+        const nextNotes = notes.map((note) => (note.id === id ? { ...note, deletedAt: now } : note));
         let nextActive = activeNoteId;
         if (activeNoteId === id) {
-          const siblings = remaining
-            .filter((note) => note.notebookId === target?.notebookId)
+          const siblings = nextNotes
+            .filter((note) => note.notebookId === target?.notebookId && isAlive(note))
             .sort((a, b) => b.updatedAt - a.updatedAt);
           nextActive = siblings[0]?.id ?? null;
         }
-        set({ notes: remaining, activeNoteId: nextActive });
+        set({ notes: nextNotes, activeNoteId: nextActive });
+      },
+
+      restoreNote: (id) => {
+        const note = get().notes.find((item) => item.id === id);
+        if (!note) return;
+        const notebooks = get().notebooks;
+        const chain = new Set<string>();
+        let current = notebooks.find((nb) => nb.id === note.notebookId) ?? null;
+        while (current) {
+          chain.add(current.id);
+          current = notebooks.find((nb) => nb.id === current?.parentId) ?? null;
+        }
+        set((state) => ({
+          notes: state.notes.map((item) => (item.id === id ? { ...item, deletedAt: null } : item)),
+          notebooks: state.notebooks.map((nb) => (chain.has(nb.id) ? { ...nb, deletedAt: null } : nb)),
+          activeNotebookId: note.notebookId,
+          activeNoteId: id,
+        }));
+      },
+
+      purgeForever: (kind, id) => {
+        if (kind === "folder") {
+          const remove = new Set(descendantIds(get().notebooks, id));
+          set((state) => ({
+            notebooks: state.notebooks.filter((nb) => !remove.has(nb.id)),
+            notes: state.notes.filter((note) => !remove.has(note.notebookId)),
+          }));
+          return;
+        }
+        set((state) => ({ notes: state.notes.filter((note) => note.id !== id) }));
+      },
+
+      emptyTrash: () => {
+        set((state) => ({
+          notebooks: state.notebooks.filter(isAlive),
+          notes: state.notes.filter(isAlive),
+        }));
       },
 
       duplicateNote: (id) => {
@@ -335,6 +464,7 @@ export const useNotebookStore = create<NotebookState>()(
           pinned: false,
           createdAt: now,
           updatedAt: now,
+          deletedAt: null,
           pages,
           content: pages.join(""),
         };
@@ -362,6 +492,17 @@ export const useNotebookStore = create<NotebookState>()(
           activeNoteId: id,
         }));
       },
+
+      replaceDesk: (payload) => {
+        set({
+          notebooks: payload.notebooks.map(migrateNotebook),
+          notes: payload.notes.map(migrateNote),
+          prefs: payload.prefs ? { ...DEFAULT_PREFS, ...get().prefs, ...payload.prefs } : get().prefs,
+          activeNotebookId: payload.notebooks.find(isAlive)?.id ?? null,
+          activeNoteId: payload.notes.find(isAlive)?.id ?? null,
+          session: { ...DEFAULT_SESSION },
+        });
+      },
     }),
     {
       name: "quire-v1",
@@ -374,6 +515,7 @@ export const useNotebookStore = create<NotebookState>()(
         activeNoteId: state.activeNoteId,
         initialized: state.initialized,
         prefs: state.prefs,
+        session: state.session,
       }),
       onRehydrateStorage: () => (state) => {
         state?.completeHydration();
@@ -386,6 +528,7 @@ export const useNotebookStore = create<NotebookState>()(
           notes: (from.notes ?? current.notes).map(migrateNote),
           notebooks: (from.notebooks ?? current.notebooks).map(migrateNotebook),
           prefs: { ...DEFAULT_PREFS, ...from.prefs },
+          session: { ...DEFAULT_SESSION, ...from.session },
         };
       },
     },

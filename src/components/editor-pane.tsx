@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import {
   ArrowLeft,
@@ -17,6 +17,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { FindBar } from "@/components/find-bar";
 import { RichEditor } from "@/components/rich-editor";
 import {
   AlertDialog,
@@ -66,6 +67,8 @@ export function EditorPane({
   const updateNote = useNotebookStore((s) => s.updateNote);
   const updateNotePage = useNotebookStore((s) => s.updateNotePage);
   const deleteNote = useNotebookStore((s) => s.deleteNote);
+  const recordWords = useNotebookStore((s) => s.recordWords);
+  const setSession = useNotebookStore((s) => s.setSession);
   const duplicateNote = useNotebookStore((s) => s.duplicateNote);
   const togglePin = useNotebookStore((s) => s.togglePin);
   const moveNote = useNotebookStore((s) => s.moveNote);
@@ -75,12 +78,21 @@ export function EditorPane({
   const [pageIndex, setPageIndex] = useState(0);
   const [saveState, setSaveState] = useState<"saved" | "saving">("saved");
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const lastWords = useRef(0);
 
   useEffect(() => {
     setTitle(note?.title ?? "");
-    setPageIndex(0);
     setSaveState("saved");
+    const session = useNotebookStore.getState().session;
+    if (note && session.noteId === note.id) setPageIndex(session.pageIndex || 0);
+    else setPageIndex(0);
+    lastWords.current = note ? wordCount(notePages(note)[session.noteId === note.id ? session.pageIndex || 0 : 0] || "") : 0;
   }, [note?.id]);
+
+  useEffect(() => {
+    if (!note) return;
+    setSession({ noteId: note.id, notebookId: note.notebookId, pageIndex });
+  }, [note?.id, note?.notebookId, pageIndex, setSession]);
 
   const save = useMemo(
     () =>
@@ -134,7 +146,8 @@ export function EditorPane({
   const zoomPct = Math.round(prefs.zoom * 100);
 
   return (
-    <section className={cn("flex h-full min-h-0 flex-col bg-paper quire-page", className)}>
+    <section className={cn("relative flex h-full min-h-0 flex-col bg-paper quire-page", className)}>
+      <FindBar />
       <header className="flex items-center gap-1 border-b border-rule/80 bg-paper-raised/80 px-2 py-1.5">
         {onBack ? (
           <Button variant="ghost" size="icon" className="md:hidden" aria-label="Back to pages" onClick={onBack}>
@@ -144,7 +157,12 @@ export function EditorPane({
         <p className="min-w-0 flex-1 truncate px-2 text-sm text-ink-muted">
           {saveState === "saving" ? "Saving" : "Saved on this device"}
         </p>
-        {onOpenSettings ? (
+        {prefs.wordGoal > 0 ? (
+          <span className="hidden px-2 text-xs text-ink-subtle tabular-nums sm:inline">
+            {prefs.wordsToday} / {prefs.wordGoal}
+          </span>
+        ) : null}
+        {focusMode ? null : onOpenSettings ? (
           <Button variant="ghost" size="icon-sm" aria-label="Desk settings" onClick={onOpenSettings}>
             <Settings />
           </Button>
@@ -158,6 +176,7 @@ export function EditorPane({
         >
           {focusMode ? <Minimize2 /> : <Maximize2 />}
         </Button>
+        {focusMode ? null : (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" aria-label="Page actions">
@@ -179,7 +198,7 @@ export function EditorPane({
                 Move to
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                {notebooks.map((nb) => (
+                {notebooks.filter((nb) => !nb.deletedAt).map((nb) => (
                   <DropdownMenuItem
                     key={nb.id}
                     disabled={nb.id === note.notebookId}
@@ -229,6 +248,7 @@ export function EditorPane({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        )}
       </header>
 
       <RichEditor
@@ -243,6 +263,9 @@ export function EditorPane({
           save(note.id, { title: next.trim() || "Untitled" });
         }}
         onChange={(next, index) => {
+          const nextCount = wordCount(next);
+          if (nextCount > lastWords.current) recordWords(nextCount - lastWords.current);
+          lastWords.current = nextCount;
           setSaveState("saving");
           savePage(note.id, index, next);
         }}
@@ -294,9 +317,9 @@ export function EditorPane({
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this page?</AlertDialogTitle>
+            <AlertDialogTitle>Move this page to trash?</AlertDialogTitle>
             <AlertDialogDescription>
-              “{title || "Untitled"}” will be removed from this device.
+              “{title || "Untitled"}” will sit in Trash for 30 days, then be gone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -305,11 +328,11 @@ export function EditorPane({
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 deleteNote(note.id);
-                toast("Page deleted");
+                toast("Moved to trash");
                 onBack?.();
               }}
             >
-              Delete
+              Move to trash
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

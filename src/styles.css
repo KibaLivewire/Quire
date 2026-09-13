@@ -967,8 +967,9 @@ html[data-theme="leather"] {
   overflow: hidden;
 }
 
-.paper-body.is-oversized {
-  overflow-y: auto;
+.paper-body.is-typewriter {
+  padding-top: 36vh;
+  padding-bottom: 42vh;
 }
 
 .border-swatch {

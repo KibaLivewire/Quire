@@ -79,7 +79,9 @@ export function AppShell() {
   return (
     <TooltipProvider>
       <div className="flex h-dvh flex-col overflow-hidden bg-paper text-ink">
-        <MenuBar onOpenSettings={() => setSettingsOpen(true)} />
+        <div className={cn(focusMode && "hidden")}>
+          <MenuBar onOpenSettings={() => setSettingsOpen(true)} />
+        </div>
         <div className="flex min-h-0 flex-1 overflow-hidden">
         <NotebookRail
           className={cn("hidden w-52 shrink-0 md:flex", focusMode && "md:hidden")}

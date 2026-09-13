@@ -8,11 +8,11 @@ import { Button } from "@/components/ui/button";
 import { editorExtensions } from "@/lib/editor-extensions";
 import { collectImageFiles, insertImages } from "@/lib/image";
 import { isHttpUrl, openExternal } from "@/lib/desktop";
-import { registerEditorCommands } from "@/lib/editor-commands";
+import { registerEditorCommands, setActiveEditor } from "@/lib/editor-commands";
 import { isPageEmpty, notePages, splitOverflow } from "@/lib/pages";
 import { useNotebookStore } from "@/lib/store";
 import type { Note } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, debounce } from "@/lib/utils";
 
 export function RichEditor({
   note,
@@ -37,6 +37,7 @@ export function RichEditor({
   const [oversized, setOversized] = useState(false);
 
   const prefs = useNotebookStore((s) => s.prefs);
+  const focusMode = useNotebookStore((s) => s.focusMode);
   const insertNotePage = useNotebookStore((s) => s.insertNotePage);
   const setNotePages = useNotebookStore((s) => s.setNotePages);
   const pages = notePages(note);
@@ -92,6 +93,48 @@ export function RichEditor({
   });
 
   editorRef.current = editor;
+
+  useEffect(() => {
+    setActiveEditor(editor);
+    return () => setActiveEditor(null);
+  }, [editor]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const session = useNotebookStore.getState().session;
+    if (session.noteId === note.id && session.pageIndex === safeIndex && session.cursor > 0) {
+      const max = editor.state.doc.content.size;
+      editor.commands.setTextSelection(Math.min(session.cursor, Math.max(1, max)));
+    }
+  }, [editor, note.id, safeIndex]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const current = editor;
+    const saveCursor = debounce(() => {
+      useNotebookStore.getState().setSession({
+        noteId: note.id,
+        notebookId: note.notebookId,
+        pageIndex: safeIndex,
+        cursor: current.state.selection.from,
+      });
+    }, 350);
+    function typewriter() {
+      const state = useNotebookStore.getState();
+      if (!state.focusMode || !state.prefs.typewriter) return;
+      const scroller = sheetRef.current?.closest(".overflow-auto") as HTMLElement | null;
+      if (!scroller) return;
+      const coords = current.view.coordsAtPos(current.state.selection.from);
+      const box = scroller.getBoundingClientRect();
+      scroller.scrollTop += coords.top - box.top - box.height * 0.42;
+    }
+    current.on("selectionUpdate", saveCursor);
+    current.on("selectionUpdate", typewriter);
+    return () => {
+      current.off("selectionUpdate", saveCursor);
+      current.off("selectionUpdate", typewriter);
+    };
+  }, [editor, note.id, note.notebookId, safeIndex]);
 
   useEffect(() => {
     if (!editor) return;
@@ -223,9 +266,9 @@ export function RichEditor({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {editor ? (
+      {editor && !focusMode ? (
         <EditorToolbar editor={editor} />
-      ) : (
+      ) : focusMode ? null : (
         <div className="h-12 border-b border-rule bg-paper-raised" />
       )}
       <div className="min-h-0 flex-1 overflow-auto">
@@ -262,7 +305,11 @@ export function RichEditor({
           >
             <div
               ref={sheetRef}
-              className={cn("paper-body px-6 py-6 md:px-8", oversized && "is-oversized")}
+              className={cn(
+                "paper-body px-6 py-6 md:px-8",
+                oversized && "is-oversized",
+                focusMode && prefs.typewriter && "is-typewriter",
+              )}
             >
               {editor ? (
                 <EditorContent editor={editor} />

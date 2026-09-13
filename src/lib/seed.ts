@@ -7,15 +7,15 @@ function daysAgo(days: number, hours = 0): number {
   return NOW - days * DAY - hours * 60 * 60 * 1000;
 }
 
-function note(partial: Omit<Note, "pages" | "content" | "color"> & { content: string; color?: string | null }): Note {
-  return { ...partial, pages: [partial.content], color: partial.color ?? null };
+function note(partial: Omit<Note, "pages" | "content" | "color" | "deletedAt"> & { content: string; color?: string | null }): Note {
+  return { ...partial, pages: [partial.content], color: partial.color ?? null, deletedAt: null };
 }
 
 export const SEED_NOTEBOOKS: Notebook[] = [
-  { id: "nb_personal", name: "Personal", hue: "forest", parentId: null, color: "#3d6b4f", createdAt: daysAgo(14) },
-  { id: "nb_letters", name: "Letters", hue: "wine", parentId: "nb_personal", color: "#8a3d45", createdAt: daysAgo(12) },
-  { id: "nb_reading", name: "Reading", hue: "umber", parentId: null, color: "#8a5a32", createdAt: daysAgo(10) },
-  { id: "nb_work", name: "Work", hue: "slate", parentId: null, color: "#4f6f8f", createdAt: daysAgo(8) },
+  { id: "nb_personal", name: "Personal", hue: "forest", parentId: null, color: "#3d6b4f", createdAt: daysAgo(14), deletedAt: null },
+  { id: "nb_letters", name: "Letters", hue: "wine", parentId: "nb_personal", color: "#8a3d45", createdAt: daysAgo(12), deletedAt: null },
+  { id: "nb_reading", name: "Reading", hue: "umber", parentId: null, color: "#8a5a32", createdAt: daysAgo(10), deletedAt: null },
+  { id: "nb_work", name: "Work", hue: "slate", parentId: null, color: "#4f6f8f", createdAt: daysAgo(8), deletedAt: null },
 ];
 
 export const SEED_NOTES: Note[] = [

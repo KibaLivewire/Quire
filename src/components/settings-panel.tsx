@@ -174,6 +174,31 @@ export function SettingsPanel({
             checked={prefs.suggestions}
             onCheckedChange={(checked) => setPrefs({ suggestions: checked })}
           />
+          <ToggleRow
+            label="Typewriter scroll"
+            hint="In Focus, keep the line you are on near the middle of the page"
+            checked={prefs.typewriter !== false}
+            onCheckedChange={(checked) => setPrefs({ typewriter: checked })}
+          />
+          <div>
+            <p className="text-sm font-medium text-ink">Daily word aim</p>
+            <p className="text-xs text-ink-muted">A quiet count in the corner. No streaks.</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[0, 300, 500, 750, 1000].map((goal) => (
+                <button
+                  key={goal}
+                  type="button"
+                  onClick={() => setPrefs({ wordGoal: goal })}
+                  className={cn(
+                    "rounded-full px-2.5 py-1 text-xs",
+                    (prefs.wordGoal || 0) === goal ? "bg-forest text-forest-fg" : "bg-paper-inset text-ink-muted",
+                  )}
+                >
+                  {goal === 0 ? "Off" : goal}
+                </button>
+              ))}
+            </div>
+          </div>
         </section>
 
         <section className="px-1 pb-4">

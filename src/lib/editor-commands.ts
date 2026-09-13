@@ -1,3 +1,5 @@
+import type { Editor } from "@tiptap/react";
+
 export type EditorCommand =
   | "undo"
   | "redo"
@@ -12,6 +14,15 @@ export type EditorCommand =
 type Handler = (command: EditorCommand) => boolean;
 
 const handlers = new Set<Handler>();
+let activeEditor: Editor | null = null;
+
+export function setActiveEditor(editor: Editor | null) {
+  activeEditor = editor;
+}
+
+export function getActiveEditor() {
+  return activeEditor;
+}
 
 export function registerEditorCommands(handler: Handler) {
   handlers.add(handler);

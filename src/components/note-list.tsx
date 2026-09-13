@@ -19,6 +19,7 @@ import {
   formatBytes,
   inDateRange,
   inSizeRange,
+  isAlive,
   itemColor,
   noteBytes,
   type DateFilter,
@@ -83,7 +84,7 @@ export function NoteList({
 
   const filteredNotes = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const pool = searching ? notes : notes.filter((note) => note.notebookId === activeNotebookId);
+    const pool = searching ? notes.filter(isAlive) : notes.filter((note) => note.notebookId === activeNotebookId && isAlive(note));
     const list = pool.filter((note) => {
       const bytes = noteBytes(note);
       if (!inDateRange(note.createdAt, created)) return false;
@@ -109,7 +110,7 @@ export function NoteList({
 
   const filteredFolders = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const pool = searching ? notebooks : nested;
+    const pool = searching ? notebooks.filter(isAlive) : nested;
     return pool
       .filter((folder) => {
         const bytes = folderBytes(notebooks, notes, folder.id);
