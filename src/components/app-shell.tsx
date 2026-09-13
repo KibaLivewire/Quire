@@ -7,18 +7,20 @@ import { NoteList } from "@/components/note-list";
 import { NotebookRail } from "@/components/notebook-rail";
 import { PrintPreview } from "@/components/print-preview";
 import { QuillPanel } from "@/components/quill-panel";
+import { RecipeChooserHost, openRecipeChooser } from "@/components/recipe-chooser";
 import { SettingsPanel } from "@/components/settings-panel";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { startAmbient, stopAmbient, toggleAmbientMute } from "@/lib/ambient";
 import { applyTheme } from "@/lib/theme";
+import { stopSharedReading } from "@/components/read-back-chip";
+import { getActiveEditor } from "@/lib/editor-commands";
 import { useNotebookStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 export function AppShell() {
   const focusMode = useNotebookStore((s) => s.focusMode);
   const setFocusMode = useNotebookStore((s) => s.setFocusMode);
-  const createNote = useNotebookStore((s) => s.createNote);
   const prefs = useNotebookStore((s) => s.prefs);
   const setPrefs = useNotebookStore((s) => s.setPrefs);
   const hasHydrated = useNotebookStore((s) => s.hasHydrated);
@@ -46,6 +48,25 @@ export function AppShell() {
   }, [prefs.theme, prefs.customThemes]);
 
   useEffect(() => {
+    document.documentElement.dataset.inkOnly = prefs.inkOnly ? "true" : "false";
+    document.documentElement.dataset.focusMode = focusMode ? "true" : "false";
+    if (prefs.inkOnly) {
+      const editor = getActiveEditor();
+      if (editor?.isActive("image")) {
+        editor.commands.setTextSelection(editor.state.selection.from);
+      }
+    }
+  }, [prefs.inkOnly, focusMode]);
+
+  useEffect(() => {
+    function onQuit() {
+      stopSharedReading();
+    }
+    window.addEventListener("beforeunload", onQuit);
+    return () => window.removeEventListener("beforeunload", onQuit);
+  }, []);
+
+  useEffect(() => {
     const id = "quire-plugin-css";
     const css = (prefs.plugins ?? []).map((plugin) => plugin.css || "").join("\n");
     let el = document.getElementById(id) as HTMLStyleElement | null;
@@ -66,7 +87,7 @@ export function AppShell() {
       const meta = event.metaKey || event.ctrlKey;
       if (meta && event.key.toLowerCase() === "n" && !event.shiftKey) {
         event.preventDefault();
-        createNote();
+        openRecipeChooser({ mode: "create" });
         setMobileList(false);
       }
       if (event.key === "Escape" && useNotebookStore.getState().focusMode) {
@@ -93,7 +114,7 @@ export function AppShell() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [createNote, setFocusMode, setPrefs]);
+  }, [setFocusMode, setPrefs]);
 
   return (
     <TooltipProvider>
@@ -147,6 +168,7 @@ export function AppShell() {
       </Sheet>
 
       <SettingsPanel open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <RecipeChooserHost />
       <PrintPreview />
 
       <Toaster

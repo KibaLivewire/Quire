@@ -1,4 +1,4 @@
-export const WELCOME_VERSION = 2;
+export const WELCOME_VERSION = 3;
 
 export const WELCOME_HTML = `
 <p>Quire is a notebook that lives on this computer. Nothing is uploaded. This page is a field guide — every mark below is a real example of a tool you can use.</p>
@@ -19,6 +19,10 @@ export const WELCOME_HTML = `
 <p>Drop a JPEG, PNG, GIF, or WebP onto the page, or use Insert image. GIFs stay in motion. Drag a picture to place it. Corner handles resize it. Wrap text around it, or set a watermark so writing can sit over it.</p>
 <img src="/welcome-desk.jpg" alt="An open journal and a quill in an inkpot on a cedar table">
 
+<h2>Desk ritual</h2>
+<p>When you start a page, Quire asks <em>What are you writing?</em> — Letter, Journal, Poem, List, or Freewrite. Freewrite is the loose scrap; Letter is a proper sheet. Change recipe anytime from the page menu. Dates stay yours to stamp.</p>
+<p><strong>Ink only</strong> leaves just paper and typing (borders and rulers tuck away). It stacks with Focus; Esc still only leaves Focus. The <strong>Page map</strong> lists headings on this sheet. <strong>Ribbons</strong> pin a spot to return to. <strong>Read back</strong> speaks the page aloud with a voice on this computer.</p>
+
 <h2>Focus, find, and print</h2>
 <p><strong>Focus</strong> (the expand button, or View) hides the shelf so only the page remains. Typewriter scroll keeps the line you are on near the middle. A daily word aim can sit in the corner — a count, not a streak.</p>
 <p><strong>Ctrl+F</strong> finds on this page. <strong>Ctrl+H</strong> replaces. <strong>Ctrl+P</strong> opens print preview as a letter sheet, then prints only that sheet.</p>
@@ -28,7 +32,7 @@ export const WELCOME_HTML = `
 <p>Export as .DOCX, .DOC, .RTF, .TXT, or .PDF from File. Open those same kinds of files from File → Open.</p>
 
 <h2>Quill</h2>
-<p>The feather in the toolbar is <strong>Quill</strong>, a writing aide on this desk. Highlight a sentence and ask him to shorten it, polish it, or fetch a better word. He greets you when Quire opens. Turn him off in Desk if you want the page alone.</p>
+<p>The feather in the toolbar is <strong>Quill</strong>, a local helper on this desk. Highlight a sentence and ask him to shorten it, polish it, or fetch a better word. He greets you when Quire opens. Turn him off in Desk if you want the page alone.</p>
 
 <h2>Sound and first light</h2>
 <p>Wind chimes loop softly after falling leaves carry you onto the desk. Both are on by default. The dial in the bottom corner sets the volume; the speaker mutes. <strong>Ctrl+M</strong> mutes too. Desk settings can silence the chimes or skip the leaves.</p>

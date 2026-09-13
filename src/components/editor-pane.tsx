@@ -45,6 +45,7 @@ import { Slider } from "@/components/ui/slider";
 import { exportDoc, exportDocx, exportHtml, exportMarkdown, exportPdf, exportRtf, exportText } from "@/lib/export-note";
 import { notePages } from "@/lib/pages";
 import { openPrintPreview } from "@/lib/print";
+import { openRecipeChooser } from "@/lib/recipe-chooser";
 import { useNotebookStore } from "@/lib/store";
 import { cn, debounce, plainText, wordCount } from "@/lib/utils";
 
@@ -64,7 +65,6 @@ export function EditorPane({
   const setFocusMode = useNotebookStore((s) => s.setFocusMode);
   const prefs = useNotebookStore((s) => s.prefs);
   const setPrefs = useNotebookStore((s) => s.setPrefs);
-  const createNote = useNotebookStore((s) => s.createNote);
   const updateNote = useNotebookStore((s) => s.updateNote);
   const updateNotePage = useNotebookStore((s) => s.updateNotePage);
   const deleteNote = useNotebookStore((s) => s.deleteNote);
@@ -133,7 +133,7 @@ export function EditorPane({
           <p className="mt-2 max-w-sm text-pretty text-ink-muted">
             Start a page in this notebook, or choose one from the list.
           </p>
-          <Button className="mt-5" onClick={() => createNote()}>
+          <Button className="mt-5" onClick={() => openRecipeChooser({ mode: "create" })}>
             New page
           </Button>
         </div>
@@ -190,6 +190,12 @@ export function EditorPane({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onSelect={() => openRecipeChooser({ mode: "change", noteId: note.id, pageIndex })}
+            >
+              <FileText className="size-4" />
+              Change recipe…
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => togglePin(note.id)}>
               <Pin className="size-4" />
               {note.pinned ? "Unpin" : "Pin"}

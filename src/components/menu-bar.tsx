@@ -36,6 +36,9 @@ import { importDocument, OPEN_ACCEPT } from "@/lib/import-note";
 import { notePages } from "@/lib/pages";
 import { openPrintPreview } from "@/lib/print";
 import { useNotebookStore } from "@/lib/store";
+import { openRecipeChooser } from "@/components/recipe-chooser";
+import { stopSharedReading } from "@/components/read-back-chip";
+import { stopReading } from "@/lib/read-back";
 import { TrashPanel } from "@/components/trash-panel";
 
 function currentPage() {
@@ -60,6 +63,10 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const setPrefs = useNotebookStore((s) => s.setPrefs);
   const setFocusMode = useNotebookStore((s) => s.setFocusMode);
   const focusMode = useNotebookStore((s) => s.focusMode);
+  const pageMapOpen = useNotebookStore((s) => s.pageMapOpen);
+  const setPageMapOpen = useNotebookStore((s) => s.setPageMapOpen);
+  const activeNoteId = useNotebookStore((s) => s.activeNoteId);
+  const session = useNotebookStore((s) => s.session);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -160,8 +167,19 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           }}
         />
         <Menu label="File">
-          <DropdownMenuItem onSelect={() => createNote()}>
+          <DropdownMenuItem onSelect={() => openRecipeChooser({ mode: "create" })}>
             New page <Shortcut>Ctrl+N</Shortcut>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              if (!activeNoteId) {
+                toast.error("Open or start a page first.");
+                return;
+              }
+              openRecipeChooser({ mode: "change", noteId: activeNoteId, pageIndex: session.pageIndex || 0 });
+            }}
+          >
+            Change recipe…
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => fileRef.current?.click()}>
             Open… <Shortcut>Ctrl+O</Shortcut>
@@ -234,6 +252,34 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           <DropdownMenuCheckboxItem checked={focusMode} onCheckedChange={setFocusMode}>
             Focus
           </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={Boolean(prefs.inkOnly)}
+            onCheckedChange={(checked) => setPrefs({ inkOnly: checked })}
+          >
+            Ink only
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={pageMapOpen}
+            onCheckedChange={setPageMapOpen}
+          >
+            Page map
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              window.dispatchEvent(new CustomEvent("quire-read-back-request"));
+            }}
+          >
+            Read back
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              stopReading();
+              stopSharedReading();
+              window.dispatchEvent(new CustomEvent("quire-read-back-stop"));
+            }}
+          >
+            Stop reading
+          </DropdownMenuItem>
           <DropdownMenuCheckboxItem
             checked={prefs.typewriter !== false}
             onCheckedChange={(checked) => setPrefs({ typewriter: checked })}

@@ -24,6 +24,7 @@ import {
   Minus,
   Quote,
   Redo2,
+  ListTree,
   Search,
   SpellCheck,
   Strikethrough,
@@ -35,6 +36,8 @@ import {
 import { toast } from "sonner";
 import { FontPicker } from "@/components/font-picker";
 import { ImageEditor } from "@/components/image-editor";
+import { ReadBackControls } from "@/components/read-back-chip";
+import { RibbonBookmarksControl } from "@/components/ribbon-bookmarks";
 import { fetchSense, WordLookupCard } from "@/components/word-lookup";
 import { checkGrammar, type GrammarIssue } from "@/lib/grammar";
 import { Button } from "@/components/ui/button";
@@ -47,6 +50,7 @@ import { FONT_SIZES, HIGHLIGHTS, INK_COLORS } from "@/lib/fonts";
 import { BORDER_META } from "@/lib/borders";
 import { collectImageFiles, IMAGE_ACCEPT, insertImages, selectedImageSrc } from "@/lib/image";
 import { useNotebookStore } from "@/lib/store";
+import type { Note } from "@/lib/types";
 import type { WordSense } from "@/lib/word-tools";
 import { webSearchUrl } from "@/lib/word-tools";
 import { cn } from "@/lib/utils";
@@ -143,7 +147,15 @@ function selectedText(editor: Editor): string {
   return editor.state.doc.textBetween(from, to, " ").trim();
 }
 
-export function EditorToolbar({ editor }: { editor: Editor }) {
+export function EditorToolbar({
+  editor,
+  note,
+  pageIndex,
+}: {
+  editor: Editor;
+  note: Note;
+  pageIndex: number;
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
@@ -162,6 +174,9 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
   const quillOn = useNotebookStore((s) => s.prefs.quill) !== false;
   const setPrefs = useNotebookStore((s) => s.setPrefs);
   const setQuillOpen = useNotebookStore((s) => s.setQuillOpen);
+  const pageMapOpen = useNotebookStore((s) => s.pageMapOpen);
+  const setPageMapOpen = useNotebookStore((s) => s.setPageMapOpen);
+  const inkOnly = useNotebookStore((s) => s.prefs.inkOnly);
   const savedWord = useRef("");
 
   useEffect(() => {
@@ -871,6 +886,11 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
         <ToolBtn label="Divider" onClick={() => editor.chain().focus().setHorizontalRule().run()}>
           <Minus />
         </ToolBtn>
+        <ToolBtn label="Page map" active={pageMapOpen} onClick={() => setPageMapOpen(!pageMapOpen)}>
+          <ListTree />
+        </ToolBtn>
+        <RibbonBookmarksControl editor={editor} note={note} pageIndex={pageIndex} />
+        <ReadBackControls editor={editor} />
         {quillOn ? (
           <ToolBtn label="Quill" onClick={() => setQuillOpen(true)}>
             <Feather />
@@ -885,7 +905,7 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
         />
       </div>
 
-      {ui.image ? (
+      {ui.image && !inkOnly ? (
         <div
           className="flex flex-wrap items-center gap-1.5 border-t border-rule/70 px-2 py-1.5"
           onMouseDown={(event) => event.preventDefault()}

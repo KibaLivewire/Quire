@@ -3,13 +3,18 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { EditorToolbar } from "@/components/editor-toolbar";
+import { PageMapPanel } from "@/components/page-map";
 import { PageSheet } from "@/components/page-sheet";
+import { ReadBackControls, useStopReadingOnPageChange } from "@/components/read-back-chip";
+import { RibbonMarginMarks } from "@/components/ribbon-bookmarks";
 import { Button } from "@/components/ui/button";
 import { editorExtensions } from "@/lib/editor-extensions";
 import { collectImageFiles, insertImages } from "@/lib/image";
 import { isHttpUrl, openExternal } from "@/lib/desktop";
 import { registerEditorCommands, setActiveEditor } from "@/lib/editor-commands";
 import { isPageEmpty, notePages, splitOverflow } from "@/lib/pages";
+import { pageMetaAt, recipeBorder, recipeLabel } from "@/lib/recipes";
+import { openRecipeChooser } from "@/lib/recipe-chooser";
 import { useNotebookStore } from "@/lib/store";
 import type { Note } from "@/lib/types";
 import { cn, debounce } from "@/lib/utils";
@@ -38,6 +43,7 @@ export function RichEditor({
 
   const prefs = useNotebookStore((s) => s.prefs);
   const focusMode = useNotebookStore((s) => s.focusMode);
+  const inkOnly = Boolean(prefs.inkOnly);
   const insertNotePage = useNotebookStore((s) => s.insertNotePage);
   const setNotePages = useNotebookStore((s) => s.setNotePages);
   const pages = notePages(note);
@@ -46,6 +52,10 @@ export function RichEditor({
   const pageHtml = pages[safeIndex] ?? "";
   const pagesRef = useRef(pages);
   pagesRef.current = pages;
+  useStopReadingOnPageChange(note.id, safeIndex);
+  const meta = pageMetaAt(note, safeIndex);
+  const effectiveBorder = inkOnly ? "none" : recipeBorder(meta, prefs.border);
+  const showRuler = !inkOnly && prefs.showRuler !== false;
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -267,10 +277,15 @@ export function RichEditor({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {editor && !focusMode ? (
-        <EditorToolbar editor={editor} />
-      ) : focusMode ? null : (
+        <EditorToolbar editor={editor} note={note} pageIndex={safeIndex} />
+      ) : focusMode ? (
+        <div className="flex items-center justify-end gap-2 border-b border-rule/40 bg-transparent px-2 py-1">
+          <ReadBackControls editor={editor} />
+        </div>
+      ) : (
         <div className="h-12 border-b border-rule bg-paper-raised" />
       )}
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
       <div className="min-h-0 flex-1 overflow-auto">
         <div
           className="mx-auto flex w-full max-w-full flex-col items-center px-4 pt-5 pb-16 md:px-6"
@@ -295,18 +310,31 @@ export function RichEditor({
             }}
             className="mb-4 w-full max-w-[8.5in] resize-none bg-transparent font-display text-3xl leading-tight font-semibold tracking-tight text-ink placeholder:text-ink-subtle focus:outline-none"
           />
+          {!focusMode && !inkOnly ? (
+            <button
+              type="button"
+              className="recipe-chip mb-2"
+              title="Page recipe"
+              onClick={() => openRecipeChooser({ mode: "change", noteId: note.id, pageIndex: safeIndex })}
+            >
+              {recipeLabel(meta.recipe)}
+            </button>
+          ) : null}
+          <div className="relative">
           <PageSheet
-            border={prefs.border}
+            border={effectiveBorder}
             oversized={oversized}
             width={pageWidth}
             height={pageHeight}
-            showRuler={prefs.showRuler !== false}
-            className="print-sheet"
+            showRuler={showRuler}
+            className={cn("print-sheet", `is-recipe-${meta.recipe}`)}
           >
             <div
               ref={sheetRef}
+              data-recipe={meta.recipe}
               className={cn(
                 "paper-body px-6 py-6 md:px-8",
+                `recipe-${meta.recipe}`,
                 oversized && "is-oversized",
                 focusMode && prefs.typewriter && "is-typewriter",
               )}
@@ -318,6 +346,8 @@ export function RichEditor({
               )}
             </div>
           </PageSheet>
+          <RibbonMarginMarks editor={editor} note={note} pageIndex={safeIndex} sheetHeight={pageHeight} />
+          </div>
           {linkChip ? (
             <div
               className="link-chip"
@@ -381,6 +411,8 @@ export function RichEditor({
             ) : null}
           </div>
         </div>
+      </div>
+      <PageMapPanel editor={editor} />
       </div>
     </div>
   );
