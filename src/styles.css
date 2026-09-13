@@ -345,10 +345,22 @@ html[data-theme="leather"] {
 
 .quire-image-box {
   display: inline-flex;
+  position: relative;
   max-width: 100%;
   margin: 0.15em 0.35em 0.15em 0;
   vertical-align: middle;
   border: 0;
+}
+
+.quire-image-box.ProseMirror-selectednode,
+.quire-image-box:has(.ProseMirror-selectednode) {
+  outline: 2px solid var(--color-forest);
+  outline-offset: 3px;
+}
+
+.quire-image-box.is-dragging {
+  cursor: grabbing;
+  z-index: 5;
 }
 
 .quire-image-wrap {

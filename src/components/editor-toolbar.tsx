@@ -70,6 +70,7 @@ function ToolBtn({
           aria-label={label}
           aria-pressed={active}
           onClick={onClick}
+          onMouseDown={(event) => event.preventDefault()}
           className={cn("text-ink-muted", active && "bg-paper-inset text-ink")}
         >
           {children}
@@ -241,7 +242,7 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
   }
 
   function setImageLayout(patch: Record<string, string | null>) {
-    editor.chain().focus().updateAttributes("image", patch).run();
+    editor.chain().updateAttributes("image", patch).run();
   }
 
   function bumpIndent(delta: number) {
@@ -844,7 +845,10 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
       </div>
 
       {ui.image ? (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-rule/70 px-2 py-1.5">
+        <div
+          className="flex flex-wrap items-center gap-1.5 border-t border-rule/70 px-2 py-1.5"
+          onMouseDown={(event) => event.preventDefault()}
+        >
           <span className="pr-1 text-xs font-medium tracking-wide text-ink-subtle uppercase">Picture</span>
           <Chip
             label="Fit"

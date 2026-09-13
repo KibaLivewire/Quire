@@ -135,58 +135,6 @@ export function RichEditor({
     });
   }, [editor, prefs.spellcheck]);
 
-  useEffect(() => {
-    if (!editor) return;
-    const root = editor.view.dom;
-    let drag: { img: HTMLImageElement; x: number; y: number; ox: number; oy: number } | null = null;
-
-    function down(event: MouseEvent) {
-      const img = (event.target as HTMLElement | null)?.closest?.("img.quire-image") as HTMLImageElement | null;
-      if (!img || event.button !== 0) return;
-      if ((event.target as HTMLElement).closest("[data-resize-handle], .quire-resize-handle, .quire-resize-handle")) return;
-      drag = {
-        img,
-        x: event.clientX,
-        y: event.clientY,
-        ox: Number(img.getAttribute("data-ox") || 0),
-        oy: Number(img.getAttribute("data-oy") || 0),
-      };
-    }
-    function move(event: MouseEvent) {
-      if (!drag) return;
-      const ox = Math.round(drag.ox + event.clientX - drag.x);
-      const oy = Math.round(drag.oy + event.clientY - drag.y);
-      drag.img.setAttribute("data-ox", String(ox));
-      drag.img.setAttribute("data-oy", String(oy));
-      drag.img.style.position = "relative";
-      drag.img.style.left = `${ox}px`;
-      drag.img.style.top = `${oy}px`;
-    }
-    function up() {
-      if (!drag || !editor) {
-        drag = null;
-        return;
-      }
-      const ox = Number(drag.img.getAttribute("data-ox") || 0);
-      const oy = Number(drag.img.getAttribute("data-oy") || 0);
-      try {
-        const pos = editor.view.posAtDOM(drag.img, 0);
-        editor.chain().setNodeSelection(pos).updateAttributes("image", { ox, oy }).run();
-      } catch {
-        editor.chain().updateAttributes("image", { ox, oy }).run();
-      }
-      drag = null;
-    }
-    root.addEventListener("mousedown", down);
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-    return () => {
-      root.removeEventListener("mousedown", down);
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-    };
-  }, [editor]);
-
   const [linkChip, setLinkChip] = useState<{ href: string; x: number; y: number } | null>(null);
 
   useEffect(() => {

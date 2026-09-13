@@ -33,6 +33,9 @@ function dataAttr(name: string, value: unknown, skip?: unknown) {
 }
 
 const QuireImage = Image.extend({
+  atom: true,
+  selectable: true,
+  draggable: false,
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -126,14 +129,15 @@ const QuireImage = Image.extend({
       const figure = document.createElement("span");
       figure.className = "quire-figure";
       const img = document.createElement("img");
+      img.className = "quire-image";
       img.draggable = false;
       const mark = document.createElement("span");
       mark.className = "quire-watermark";
       figure.append(img, mark);
 
-      const applyAttrs = (attrs: Record<string, unknown>) => {
+      const applyAttrs = (attrs: Record<string, unknown>, box?: HTMLElement) => {
         Object.entries(mergeAttributes(htmlAttrs, attrs)).forEach(([key, value]) => {
-          if (key === "src" || key === "width" || key === "height" || value == null) return;
+          if (key === "src" || key === "width" || key === "height" || key === "style" || value == null) return;
           img.setAttribute(key, String(value));
         });
         const src = attrs.src;
@@ -142,9 +146,9 @@ const QuireImage = Image.extend({
         mark.textContent = text;
         mark.hidden = !text;
         figure.classList.toggle("has-watermark", Boolean(text));
-        const edit = String(attrs.editStyle ?? attrs["data-edit-style"] ?? "");
         img.style.filter = "";
         img.style.transform = "";
+        const edit = String(attrs.editStyle ?? attrs["data-edit-style"] ?? "");
         if (edit) {
           edit.split(";").forEach((part) => {
             const [prop, ...rest] = part.split(":");
@@ -152,24 +156,23 @@ const QuireImage = Image.extend({
             img.style.setProperty(prop.trim(), rest.join(":").trim());
           });
         }
-        const ox = Number(attrs.ox || attrs["data-ox"] || 0);
-        const oy = Number(attrs.oy || attrs["data-oy"] || 0);
-        if (ox || oy) {
-          figure.style.position = "relative";
-          figure.style.left = `${ox}px`;
-          figure.style.top = `${oy}px`;
-        }
         if (attrs.width) {
           figure.style.width = `${attrs.width}px`;
           img.style.width = "100%";
           img.style.height = "auto";
         }
-        if (attrs.height) img.style.height = `${attrs.height}px`;
+        if (box) {
+          const ox = Number(attrs.ox || attrs["data-ox"] || 0);
+          const oy = Number(attrs.oy || attrs["data-oy"] || 0);
+          box.style.position = "relative";
+          box.style.left = `${ox}px`;
+          box.style.top = `${oy}px`;
+        }
       };
 
       applyAttrs(HTMLAttributes);
 
-      return new ResizableNodeView({
+      const nodeView = new ResizableNodeView({
         element: figure,
         editor,
         node,
@@ -185,16 +188,16 @@ const QuireImage = Image.extend({
           editor.chain().setNodeSelection(pos).updateAttributes(name, { width, height, size: null, fit: null }).run();
         },
         onUpdate: (updated) => {
-          if (updated.type !== node.type) return false;
+          if (updated.type.name !== name) return false;
           const extensionAttributes = editor.extensionManager.attributes.filter(
             (attribute) => attribute.type === updated.type.name,
           );
-          applyAttrs(getRenderedAttributes(updated, extensionAttributes));
+          applyAttrs({ ...updated.attrs, ...getRenderedAttributes(updated, extensionAttributes) }, nodeView.dom);
           return true;
         },
         options: {
           directions: ["top-left", "top-right", "bottom-left", "bottom-right"],
-          min: { width: minWidth ?? 80, height: minHeight ?? 80 },
+          min: { width: minWidth ?? 64, height: minHeight ?? 64 },
           preserveAspectRatio: alwaysPreserveAspectRatio ?? true,
           className: {
             container: "quire-image-box",
@@ -203,6 +206,85 @@ const QuireImage = Image.extend({
           },
         },
       });
+
+      const box = nodeView.dom as HTMLElement;
+      applyAttrs(HTMLAttributes, box);
+
+      let drag: { x: number; y: number; ox: number; oy: number; moved: boolean } | null = null;
+
+      function selectSelf() {
+        const pos = getPos();
+        if (pos === undefined) return;
+        editor.chain().setNodeSelection(pos).run();
+      }
+
+      function onDown(event: PointerEvent) {
+        if (event.button !== 0) return;
+        const target = event.target as HTMLElement;
+        if (target.closest("[data-resize-handle], .quire-resize-handle")) return;
+        selectSelf();
+        const pos = getPos();
+        const attrs = pos !== undefined ? editor.state.doc.nodeAt(pos)?.attrs : null;
+        drag = {
+          x: event.clientX,
+          y: event.clientY,
+          ox: Number(attrs?.ox || 0),
+          oy: Number(attrs?.oy || 0),
+          moved: false,
+        };
+      }
+
+      function onMove(event: PointerEvent) {
+        if (!drag) return;
+        const dx = event.clientX - drag.x;
+        const dy = event.clientY - drag.y;
+        if (!drag.moved && dx * dx + dy * dy < 36) return;
+        drag.moved = true;
+        event.preventDefault();
+        box.style.position = "relative";
+        box.style.left = `${drag.ox + dx}px`;
+        box.style.top = `${drag.oy + dy}px`;
+        box.classList.add("is-dragging");
+      }
+
+      function onUp(event: PointerEvent) {
+        if (!drag) return;
+        if (drag.moved) {
+          const ox = Math.round(drag.ox + event.clientX - drag.x);
+          const oy = Math.round(drag.oy + event.clientY - drag.y);
+          const pos = getPos();
+          if (pos !== undefined) {
+            editor.chain().setNodeSelection(pos).updateAttributes(name, { ox, oy }).run();
+          }
+        }
+        box.classList.remove("is-dragging");
+        drag = null;
+      }
+
+      box.addEventListener("pointerdown", onDown);
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+
+      const originalDestroy = nodeView.destroy.bind(nodeView);
+      Object.assign(nodeView, {
+        stopEvent(event: Event) {
+          const type = event.type;
+          const target = event.target as HTMLElement | null;
+          if (target?.closest?.("[data-resize-handle], .quire-resize-handle")) return true;
+          if (type === "mousedown" || type === "pointerdown" || type === "touchstart") return true;
+          if (drag?.moved && (type === "mousemove" || type === "pointermove")) return true;
+          return false;
+        },
+        ignoreMutation: () => true,
+        destroy() {
+          box.removeEventListener("pointerdown", onDown);
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+          originalDestroy();
+        },
+      });
+
+      return nodeView;
     };
   },
 });
