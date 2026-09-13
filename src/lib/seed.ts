@@ -7,14 +7,15 @@ function daysAgo(days: number, hours = 0): number {
   return NOW - days * DAY - hours * 60 * 60 * 1000;
 }
 
-function note(partial: Omit<Note, "pages" | "content"> & { content: string }): Note {
-  return { ...partial, pages: [partial.content] };
+function note(partial: Omit<Note, "pages" | "content" | "color"> & { content: string; color?: string | null }): Note {
+  return { ...partial, pages: [partial.content], color: partial.color ?? null };
 }
 
 export const SEED_NOTEBOOKS: Notebook[] = [
-  { id: "nb_personal", name: "Personal", hue: "forest", createdAt: daysAgo(14) },
-  { id: "nb_reading", name: "Reading", hue: "umber", createdAt: daysAgo(10) },
-  { id: "nb_work", name: "Work", hue: "slate", createdAt: daysAgo(8) },
+  { id: "nb_personal", name: "Personal", hue: "forest", parentId: null, color: "#3d6b4f", createdAt: daysAgo(14) },
+  { id: "nb_letters", name: "Letters", hue: "wine", parentId: "nb_personal", color: "#8a3d45", createdAt: daysAgo(12) },
+  { id: "nb_reading", name: "Reading", hue: "umber", parentId: null, color: "#8a5a32", createdAt: daysAgo(10) },
+  { id: "nb_work", name: "Work", hue: "slate", parentId: null, color: "#4f6f8f", createdAt: daysAgo(8) },
 ];
 
 export const SEED_NOTES: Note[] = [
@@ -69,6 +70,19 @@ export const SEED_NOTES: Note[] = [
 <p>I copy down phrases I do not yet understand. Weeks later they have arranged themselves. The page does the work I was too impatient to do.</p>
 <blockquote><p>Keep the scraps. The scraps remember what the polished paragraph forgets.</p></blockquote>
 <p>When I reread old pages I am not looking for wisdom. I am checking whether I was paying attention.</p>
+`.trim(),
+  }),
+  note({
+    id: "note_letter",
+    notebookId: "nb_letters",
+    title: "A letter I have not sent",
+    pinned: false,
+    color: "#8a3d45",
+    createdAt: daysAgo(6),
+    updatedAt: daysAgo(2),
+    content: `
+<p>I keep this in a folder inside Personal, the way a paper letter waits in a drawer.</p>
+<p>The folding is the point. Some sentences need a smaller room.</p>
 `.trim(),
   }),
 ];

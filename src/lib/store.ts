@@ -3,6 +3,7 @@ import { persist, type PersistStorage, type StorageValue } from "zustand/middlew
 import { createSeed } from "./seed";
 import { NOTEBOOK_HUES, DEFAULT_PREFS, type Note, type Notebook, type NotebookHue, type Prefs } from "./types";
 import { notePages } from "./pages";
+import { descendantIds, isDescendant } from "./folders";
 
 const DB_NAME = "quire";
 const STORE_NAME = "kv";
@@ -30,11 +31,13 @@ export type NotebookState = {
   setPrefs: (patch: Partial<Prefs>) => void;
   setActiveNotebook: (id: string) => void;
   setActiveNote: (id: string | null) => void;
-  createNotebook: (name: string) => string;
+  createNotebook: (name: string, parentId?: string | null) => string;
   renameNotebook: (id: string, name: string) => void;
+  colorNotebook: (id: string, color: string) => void;
+  moveNotebook: (id: string, parentId: string | null) => void;
   deleteNotebook: (id: string) => void;
   createNote: (notebookId?: string) => string;
-  updateNote: (id: string, patch: Partial<Pick<Note, "title" | "content" | "pinned" | "notebookId" | "pages">>) => void;
+  updateNote: (id: string, patch: Partial<Pick<Note, "title" | "content" | "pinned" | "notebookId" | "pages" | "color">>) => void;
   updateNotePage: (id: string, pageIndex: number, html: string) => void;
   insertNotePage: (id: string, atIndex: number, html?: string) => number;
   setNotePages: (id: string, pages: string[], content?: string) => void;
@@ -103,7 +106,15 @@ function nextHue(existing: Notebook[]): NotebookHue {
 
 function migrateNote(note: Note): Note {
   const pages = notePages(note);
-  return { ...note, pages, content: pages.join("") };
+  return { ...note, pages, content: pages.join(""), color: note.color ?? null };
+}
+
+function migrateNotebook(notebook: Notebook): Notebook {
+  return {
+    ...notebook,
+    parentId: notebook.parentId ?? null,
+    color: notebook.color ?? null,
+  };
 }
 
 function withJoinedContent(note: Note, pages: string[]): Note {
@@ -128,6 +139,7 @@ export const useNotebookStore = create<NotebookState>()(
           return {
             hasHydrated: true,
             notes: state.notes.map(migrateNote),
+            notebooks: state.notebooks.map(migrateNotebook),
             prefs: { ...DEFAULT_PREFS, ...state.prefs },
           };
         }),
@@ -153,12 +165,15 @@ export const useNotebookStore = create<NotebookState>()(
 
       setActiveNote: (id) => set({ activeNoteId: id }),
 
-      createNotebook: (name) => {
+      createNotebook: (name, parentId = null) => {
         const id = crypto.randomUUID();
+        const parent = parentId && get().notebooks.some((nb) => nb.id === parentId) ? parentId : null;
         const notebook: Notebook = {
           id,
-          name: name.trim() || "Untitled notebook",
+          name: name.trim() || "Untitled folder",
           hue: nextHue(get().notebooks),
+          parentId: parent,
+          color: null,
           createdAt: Date.now(),
         };
         set((state) => ({
@@ -177,22 +192,41 @@ export const useNotebookStore = create<NotebookState>()(
         }));
       },
 
+      colorNotebook: (id, color) => {
+        set((state) => ({
+          notebooks: state.notebooks.map((nb) => (nb.id === id ? { ...nb, color } : nb)),
+        }));
+      },
+
+      moveNotebook: (id, parentId) => {
+        if (id === parentId) return;
+        const notebooks = get().notebooks;
+        if (parentId && (isDescendant(notebooks, id, parentId) || !notebooks.some((nb) => nb.id === parentId))) {
+          return;
+        }
+        set((state) => ({
+          notebooks: state.notebooks.map((nb) => (nb.id === id ? { ...nb, parentId } : nb)),
+        }));
+      },
+
       deleteNotebook: (id) => {
         const { notebooks, notes, activeNotebookId } = get();
-        const remaining = notebooks.filter((nb) => nb.id !== id);
-        let nextNotebooks = remaining;
+        const remove = new Set(descendantIds(notebooks, id));
+        let nextNotebooks = notebooks.filter((nb) => !remove.has(nb.id));
         if (nextNotebooks.length === 0) {
           nextNotebooks = [
             {
               id: crypto.randomUUID(),
               name: "Pages",
               hue: "forest",
+              parentId: null,
+              color: "#3d6b4f",
               createdAt: Date.now(),
             },
           ];
         }
-        const nextActive = activeNotebookId === id ? nextNotebooks[0].id : activeNotebookId;
-        const nextNotes = notes.filter((note) => note.notebookId !== id);
+        const nextActive = remove.has(activeNotebookId || "") ? nextNotebooks[0].id : activeNotebookId;
+        const nextNotes = notes.filter((note) => !remove.has(note.notebookId));
         const inNotebook = nextNotes.filter((note) => note.notebookId === nextActive);
         set({
           notebooks: nextNotebooks,
@@ -214,6 +248,7 @@ export const useNotebookStore = create<NotebookState>()(
           content: "",
           pages: [""],
           pinned: false,
+          color: null,
           createdAt: now,
           updatedAt: now,
         };
@@ -349,6 +384,7 @@ export const useNotebookStore = create<NotebookState>()(
           ...current,
           ...from,
           notes: (from.notes ?? current.notes).map(migrateNote),
+          notebooks: (from.notebooks ?? current.notebooks).map(migrateNotebook),
           prefs: { ...DEFAULT_PREFS, ...from.prefs },
         };
       },

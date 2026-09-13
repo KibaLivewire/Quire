@@ -43,6 +43,8 @@ export type Notebook = {
   id: string;
   name: string;
   hue: NotebookHue;
+  parentId: string | null;
+  color: string | null;
   createdAt: number;
 };
 
@@ -53,6 +55,7 @@ export type Note = {
   content: string;
   pages: string[];
   pinned: boolean;
+  color: string | null;
   createdAt: number;
   updatedAt: number;
 };
