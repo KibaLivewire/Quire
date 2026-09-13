@@ -1,6 +1,6 @@
 {
   "name": "app-builder-workspace",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "A quiet notebook for writing on this device.",
   "author": "KibaLivewire",
   "private": true,

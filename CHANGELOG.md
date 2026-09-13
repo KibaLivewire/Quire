@@ -1,6 +1,6 @@
 # Quire 1.6.0 — Desk ritual
 
-In progress · Milestone B.
+Released 13 September 2026.
 
 A quieter writing posture for the desk you already know.
 
@@ -11,6 +11,8 @@ A quieter writing posture for the desk you already know.
 - **Read back** — Local text-to-speech from caret or selection. Voice and pace live in Desk settings.
 
 No cloud writing, no collab chrome. Quill stays a local helper.
+
+Installer: Quire-Setup-1.6.0.exe
 
 ---
 
