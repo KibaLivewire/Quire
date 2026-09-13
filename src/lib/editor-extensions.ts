@@ -67,6 +67,18 @@ const QuireImage = Image.extend({
         parseHTML: (element: HTMLElement) => element.getAttribute("data-wrap"),
         renderHTML: (attributes: { wrap?: string | null }) => dataAttr("data-wrap", attributes.wrap),
       },
+      flow: {
+        default: "inline",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-flow") || "inline",
+        renderHTML: (attributes: { flow?: string | null }) =>
+          dataAttr("data-flow", attributes.flow, "inline"),
+      },
+      margin: {
+        default: 12,
+        parseHTML: (element: HTMLElement) => Number(element.getAttribute("data-margin") || 12) || 0,
+        renderHTML: (attributes: { margin?: number | null }) =>
+          dataAttr("data-margin", attributes.margin ?? 12, 12),
+      },
       ox: {
         default: 0,
         parseHTML: (element: HTMLElement) => Number(element.getAttribute("data-ox") || 0) || 0,
@@ -162,9 +174,20 @@ const QuireImage = Image.extend({
           img.style.height = "auto";
         }
         if (box) {
+          const wrap = String(attrs.wrap ?? attrs["data-wrap"] ?? "");
+          const flow = String(attrs.flow ?? attrs["data-flow"] ?? (wrap === "left" || wrap === "right" ? "wrap" : "inline"));
+          const margin = Number(attrs.margin ?? attrs["data-margin"] ?? 12);
           const ox = Number(attrs.ox || attrs["data-ox"] || 0);
           const oy = Number(attrs.oy || attrs["data-oy"] || 0);
-          box.style.position = "relative";
+          box.dataset.flow = flow;
+          box.style.setProperty("--img-margin", `${margin}px`);
+          if (flow === "behind" || flow === "front") {
+            box.style.position = "absolute";
+            box.style.zIndex = flow === "front" ? "6" : "0";
+          } else {
+            box.style.position = "relative";
+            box.style.zIndex = "";
+          }
           box.style.left = `${ox}px`;
           box.style.top = `${oy}px`;
         }

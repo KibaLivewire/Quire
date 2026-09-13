@@ -40,6 +40,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
+import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FONT_SIZES, HIGHLIGHTS, INK_COLORS } from "@/lib/fonts";
 import { BORDER_META } from "@/lib/borders";
@@ -78,6 +79,36 @@ function ToolBtn({
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+function FlowPick({
+  label,
+  active,
+  onClick,
+  kind,
+}: {
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+  kind: "inline" | "wrap" | "break" | "behind" | "front";
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      onClick={onClick}
+      onMouseDown={(event) => event.preventDefault()}
+      className={cn(
+        "flex w-[4.6rem] flex-col items-center gap-1 rounded-lg border px-1.5 py-1.5 text-[10px] leading-tight",
+        active ? "border-forest bg-paper-inset text-ink" : "border-rule text-ink-muted hover:text-ink",
+      )}
+    >
+      <span className={cn("flow-icon", `is-${kind}`)} aria-hidden />
+      {label}
+    </button>
   );
 }
 
@@ -170,6 +201,8 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
       imageSize: (ed.getAttributes("image").size as string | undefined) ?? null,
       imageAlign: (ed.getAttributes("image").align as string | undefined) ?? "center",
       imageWrap: (ed.getAttributes("image").wrap as string | undefined) ?? null,
+      imageFlow: (ed.getAttributes("image").flow as string | undefined) || "inline",
+      imageMargin: Number(ed.getAttributes("image").margin ?? 12),
       imageWatermark: (ed.getAttributes("image").watermark as string | undefined) ?? "",
       indent: Number(ed.getAttributes("paragraph").indent || ed.getAttributes("heading").indent || 0),
       lineHeight: (ed.getAttributes("paragraph").lineHeight || ed.getAttributes("heading").lineHeight) as string | null,
@@ -242,7 +275,7 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
     editor.chain().focus().updateAttributes("paragraph", patch).updateAttributes("heading", patch).run();
   }
 
-  function setImageLayout(patch: Record<string, string | null>) {
+  function setImageLayout(patch: Record<string, string | number | null>) {
     editor.chain().updateAttributes("image", patch).run();
   }
 
@@ -894,41 +927,77 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
           <Separator orientation="vertical" className="mx-1 h-5" />
           <Chip
             label="Left"
-            active={ui.imageAlign === "left" && !ui.imageWrap}
-            onClick={() => setImageLayout({ align: "left", wrap: null })}
+            active={ui.imageAlign === "left"}
+            onClick={() => setImageLayout({ align: "left", wrap: ui.imageFlow === "wrap" ? "left" : null })}
           />
           <Chip
             label="Center"
-            active={ui.imageAlign === "center" && !ui.imageWrap}
+            active={ui.imageAlign === "center" && ui.imageFlow !== "wrap"}
             onClick={() => setImageLayout({ align: "center", wrap: null })}
           />
           <Chip
             label="Right"
-            active={ui.imageAlign === "right" && !ui.imageWrap}
-            onClick={() => setImageLayout({ align: "right", wrap: null })}
+            active={ui.imageAlign === "right"}
+            onClick={() => setImageLayout({ align: "right", wrap: ui.imageFlow === "wrap" ? "right" : null })}
           />
-          <Chip
-            label="Wrap left"
-            active={ui.imageWrap === "left"}
+        </div>
+      ) : null}
+      {ui.image ? (
+        <div
+          className="flex flex-wrap items-end gap-2 border-t border-rule/70 px-2 py-2"
+          onMouseDown={(event) => event.preventDefault()}
+        >
+          <span className="w-full text-[10px] font-medium tracking-wide text-ink-subtle uppercase">
+            With text
+          </span>
+          <FlowPick
+            kind="inline"
+            label="Inline with text"
+            active={(ui.imageFlow || "inline") === "inline" && !ui.imageWrap}
+            onClick={() => setImageLayout({ flow: "inline", wrap: null })}
+          />
+          <FlowPick
+            kind="wrap"
+            label="Wrap text"
+            active={ui.imageFlow === "wrap" || ui.imageWrap === "left" || ui.imageWrap === "right"}
             onClick={() =>
               setImageLayout({
-                wrap: "left",
-                align: "left",
+                flow: "wrap",
+                wrap: ui.imageAlign === "right" ? "right" : "left",
+                align: ui.imageAlign === "right" ? "right" : "left",
                 fit: ui.imageFit === "fit" || ui.imageFit === "stretch" || ui.imageFit === "fill" ? null : ui.imageFit,
               })
             }
           />
-          <Chip
-            label="Wrap right"
-            active={ui.imageWrap === "right"}
-            onClick={() =>
-              setImageLayout({
-                wrap: "right",
-                align: "right",
-                fit: ui.imageFit === "fit" || ui.imageFit === "stretch" || ui.imageFit === "fill" ? null : ui.imageFit,
-              })
-            }
+          <FlowPick
+            kind="break"
+            label="Break text"
+            active={ui.imageFlow === "break"}
+            onClick={() => setImageLayout({ flow: "break", wrap: null })}
           />
+          <FlowPick
+            kind="behind"
+            label="Behind text"
+            active={ui.imageFlow === "behind"}
+            onClick={() => setImageLayout({ flow: "behind", wrap: null })}
+          />
+          <FlowPick
+            kind="front"
+            label="In front of text"
+            active={ui.imageFlow === "front"}
+            onClick={() => setImageLayout({ flow: "front", wrap: null })}
+          />
+          <div className="ml-2 min-w-36">
+            <p className="mb-1 text-[10px] font-medium tracking-wide text-ink-subtle uppercase">
+              Text margin {ui.imageMargin}px
+            </p>
+            <Slider
+              min={0}
+              max={48}
+              value={[ui.imageMargin || 0]}
+              onValueChange={([value]) => setImageLayout({ margin: value })}
+            />
+          </div>
         </div>
       ) : null}
     </div>

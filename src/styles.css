@@ -525,6 +525,18 @@ html[data-theme="leather"] {
   clear: both;
 }
 
+.tiptap {
+  position: relative;
+}
+
+.tiptap > p,
+.tiptap > h1,
+.tiptap > h2,
+.tiptap > h3 {
+  position: relative;
+  z-index: 1;
+}
+
 .quire-image-box:has(img[data-fit="fit"]:not([width])),
 .quire-image-box:has(img[data-fit="stretch"]:not([width])),
 .quire-image-box:has(img[data-fit="fill"]:not([width])),
@@ -538,28 +550,65 @@ html[data-theme="leather"] {
   margin-left: 0;
 }
 
-.quire-image-box:has(img[data-align="center"]:not([data-wrap])) {
+.quire-image-box:has(img[data-align="center"]:not([data-wrap]):not([data-flow="wrap"])) {
   display: flex;
   margin-inline: auto;
 }
 
-.quire-image-box:has(img[data-align="right"]:not([data-wrap])) {
+.quire-image-box:has(img[data-align="right"]:not([data-wrap]):not([data-flow="wrap"])) {
   margin-left: auto;
   margin-right: 0;
 }
 
-.quire-image-box:has(img[data-wrap="left"]) {
-  float: left;
-  width: min(46%, 20rem);
-  max-width: 46%;
-  margin: 0.15em 0.85rem 0.45em 0;
+.quire-image-box[data-flow="inline"] {
+  display: inline-flex;
+  float: none;
+  clear: none;
+  margin: 0.1em 0.35em;
+  vertical-align: middle;
 }
 
+.quire-image-box[data-flow="wrap"],
+.quire-image-box:has(img[data-wrap="left"]),
+.quire-image-box:has(img[data-wrap="right"]) {
+  display: inline-flex;
+  max-width: 46%;
+  margin: var(--img-margin, 12px);
+}
+
+.quire-image-box[data-flow="wrap"]:has(img[data-align="right"]),
 .quire-image-box:has(img[data-wrap="right"]) {
   float: right;
-  width: min(46%, 20rem);
-  max-width: 46%;
-  margin: 0.15em 0 0.45em 0.85rem;
+  margin-left: var(--img-margin, 12px);
+  margin-right: 0;
+}
+
+.quire-image-box[data-flow="wrap"]:not(:has(img[data-align="right"])):not(:has(img[data-wrap="right"])),
+.quire-image-box:has(img[data-wrap="left"]) {
+  float: left;
+  margin-right: var(--img-margin, 12px);
+  margin-left: 0;
+}
+
+.quire-image-box[data-flow="break"] {
+  display: flex;
+  float: none;
+  clear: both;
+  width: 100%;
+  max-width: 100%;
+  margin: var(--img-margin, 12px) 0;
+}
+
+.quire-image-box[data-flow="behind"] {
+  float: none;
+  z-index: 0;
+  margin: 0;
+}
+
+.quire-image-box[data-flow="front"] {
+  float: none;
+  z-index: 6;
+  margin: 0;
 }
 
 .quire-image-link {
@@ -913,6 +962,7 @@ html[data-theme="leather"] {
 }
 
 .paper-body {
+  position: relative;
   height: 100%;
   overflow: hidden;
 }
@@ -984,4 +1034,96 @@ html[data-theme="leather"] {
   box-shadow:
     inset 0 0 0 6px color-mix(in oklab, var(--color-leather) 18%, var(--color-paper-raised)),
     inset 0 0 0 7px var(--color-decal);
+}
+
+.flow-icon {
+  display: grid;
+  width: 2.15rem;
+  height: 1.55rem;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--color-paper-inset) 70%, white);
+  box-shadow: inset 0 0 0 1px var(--color-rule);
+}
+
+.flow-icon::before,
+.flow-icon::after {
+  content: "";
+}
+
+.flow-icon.is-inline {
+  grid-template-columns: 0.7rem 1fr;
+  gap: 2px;
+  padding: 3px;
+}
+
+.flow-icon.is-inline::before {
+  background: #3b82f6;
+  border-radius: 1px;
+}
+
+.flow-icon.is-inline::after {
+  background:
+    linear-gradient(var(--color-ink-subtle), var(--color-ink-subtle)) 0 2px / 100% 2px no-repeat,
+    linear-gradient(var(--color-ink-subtle), var(--color-ink-subtle)) 0 7px / 100% 2px no-repeat,
+    linear-gradient(var(--color-ink-subtle), var(--color-ink-subtle)) 0 12px / 70% 2px no-repeat;
+}
+
+.flow-icon.is-wrap {
+  grid-template-columns: 0.7rem 1fr;
+  gap: 2px;
+  padding: 3px;
+}
+
+.flow-icon.is-wrap::before {
+  grid-row: 1 / 3;
+  background: #3b82f6;
+  border-radius: 1px;
+}
+
+.flow-icon.is-wrap::after {
+  background: repeating-linear-gradient(to bottom, var(--color-ink-subtle) 0 2px, transparent 2px 5px);
+}
+
+.flow-icon.is-break {
+  grid-template-rows: 4px 1fr 4px;
+  gap: 2px;
+  padding: 3px;
+}
+
+.flow-icon.is-break::before {
+  background: repeating-linear-gradient(to right, var(--color-ink-subtle) 0 6px, transparent 6px 8px);
+}
+
+.flow-icon.is-break::after {
+  background: #3b82f6;
+  border-radius: 1px;
+}
+
+.flow-icon.is-behind,
+.flow-icon.is-front {
+  padding: 3px;
+}
+
+.flow-icon.is-behind::before,
+.flow-icon.is-front::before {
+  background: repeating-linear-gradient(to bottom, var(--color-ink-subtle) 0 2px, transparent 2px 5px);
+}
+
+.flow-icon.is-behind::after,
+.flow-icon.is-front::after {
+  width: 0.85rem;
+  height: 0.7rem;
+  margin: -0.85rem 0 0 0.2rem;
+  background: #3b82f6;
+  border-radius: 1px;
+}
+
+.flow-icon.is-behind::after {
+  opacity: 0.5;
+}
+
+.flow-icon.is-front::after {
+  margin-top: -0.55rem;
+  margin-left: 0.55rem;
 }
