@@ -18,8 +18,17 @@ const COLORS = ["#8a5a32", "#c4a35a", "#6b7c4a", "#8a3d45", "#b0603a", "#5c4d7a"
 export function BootLeaves({ onDone }: { onDone: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const prefs = useNotebookStore((s) => s.prefs);
+  const [leaving, setLeaving] = useState(false);
   const [ready, setReady] = useState(false);
   const [blocked, setBlocked] = useState(false);
+  const leavingRef = useRef(false);
+
+  function beginLeave() {
+    if (leavingRef.current) return;
+    leavingRef.current = true;
+    setLeaving(true);
+    window.setTimeout(onDone, 1150);
+  }
 
   useEffect(() => {
     void startAmbient(prefs.ambient ? prefs.ambientVolume : 0).then(() => {
@@ -100,7 +109,7 @@ export function BootLeaves({ onDone }: { onDone: () => void }) {
       }
       frame += 1;
       if (t < DURATION) raf = requestAnimationFrame(tick);
-      else onDone();
+      else beginLeave();
     }
     raf = requestAnimationFrame(tick);
     return () => {
@@ -116,11 +125,11 @@ export function BootLeaves({ onDone }: { onDone: () => void }) {
       await startAmbient(prefs.ambient ? prefs.ambientVolume : 0);
       return;
     }
-    onDone();
+    beginLeave();
   }
 
   return (
-    <div className="boot-leaves" onClick={() => void onSurface()} role="presentation">
+    <div className={leaving ? "boot-leaves is-leaving" : "boot-leaves"} onClick={() => void onSurface()} role="presentation">
       <canvas ref={canvasRef} className="boot-leaves-canvas" />
       <div className="boot-leaves-copy">
         <p className="font-display text-4xl tracking-tight text-ink">Quire</p>

@@ -98,6 +98,7 @@ export type Prefs = {
   ambientVolume: number;
   bootLeaves: boolean;
   quill: boolean;
+  quillGreeting: boolean;
   welcomeVersion: number;
 };
 
@@ -123,5 +124,6 @@ export const DEFAULT_PREFS: Prefs = {
   ambientVolume: 0.22,
   bootLeaves: true,
   quill: true,
+  quillGreeting: true,
   welcomeVersion: 0,
 };

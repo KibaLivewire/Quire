@@ -31,25 +31,20 @@ export function AmbientDial() {
     else void startAmbient(prefs.ambientVolume ?? 0.22);
   }, [prefs.ambient, prefs.ambientVolume]);
 
+  if (prefs.ambient === false) return null;
+
   return (
     <div className={cn("ambient-dial no-print")}>
       <Button
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label={muted || prefs.ambient === false ? "Unmute chimes" : "Mute chimes"}
+        aria-label={muted ? "Unmute chimes" : "Mute chimes"}
         onClick={() => {
-          if (prefs.ambient === false) {
-            setPrefs({ ambient: true });
-            setAmbientMuted(false);
-            void startAmbient(prefs.ambientVolume || 0.22);
-            return;
-          }
-          const next = toggleAmbientMute();
-          if (next) setPrefs({ ambient: true });
+          toggleAmbientMute();
         }}
       >
-        {muted || prefs.ambient === false ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+        {muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
       </Button>
       <Slider
         className="w-20"
