@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
+import { AmbientDial } from "@/components/ambient-dial";
+import { BootLeaves } from "@/components/boot-leaves";
 import { EditorPane } from "@/components/editor-pane";
 import { MenuBar } from "@/components/menu-bar";
 import { NoteList } from "@/components/note-list";
 import { NotebookRail } from "@/components/notebook-rail";
 import { PrintPreview } from "@/components/print-preview";
+import { QuillPanel } from "@/components/quill-panel";
 import { SettingsPanel } from "@/components/settings-panel";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { startAmbient, stopAmbient, toggleAmbientMute } from "@/lib/ambient";
 import { applyTheme } from "@/lib/theme";
 import { useNotebookStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -18,13 +22,25 @@ export function AppShell() {
   const createNote = useNotebookStore((s) => s.createNote);
   const prefs = useNotebookStore((s) => s.prefs);
   const setPrefs = useNotebookStore((s) => s.setPrefs);
+  const hasHydrated = useNotebookStore((s) => s.hasHydrated);
   const [notebooksOpen, setNotebooksOpen] = useState(false);
   const [mobileList, setMobileList] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [booting, setBooting] = useState(true);
 
   useEffect(() => {
     void useNotebookStore.persist.rehydrate();
   }, []);
+
+  useEffect(() => {
+    if (!hasHydrated) return;
+    if (prefs.bootLeaves === false) {
+      setBooting(false);
+      window.dispatchEvent(new Event("quire-desk-ready"));
+      if (prefs.ambient !== false) void startAmbient(prefs.ambientVolume ?? 0.22);
+      else stopAmbient();
+    }
+  }, [hasHydrated, prefs.bootLeaves, prefs.ambient, prefs.ambientVolume]);
 
   useEffect(() => {
     applyTheme(prefs.theme, prefs.customThemes ?? []);
@@ -71,6 +87,10 @@ export function AppShell() {
         event.preventDefault();
         setPrefs({ zoom: 1 });
       }
+      if (meta && event.key.toLowerCase() === "m") {
+        event.preventDefault();
+        toggleAmbientMute();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -101,8 +121,19 @@ export function AppShell() {
           onBack={() => setMobileList(true)}
           onOpenSettings={() => setSettingsOpen(true)}
         />
+        <QuillPanel />
         </div>
       </div>
+
+      {hasHydrated && booting && prefs.bootLeaves !== false ? (
+        <BootLeaves
+          onDone={() => {
+            setBooting(false);
+            window.dispatchEvent(new Event("quire-desk-ready"));
+          }}
+        />
+      ) : null}
+      <AmbientDial />
 
       <Sheet open={notebooksOpen} onOpenChange={setNotebooksOpen}>
         <SheetContent side="left">

@@ -94,6 +94,11 @@ export type Prefs = {
   wordGoal: number;
   wordsToday: number;
   wordsDate: string;
+  ambient: boolean;
+  ambientVolume: number;
+  bootLeaves: boolean;
+  quill: boolean;
+  welcomeVersion: number;
 };
 
 export const DEFAULT_PREFS: Prefs = {
@@ -114,4 +119,9 @@ export const DEFAULT_PREFS: Prefs = {
   wordGoal: 500,
   wordsToday: 0,
   wordsDate: "",
+  ambient: true,
+  ambientVolume: 0.22,
+  bootLeaves: true,
+  quill: true,
+  welcomeVersion: 0,
 };

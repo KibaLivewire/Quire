@@ -180,6 +180,24 @@ export function SettingsPanel({
             checked={prefs.typewriter !== false}
             onCheckedChange={(checked) => setPrefs({ typewriter: checked })}
           />
+          <ToggleRow
+            label="Wind chimes"
+            hint="A soft loop after the desk opens. Ctrl+M mutes"
+            checked={prefs.ambient !== false}
+            onCheckedChange={(checked) => setPrefs({ ambient: checked })}
+          />
+          <ToggleRow
+            label="Falling leaves"
+            hint="Leaves drift across the desk when Quire starts"
+            checked={prefs.bootLeaves !== false}
+            onCheckedChange={(checked) => setPrefs({ bootLeaves: checked })}
+          />
+          <ToggleRow
+            label="Quill"
+            hint="A writing aide in the toolbar. Highlight a sentence and ask"
+            checked={prefs.quill !== false}
+            onCheckedChange={(checked) => setPrefs({ quill: checked })}
+          />
           <div>
             <p className="text-sm font-medium text-ink">Daily word aim</p>
             <p className="text-xs text-ink-muted">A quiet count in the corner. No streaks.</p>

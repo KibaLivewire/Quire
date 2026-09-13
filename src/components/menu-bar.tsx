@@ -240,6 +240,24 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           >
             Typewriter scroll
           </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={prefs.bootLeaves !== false}
+            onCheckedChange={(checked) => setPrefs({ bootLeaves: checked })}
+          >
+            Falling leaves
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={prefs.ambient !== false}
+            onCheckedChange={(checked) => setPrefs({ ambient: checked })}
+          >
+            Wind chimes
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={prefs.quill !== false}
+            onCheckedChange={(checked) => setPrefs({ quill: checked })}
+          >
+            Quill
+          </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => setPrefs({ zoom: Math.min(1.6, Math.round((prefs.zoom + 0.1) * 10) / 10) })}>
             Zoom in
@@ -272,7 +290,7 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           <DialogHeader>
             <DialogTitle>Quire {appVersion()}</DialogTitle>
             <DialogDescription>
-              A notebook for pages you keep on this device. File → Export as saves Word, PDF, RTF, and plain text.
+              A notebook for pages you keep on this device. Wind chimes: Epidemic Sound, used under their royalty-free license.
             </DialogDescription>
           </DialogHeader>
           <ul className="space-y-1 text-sm text-ink-muted">

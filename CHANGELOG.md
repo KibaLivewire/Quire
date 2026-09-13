@@ -1,3 +1,16 @@
+# Quire 1.5.1
+
+Cozy desk, finished.
+
+- Soft looping wind chimes, on by default, with a volume dial and mute (Ctrl+M) in the bottom corner
+- Falling leaves carry you onto the desk at launch, timed with the chimes (click to skip)
+- Both leaves and chimes can be turned off in Desk or View
+- Quill, a writing aide with a feather in the toolbar — highlight a sentence and ask for shorter, clearer, polish, or a better word
+- Quill greets you when the desk is ready; hide him anytime
+- Welcome page rewritten as a field guide with real examples of the tools
+
+---
+
 # Quire 1.5.0
 
 Released 13 September 2026.

@@ -9,6 +9,7 @@ import {
   BookOpen,
   CheckSquare,
   Crop,
+  Feather,
   Heading1,
   Heading2,
   Heading3,
@@ -158,7 +159,9 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
   const pageOrientation = useNotebookStore((s) => s.prefs.pageOrientation) || "portrait";
   const pageBorder = useNotebookStore((s) => s.prefs.border);
   const showRuler = useNotebookStore((s) => s.prefs.showRuler) !== false;
+  const quillOn = useNotebookStore((s) => s.prefs.quill) !== false;
   const setPrefs = useNotebookStore((s) => s.setPrefs);
+  const setQuillOpen = useNotebookStore((s) => s.setQuillOpen);
   const savedWord = useRef("");
 
   useEffect(() => {
@@ -868,6 +871,11 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
         <ToolBtn label="Divider" onClick={() => editor.chain().focus().setHorizontalRule().run()}>
           <Minus />
         </ToolBtn>
+        {quillOn ? (
+          <ToolBtn label="Quill" onClick={() => setQuillOpen(true)}>
+            <Feather />
+          </ToolBtn>
+        ) : null}
 
         <ImageEditor
           open={editOpen}

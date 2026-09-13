@@ -1,4 +1,5 @@
 import type { Note, Notebook } from "./types";
+import { WELCOME_HTML } from "./welcome";
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.parse("2026-09-12T12:00:00.000Z");
@@ -26,18 +27,7 @@ export const SEED_NOTES: Note[] = [
     pinned: true,
     createdAt: daysAgo(4),
     updatedAt: daysAgo(0, 2),
-    content: `
-<p>A quiet notebook for sentences that want a desk, not a feed. Pages live on this device — nothing is sent away.</p>
-<img src="/welcome-desk.jpg" alt="An open blank journal and a quill standing in an inkpot on a cedar table">
-<p>Write with <strong>weight</strong>, <em>emphasis</em>, <u>underline</u>, or a <mark data-color="#f3e2a0" style="background-color: #f3e2a0; color: #1c1917">highlight</mark>. Change the typeface from the bar above. Drop in a photograph with the image button, or paste one straight from the clipboard.</p>
-<blockquote><p>Fill the page the way you would a paper one. Nobody is watching.</p></blockquote>
-<ul>
-<li><p>Start a notebook for each corner of your life</p></li>
-<li><p>Pin the pages you return to</p></li>
-<li><p>Search when the pile grows</p></li>
-</ul>
-<p>When a sheet fills, the next one appears. Choose a theme, a border, a zoom. The rest is ink.</p>
-`.trim(),
+    content: WELCOME_HTML,
   }),
   note({
     id: "note_september",

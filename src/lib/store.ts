@@ -4,6 +4,7 @@ import { createSeed } from "./seed";
 import { NOTEBOOK_HUES, DEFAULT_PREFS, DEFAULT_SESSION, type Note, type Notebook, type NotebookHue, type Prefs, type Session } from "./types";
 import { notePages } from "./pages";
 import { descendantIds, isAlive, isDescendant } from "./folders";
+import { WELCOME_HTML, WELCOME_VERSION } from "./welcome";
 
 const DB_NAME = "quire";
 const STORE_NAME = "kv";
@@ -33,10 +34,12 @@ export type NotebookState = {
   initialized: boolean;
   hasHydrated: boolean;
   focusMode: boolean;
+  quillOpen: boolean;
   prefs: Prefs;
   session: Session;
   completeHydration: () => void;
   setFocusMode: (value: boolean) => void;
+  setQuillOpen: (value: boolean) => void;
   setPrefs: (patch: Partial<Prefs>) => void;
   setSession: (patch: Partial<Session>) => void;
   recordWords: (added: number) => void;
@@ -154,6 +157,7 @@ export const useNotebookStore = create<NotebookState>()(
       initialized: true,
       hasHydrated: true,
       focusMode: false,
+      quillOpen: false,
       prefs: { ...DEFAULT_PREFS },
       session: { ...DEFAULT_SESSION },
 
@@ -172,16 +176,23 @@ export const useNotebookStore = create<NotebookState>()(
             prefs.wordsToday = 0;
             prefs.wordsDate = today;
           }
+          let liveNotes = purged.notes;
+          if ((prefs.welcomeVersion || 0) < WELCOME_VERSION) {
+            liveNotes = liveNotes.map((item) =>
+              item.id === "note_welcome" ? { ...item, title: "Welcome to Quire", pages: [WELCOME_HTML], content: WELCOME_HTML } : item,
+            );
+            prefs.welcomeVersion = WELCOME_VERSION;
+          }
           const session = { ...DEFAULT_SESSION, ...state.session };
-          const noteOk = purged.notes.some((note) => note.id === (session.noteId || state.activeNoteId) && isAlive(note));
+          const noteOk = liveNotes.some((note) => note.id === (session.noteId || state.activeNoteId) && isAlive(note));
           const notebookOk = purged.notebooks.some((nb) => nb.id === (session.notebookId || state.activeNotebookId) && isAlive(nb));
           return {
             hasHydrated: true,
-            notes: purged.notes,
+            notes: liveNotes,
             notebooks: purged.notebooks,
             prefs,
             session,
-            activeNoteId: noteOk ? (session.noteId || state.activeNoteId) : purged.notes.find(isAlive)?.id ?? null,
+            activeNoteId: noteOk ? (session.noteId || state.activeNoteId) : liveNotes.find(isAlive)?.id ?? null,
             activeNotebookId: notebookOk
               ? (session.notebookId || state.activeNotebookId)
               : purged.notebooks.find(isAlive)?.id ?? null,
@@ -189,6 +200,7 @@ export const useNotebookStore = create<NotebookState>()(
         }),
 
       setFocusMode: (value) => set({ focusMode: value }),
+      setQuillOpen: (value) => set({ quillOpen: value }),
 
       setPrefs: (patch) =>
         set((state) => ({
