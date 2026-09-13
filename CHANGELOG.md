@@ -1,3 +1,20 @@
+# Quire 1.5.1
+
+Released 13 September 2026.
+
+A calm follow-up to the Cozy Update.
+
+- Chime dial sits in the bottom bar, centered between word count and zoom
+- Desk → Wind chimes off hides the dial as well as the sound
+- The falling-leaf opening fades into the desk instead of cutting
+- Quill greets from a center popup: Close, or Never show again
+- Quill’s chat stays closed until you open the feather in the toolbar
+- Starter desk keeps only Welcome to Quire; sample pages are gone
+
+Installer: Quire-Setup-1.5.1.exe
+
+---
+
 # Quire 1.5.0 — Cozy Update
 
 Released 13 September 2026.
