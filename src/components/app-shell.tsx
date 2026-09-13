@@ -4,6 +4,7 @@ import { EditorPane } from "@/components/editor-pane";
 import { MenuBar } from "@/components/menu-bar";
 import { NoteList } from "@/components/note-list";
 import { NotebookRail } from "@/components/notebook-rail";
+import { PrintPreview } from "@/components/print-preview";
 import { SettingsPanel } from "@/components/settings-panel";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -115,6 +116,7 @@ export function AppShell() {
       </Sheet>
 
       <SettingsPanel open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <PrintPreview />
 
       <Toaster
         position="bottom-right"

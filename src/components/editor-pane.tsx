@@ -42,6 +42,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { exportDoc, exportDocx, exportHtml, exportMarkdown, exportPdf, exportRtf, exportText } from "@/lib/export-note";
 import { notePages } from "@/lib/pages";
+import { openPrintPreview } from "@/lib/print";
 import { useNotebookStore } from "@/lib/store";
 import { cn, debounce, plainText, wordCount } from "@/lib/utils";
 
@@ -217,9 +218,9 @@ export function EditorPane({
               <Download className="size-4" />
               Export Markdown
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => window.print()}>
+            <DropdownMenuItem onSelect={() => openPrintPreview()}>
               <Printer className="size-4" />
-              Print
+              Print preview
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>

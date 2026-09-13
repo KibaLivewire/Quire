@@ -32,6 +32,7 @@ import {
 } from "@/lib/export-note";
 import { importDocument, OPEN_ACCEPT } from "@/lib/import-note";
 import { notePages } from "@/lib/pages";
+import { openPrintPreview } from "@/lib/print";
 import { useNotebookStore } from "@/lib/store";
 
 function currentPage() {
@@ -69,7 +70,7 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       }
       if (key === "p") {
         event.preventDefault();
-        window.print();
+        openPrintPreview();
       }
     }
     window.addEventListener("keydown", onKey);
@@ -147,8 +148,8 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <DropdownMenuItem onSelect={() => void onExport("html")}>.HTML — Web page</DropdownMenuItem>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
-          <DropdownMenuItem onSelect={() => window.print()}>
-            Print… <Shortcut>Ctrl+P</Shortcut>
+          <DropdownMenuItem onSelect={() => openPrintPreview()}>
+            Print preview… <Shortcut>Ctrl+P</Shortcut>
           </DropdownMenuItem>
         </Menu>
         <Menu label="Edit">
