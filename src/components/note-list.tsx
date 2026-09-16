@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { FileText, Filter, Folder, Menu, Pin, Plus, Search } from "lucide-react";
+import { FileText, Filter, Folder, Lock, Menu, Pin, Plus, Search } from "lucide-react";
 import { ColorSwatches } from "@/components/color-swatches";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +27,8 @@ import {
   type SortKey,
 } from "@/lib/folders";
 import { openRecipeChooser } from "@/lib/recipe-chooser";
+import { folderGate, isLocked, noteGate } from "@/lib/lock";
+import { LockOverlay } from "@/components/lock-gate";
 import { useNotebookStore } from "@/lib/store";
 import { cn, plainText } from "@/lib/utils";
 
@@ -69,6 +71,7 @@ export function NoteList({
   const setActiveNote = useNotebookStore((s) => s.setActiveNote);
   const createNotebook = useNotebookStore((s) => s.createNotebook);
   const updateNote = useNotebookStore((s) => s.updateNote);
+  const unlockedIds = useNotebookStore((s) => s.unlockedIds);
 
   const [query, setQuery] = useState("");
   const [created, setCreated] = useState<DateFilter>("any");
@@ -91,6 +94,8 @@ export function NoteList({
       if (!inDateRange(note.updatedAt, updated)) return false;
       if (!inSizeRange(bytes, size)) return false;
       if (!q) return true;
+      const gated = Boolean(noteGate(notebooks, note, unlockedIds));
+      if (gated) return note.title.toLowerCase().includes(q);
       return (
         note.title.toLowerCase().includes(q) ||
         plainText(note.content).toLowerCase().includes(q)
@@ -106,7 +111,7 @@ export function NoteList({
       if (sort === "name") return (a.title || "Untitled").localeCompare(b.title || "Untitled");
       return b.updatedAt - a.updatedAt;
     });
-  }, [notes, activeNotebookId, query, created, updated, size, sort, searching]);
+  }, [notes, notebooks, activeNotebookId, query, created, updated, size, sort, searching, unlockedIds]);
 
   const filteredFolders = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -124,6 +129,7 @@ export function NoteList({
   }, [notebooks, notes, nested, query, created, updated, size, searching]);
 
   const coloring = notes.find((note) => note.id === colorNoteId);
+  const listGate = folderGate(notebooks, activeNotebookId, unlockedIds);
 
   return (
     <section className={cn("flex h-full min-h-0 flex-col border-r border-rule bg-paper-raised safe-pad", className)}>
@@ -255,7 +261,9 @@ export function NoteList({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-        {filteredFolders.length === 0 && filteredNotes.length === 0 ? (
+        {listGate ? (
+          <LockOverlay gate={listGate} />
+        ) : filteredFolders.length === 0 && filteredNotes.length === 0 ? (
           <div className="px-3 py-10 text-center">
             <p className="font-display text-base font-medium text-ink">Nothing here</p>
             <p className="mt-1 text-sm text-ink-muted">
@@ -281,7 +289,10 @@ export function NoteList({
                   >
                     <Folder className="mt-0.5 size-4 shrink-0" style={{ color: itemColor(folder) }} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium text-ink">{folder.name}</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="block min-w-0 truncate font-medium text-ink">{folder.name}</span>
+                        {isLocked(folder) ? <Lock className="size-3 shrink-0 text-ink-subtle" /> : null}
+                      </span>
                       <span className="mt-0.5 block truncate text-xs text-ink-subtle">
                         {searching ? trail : "Folder"} · {formatBytes(bytes)}
                       </span>
@@ -292,7 +303,8 @@ export function NoteList({
             })}
             {filteredNotes.map((note) => {
               const active = note.id === activeNoteId;
-              const snippet = plainText(note.content);
+              const gated = Boolean(noteGate(notebooks, note, unlockedIds));
+              const snippet = gated ? "" : plainText(note.content);
               const trail = folderPath(notebooks, note.notebookId)
                 .map((item) => item.name)
                 .join(" / ");
@@ -320,11 +332,18 @@ export function NoteList({
                         <span className="min-w-0 flex-1 truncate font-medium text-ink">
                           {note.title || "Untitled"}
                         </span>
+                        {isLocked(note) ? (
+                          <Lock className="mt-0.5 size-3.5 shrink-0 text-ink-muted" />
+                        ) : null}
                         {note.pinned ? (
                           <Pin className="mt-0.5 size-3.5 shrink-0 fill-current text-ink-muted" />
                         ) : null}
                       </span>
-                      {snippet ? (
+                      {gated ? (
+                        <span className="mt-0.5 ml-6 line-clamp-2 text-sm leading-snug text-ink-muted">
+                          Locked page
+                        </span>
+                      ) : snippet ? (
                         <span className="mt-0.5 ml-6 line-clamp-2 text-sm leading-snug text-ink-muted">
                           {snippet}
                         </span>

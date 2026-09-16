@@ -10,6 +10,7 @@ type QuireBridge = {
   writePrefs?: (prefs: Prefs | Partial<Prefs>) => Promise<boolean>;
   onFlushRequest?: (handler: () => void | Promise<void>) => () => void;
   notifyFlushDone?: () => void;
+  addSpellWord?: (word: string) => Promise<boolean>;
 };
 
 declare global {

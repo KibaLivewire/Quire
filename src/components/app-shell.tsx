@@ -6,6 +6,7 @@ import { MenuBar } from "@/components/menu-bar";
 import { NoteList } from "@/components/note-list";
 import { NotebookRail } from "@/components/notebook-rail";
 import { PrintPreview } from "@/components/print-preview";
+import { LockDialogHost } from "@/components/lock-gate";
 import { QuillPanel } from "@/components/quill-panel";
 import { RecipeChooserHost, openRecipeChooser } from "@/components/recipe-chooser";
 import { SettingsPanel } from "@/components/settings-panel";
@@ -230,6 +231,7 @@ export function AppShell() {
       <SettingsPanel open={settingsOpen} onOpenChange={setSettingsOpen} />
       <RecipeChooserHost />
       <PrintPreview />
+      <LockDialogHost />
 
       <Toaster
         position="bottom-right"

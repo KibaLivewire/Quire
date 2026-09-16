@@ -4,10 +4,14 @@ export type PrintJob = {
   landscape: boolean;
   paper?: string;
   ink?: string;
+  inkSaver?: boolean;
+  grayscaleImages?: boolean;
+  header?: boolean;
+  pageNumbers?: boolean;
 };
 
 const PRINT_CSS = `
-  @page { size: letter {{orient}}; margin: 0.55in; }
+  @page { size: letter {{orient}}; margin: 0.7in 0.55in 0.75in; }
   * { box-sizing: border-box; }
   html, body {
     margin: 0;
@@ -23,10 +27,29 @@ const PRINT_CSS = `
     color: {{ink}};
     page-break-after: always;
     break-after: page;
+    position: relative;
+    min-height: 9.2in;
   }
   .sheet:last-child {
     page-break-after: auto;
     break-after: auto;
+  }
+  .running {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9pt;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.72;
+    margin: 0 0 0.85em;
+    border-bottom: 1px solid color-mix(in srgb, {{ink}} 22%, {{paper}});
+    padding-bottom: 0.35em;
+  }
+  .folio {
+    text-align: right;
+    font-size: 9pt;
+    opacity: 0.7;
+    margin-top: 1.1em;
   }
   h1.title {
     font-family: Georgia, "Times New Roman", serif;
@@ -42,6 +65,8 @@ const PRINT_CSS = `
   h2 { font-size: 14pt; }
   h3 { font-size: 12.5pt; }
   ul, ol { margin: 0.4em 0 0.8em; padding-left: 1.3em; }
+  table { border-collapse: collapse; width: 100%; margin: 0.6em 0 1em; }
+  th, td { border: 1px solid color-mix(in srgb, {{ink}} 28%, {{paper}}); padding: 0.25em 0.4em; }
   blockquote {
     margin: 0.8em 0;
     padding-left: 0.9em;
@@ -49,26 +74,45 @@ const PRINT_CSS = `
     color: {{ink}};
     font-style: italic;
   }
-  img { max-width: 100%; height: auto; }
+  img { max-width: 100%; height: auto; {{imgFilter}} }
   mark { background: #f3e2a0; color: #1c1917; padding: 0 0.12em; }
   a { color: inherit; text-decoration: underline; }
   hr { border: 0; border-top: 1px solid color-mix(in srgb, {{ink}} 22%, {{paper}}); margin: 1.2em 0; }
   figure { margin: 0.6em 0; }
 `;
 
+export function printPaper(job: Pick<PrintJob, "inkSaver" | "paper">) {
+  return job.inkSaver ? "#ffffff" : job.paper || "#ffffff";
+}
+
+export function printInk(job: Pick<PrintJob, "inkSaver" | "ink">) {
+  return job.inkSaver ? "#1c1917" : job.ink || "#1c1917";
+}
+
 export function buildPrintDocument(job: PrintJob): string {
+  const paper = printPaper(job);
+  const ink = printInk(job);
   const sheets = job.pages
     .map((html, index) => {
       const title =
         index === 0 && job.title.trim()
           ? `<h1 class="title">${escapeHtml(job.title.trim())}</h1>`
           : "";
-      return `<section class="sheet">${title}${html || "<p></p>"}</section>`;
+      const running =
+        job.header !== false
+          ? `<div class="running"><span>${escapeHtml(job.title.trim() || "Untitled")}</span><span>Quire</span></div>`
+          : "";
+      const folio =
+        job.pageNumbers !== false
+          ? `<div class="folio">${index + 1} / ${job.pages.length}</div>`
+          : "";
+      return `<section class="sheet">${running}${title}${html || "<p></p>"}${folio}</section>`;
     })
     .join("");
   const css = PRINT_CSS.replace("{{orient}}", job.landscape ? "landscape" : "portrait")
-    .replaceAll("{{paper}}", job.paper || "#ffffff")
-    .replaceAll("{{ink}}", job.ink || "#1c1917");
+    .replaceAll("{{paper}}", paper)
+    .replaceAll("{{ink}}", ink)
+    .replace("{{imgFilter}}", job.grayscaleImages ? "filter: grayscale(1);" : "");
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(job.title || "Untitled")}</title><style>${css}</style></head><body>${sheets}</body></html>`;
 }
 

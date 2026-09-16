@@ -276,6 +276,8 @@ export function RichEditor({
   const pageHeight = Number(prefs.pageHeight) > 0 ? Number(prefs.pageHeight) : 11;
   const deskRef = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState(1);
+  const [phone, setPhone] = useState(false);
+  const spreadOn = Boolean(prefs.spread) && !phone;
 
   useEffect(() => {
     const desk = deskRef.current;
@@ -284,7 +286,17 @@ export function RichEditor({
       const box = deskRef.current;
       if (!box) return;
       const device = applyDevice(readDevice());
-      setFit(pageFitScale(box.clientWidth, box.clientHeight, pageWidth, pageHeight, device.kind));
+      setPhone(device.kind === "phone");
+      const useSpread = Boolean(prefs.spread) && device.kind !== "phone";
+      setFit(
+        pageFitScale(
+          box.clientWidth,
+          box.clientHeight,
+          useSpread ? pageWidth * 2 + 0.45 : pageWidth,
+          pageHeight,
+          device.kind,
+        ),
+      );
     }
     measure();
     const ro = new ResizeObserver(measure);
@@ -294,7 +306,7 @@ export function RichEditor({
       ro.disconnect();
       window.removeEventListener("orientationchange", measure);
     };
-  }, [pageWidth, pageHeight, prefs.pageOrientation]);
+  }, [pageWidth, pageHeight, prefs.pageOrientation, prefs.spread]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -331,7 +343,7 @@ export function RichEditor({
               }
             }}
             className="mb-4 w-full resize-none bg-transparent font-display text-3xl leading-tight font-semibold tracking-tight text-ink placeholder:text-ink-subtle focus:outline-none"
-            style={{ maxWidth: `${pageWidth}in` }}
+            style={{ maxWidth: spreadOn ? `${pageWidth * 2 + 0.45}in` : `${pageWidth}in` }}
           />
           {!focusMode && !inkOnly ? (
             <button
@@ -343,6 +355,7 @@ export function RichEditor({
               {recipeLabel(meta.recipe)}
             </button>
           ) : null}
+          <div className={cn("flex items-start justify-center gap-4", spreadOn && "quire-spread")}>
           <div className="relative">
           <PageSheet
             border={effectiveBorder}
@@ -370,6 +383,28 @@ export function RichEditor({
             </div>
           </PageSheet>
           <RibbonMarginMarks editor={editor} note={note} pageIndex={safeIndex} sheetHeight={pageHeight} />
+          </div>
+          {spreadOn ? (
+            <PageSheet
+              border={effectiveBorder}
+              oversized={false}
+              width={pageWidth}
+              height={pageHeight}
+              showRuler={false}
+              className={cn("print-sheet is-facing", `is-recipe-${meta.recipe}`)}
+            >
+              <div
+                data-recipe={meta.recipe}
+                className={cn("paper-body px-6 py-6 md:px-8", `recipe-${meta.recipe}`)}
+              >
+                {pages[safeIndex + 1] ? (
+                  <div className="quire-doc" dangerouslySetInnerHTML={{ __html: pages[safeIndex + 1] }} />
+                ) : (
+                  <p className="pt-8 text-center text-sm text-ink-subtle">Facing page</p>
+                )}
+              </div>
+            </PageSheet>
+          ) : null}
           </div>
           {linkChip ? (
             <div
@@ -412,7 +447,7 @@ export function RichEditor({
               variant="ghost"
               size="sm"
               onClick={() => {
-                const next = insertNotePage(note.id, safeIndex + 1, "");
+                const next = insertNotePage(note.id, safeIndex + 1, undefined, meta.recipe);
                 onPageIndexChange(next);
               }}
             >

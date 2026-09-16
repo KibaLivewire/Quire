@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, MoreHorizontal, Plus, Settings } from "lucide-react";
+import { ChevronRight, Lock, MoreHorizontal, Plus, Settings } from "lucide-react";
 import { ColorSwatches } from "@/components/color-swatches";
 import { QuireMark } from "@/components/quire-mark";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { childFolders, descendantIds, itemColor } from "@/lib/folders";
 import { appVersion } from "@/lib/desktop";
+import { isLocked } from "@/lib/lock";
+import { openLockDialog } from "@/components/lock-gate";
 import { useNotebookStore } from "@/lib/store";
 import type { Notebook } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -108,6 +110,7 @@ function FolderRow({
           )}
           <span className="size-2.5 shrink-0 rounded-full" style={{ background: itemColor(folder) }} />
           <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+          {isLocked(folder) ? <Lock className="size-3 shrink-0 text-cream/50" aria-label="Locked" /> : null}
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -126,6 +129,32 @@ function FolderRow({
             <DropdownMenuItem onSelect={() => onCreateInside(folder.id)}>New folder inside</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onRename(folder)}>Rename</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onColor(folder)}>Color</DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() =>
+                openLockDialog({
+                  kind: "folder",
+                  id: folder.id,
+                  mode: isLocked(folder) ? "unlock" : "set",
+                  title: folder.name,
+                })
+              }
+            >
+              {isLocked(folder) ? "Unlock…" : "Lock…"}
+            </DropdownMenuItem>
+            {isLocked(folder) ? (
+              <DropdownMenuItem
+                onSelect={() =>
+                  openLockDialog({
+                    kind: "folder",
+                    id: folder.id,
+                    mode: "clear",
+                    title: folder.name,
+                  })
+                }
+              >
+                Remove lock…
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>Move into</DropdownMenuSubTrigger>
               <DropdownMenuSubContent>

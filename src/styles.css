@@ -187,6 +187,44 @@ html[data-theme="leather"] {
   --color-popover-foreground: #f3e6d4;
 }
 
+html[data-theme="rain"] {
+  color-scheme: dark;
+  --color-paper: #1c2730;
+  --color-paper-raised: #24323c;
+  --color-paper-inset: #141c22;
+  --color-rule: #3a4c58;
+  --color-ink: #d7e0e6;
+  --color-ink-muted: #a7b6bf;
+  --color-ink-subtle: #7d8e98;
+  --color-leather: #0b1014;
+  --color-leather-raised: #12181d;
+  --color-leather-hover: #1a2329;
+  --color-cream: #d7e0e6;
+  --color-forest: #8aa3b3;
+  --color-forest-fg: #0b1014;
+  --color-gilt: #9eb0bc;
+  --color-decal: #8aa3b3;
+  --color-background: #1c2730;
+  --color-foreground: #d7e0e6;
+  --color-card: #24323c;
+  --color-card-foreground: #d7e0e6;
+  --color-primary: #8aa3b3;
+  --color-primary-foreground: #0b1014;
+  --color-secondary: #141c22;
+  --color-secondary-foreground: #d7e0e6;
+  --color-muted: #141c22;
+  --color-muted-foreground: #a7b6bf;
+  --color-accent: #141c22;
+  --color-accent-foreground: #d7e0e6;
+  --color-destructive: #c45c4e;
+  --color-destructive-foreground: #faf7f2;
+  --color-border: #3a4c58;
+  --color-input: #3a4c58;
+  --color-ring: #8aa3b3;
+  --color-popover: #24323c;
+  --color-popover-foreground: #d7e0e6;
+}
+
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
@@ -1043,6 +1081,10 @@ html[data-theme="leather"] {
   background: var(--color-paper);
 }
 
+.boot-ritual[data-ritual="rain"] {
+  background: #0b1014;
+}
+
 .boot-ritual-canvas,
 .boot-leaves-canvas {
   width: 100%;
@@ -1090,9 +1132,9 @@ html[data-theme="leather"] {
 .quill-face {
   width: 2.25rem;
   height: 2.25rem;
-  border-radius: 999px;
+  border-radius: 0.55rem;
   object-fit: cover;
-  background: var(--color-paper);
+  background: #000;
 }
 
 .border-swatch {
@@ -1491,4 +1533,64 @@ html[data-device="phone"] .quire-shell {
 .print-preview-sheet img {
   max-width: 100%;
   height: auto;
+}
+.print-preview-sheet.is-gray img {
+  filter: grayscale(1);
+}
+
+.quire-table,
+.tiptap table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.6em 0 1em;
+  table-layout: fixed;
+}
+.tiptap th,
+.tiptap td {
+  border: 1px solid var(--color-rule);
+  padding: 0.35em 0.5em;
+  vertical-align: top;
+  min-width: 1.5rem;
+  position: relative;
+}
+.tiptap th {
+  background: color-mix(in oklab, var(--color-paper-inset) 70%, var(--color-paper));
+  font-weight: 600;
+}
+.tiptap .selectedCell {
+  background: color-mix(in oklab, var(--color-forest) 18%, var(--color-paper-raised));
+}
+.tiptap .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--color-forest);
+  pointer-events: none;
+}
+.tiptap.resize-cursor {
+  cursor: col-resize;
+}
+
+.lock-gate {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem 1.25rem;
+  text-align: center;
+}
+
+.quire-spread .is-facing {
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.92;
+}
+
+html[data-device="phone"] .quire-spread .is-facing {
+  display: none;
 }

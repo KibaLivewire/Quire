@@ -1,3 +1,5 @@
+import { inDictionary } from "./dictionary";
+
 export type GrammarIssue = {
   message: string;
   offset: number;
@@ -5,7 +7,7 @@ export type GrammarIssue = {
   replacements: string[];
 };
 
-export async function checkGrammar(text: string): Promise<GrammarIssue[]> {
+export async function checkGrammar(text: string, dictionary?: string[]): Promise<GrammarIssue[]> {
   const clipped = text.slice(0, 20_000);
   if (!clipped.trim()) return [];
   const body = new URLSearchParams({
@@ -22,10 +24,16 @@ export async function checkGrammar(text: string): Promise<GrammarIssue[]> {
   const data = (await response.json()) as {
     matches?: { message?: string; offset?: number; length?: number; replacements?: { value?: string }[] }[];
   };
-  return (data.matches ?? []).slice(0, 40).map((item) => ({
-    message: String(item.message ?? "Issue"),
-    offset: Number(item.offset ?? 0),
-    length: Number(item.length ?? 0),
-    replacements: (item.replacements ?? []).map((r) => String(r.value ?? "")).filter(Boolean).slice(0, 5),
-  }));
+  return (data.matches ?? [])
+    .slice(0, 40)
+    .map((item) => ({
+      message: String(item.message ?? "Issue"),
+      offset: Number(item.offset ?? 0),
+      length: Number(item.length ?? 0),
+      replacements: (item.replacements ?? []).map((r) => String(r.value ?? "")).filter(Boolean).slice(0, 5),
+    }))
+    .filter((item) => {
+      const word = clipped.slice(item.offset, item.offset + item.length);
+      return !inDictionary(dictionary, word);
+    });
 }

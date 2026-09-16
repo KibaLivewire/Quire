@@ -6,6 +6,7 @@ import {
   Download,
   FileText,
   FolderInput,
+  Lock,
   Maximize2,
   Minimize2,
   Minus,
@@ -19,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { FindBar } from "@/components/find-bar";
 import { AmbientDial } from "@/components/ambient-dial";
+import { LockOverlay, openLockDialog } from "@/components/lock-gate";
 import { RichEditor } from "@/components/rich-editor";
 import {
   AlertDialog,
@@ -43,6 +45,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Slider } from "@/components/ui/slider";
 import { exportDoc, exportDocx, exportHtml, exportMarkdown, exportPdf, exportRtf, exportText } from "@/lib/export-note";
+import { isLocked, noteGate } from "@/lib/lock";
 import { notePages } from "@/lib/pages";
 import { openPrintPreview } from "@/lib/print";
 import { openRecipeChooser } from "@/lib/recipe-chooser";
@@ -73,8 +76,10 @@ export function EditorPane({
   const duplicateNote = useNotebookStore((s) => s.duplicateNote);
   const togglePin = useNotebookStore((s) => s.togglePin);
   const moveNote = useNotebookStore((s) => s.moveNote);
+  const unlockedIds = useNotebookStore((s) => s.unlockedIds);
 
   const note = notes.find((item) => item.id === activeNoteId) ?? null;
+  const gate = noteGate(notebooks, note, unlockedIds);
   const [title, setTitle] = useState(note?.title ?? "");
   const [pageIndex, setPageIndex] = useState(0);
   const [saveState, setSaveState] = useState<"saved" | "saving">("saved");
@@ -151,6 +156,14 @@ export function EditorPane({
   const chars = plainText(allHtml).length;
   const zoomPct = Math.round(prefs.zoom * 100);
 
+  function unlessLocked(run: () => void) {
+    if (gate) {
+      toast.error("Unlock this page first.");
+      return;
+    }
+    run();
+  }
+
   return (
     <section className={cn("relative flex h-full min-h-0 flex-col bg-paper quire-page", className)}>
       <FindBar />
@@ -200,10 +213,39 @@ export function EditorPane({
               <Pin className="size-4" />
               {note.pinned ? "Unpin" : "Pin"}
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => duplicateNote(note.id)}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => {
+              duplicateNote(note.id);
+            })}>
               <Copy className="size-4" />
               Duplicate
             </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() =>
+                openLockDialog({
+                  kind: "note",
+                  id: note.id,
+                  mode: isLocked(note) ? "unlock" : "set",
+                  title: note.title || "Untitled",
+                })
+              }
+            >
+              <Lock className="size-4" />
+              {isLocked(note) ? "Unlock…" : "Lock…"}
+            </DropdownMenuItem>
+            {isLocked(note) ? (
+              <DropdownMenuItem
+                onSelect={() =>
+                  openLockDialog({
+                    kind: "note",
+                    id: note.id,
+                    mode: "clear",
+                    title: note.title || "Untitled",
+                  })
+                }
+              >
+                Remove lock…
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <FolderInput className="mr-2 size-4" />
@@ -221,35 +263,35 @@ export function EditorPane({
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuItem onSelect={() => exportHtml(title || "Untitled", allHtml)}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportHtml(title || "Untitled", allHtml))}>
               <Download className="size-4" />
               Export HTML
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => exportText(title || "Untitled", allHtml)}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportText(title || "Untitled", allHtml))}>
               <FileText className="size-4" />
               Export .TXT
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => exportRtf(title || "Untitled", allHtml)}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportRtf(title || "Untitled", allHtml))}>
               <FileText className="size-4" />
               Export .RTF
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => exportDoc(title || "Untitled", allHtml)}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportDoc(title || "Untitled", allHtml))}>
               <FileText className="size-4" />
               Export .DOC
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void exportDocx(title || "Untitled", allHtml)}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => void exportDocx(title || "Untitled", allHtml))}>
               <FileText className="size-4" />
               Export .DOCX
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => exportPdf(title || "Untitled", allHtml)}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => void exportPdf(title || "Untitled", allHtml))}>
               <FileText className="size-4" />
               Export .PDF
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => exportMarkdown(title || "Untitled", allHtml)}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportMarkdown(title || "Untitled", allHtml))}>
               <Download className="size-4" />
               Export Markdown
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => openPrintPreview()}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => openPrintPreview())}>
               <Printer className="size-4" />
               Print preview
             </DropdownMenuItem>
@@ -263,6 +305,9 @@ export function EditorPane({
         )}
       </header>
 
+      {gate ? (
+        <LockOverlay gate={gate} />
+      ) : (
       <RichEditor
         key={`${note.id}:${pageIndex}`}
         note={note}
@@ -282,10 +327,13 @@ export function EditorPane({
           savePage(note.id, index, next);
         }}
       />
+      )}
 
       <footer className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-t border-rule/80 px-3 py-2 text-xs text-ink-subtle">
         <span className="min-w-0 truncate tabular-nums">
-          {prefs.showWordCount ? (
+          {gate ? (
+            "Locked on this device"
+          ) : prefs.showWordCount ? (
             <>
               {words} {words === 1 ? "word" : "words"}
               <span className="text-ink-subtle/70"> · {chars} characters</span>

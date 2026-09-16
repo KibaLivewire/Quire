@@ -9,11 +9,36 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { notePages } from "@/lib/pages";
+import { noteGate } from "@/lib/lock";
 import { assessPrintSheet, pageColors, type PrintWarning } from "@/lib/print-ink";
-import { printDocument, registerPrintPreview } from "@/lib/print";
+import { printDocument, printInk, printPaper, registerPrintPreview } from "@/lib/print";
 import { useNotebookStore } from "@/lib/store";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+function Toggle({
+  label,
+  on,
+  onClick,
+}: {
+  label: string;
+  on: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onClick}
+      className={cn(
+        "rounded-md px-2.5 py-1 text-xs",
+        on ? "bg-white/15 text-cream" : "text-cream/60 hover:text-cream",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
 
 export function PrintPreview() {
   const notes = useNotebookStore((s) => s.notes);
@@ -22,6 +47,10 @@ export function PrintPreview() {
   const [open, setOpen] = useState(false);
   const [index, setIndex] = useState(0);
   const [landscape, setLandscape] = useState(false);
+  const [inkSaver, setInkSaver] = useState(false);
+  const [grayscaleImages, setGrayscaleImages] = useState(false);
+  const [header, setHeader] = useState(true);
+  const [pageNumbers, setPageNumbers] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [warning, setWarning] = useState<PrintWarning | null>(null);
@@ -33,6 +62,8 @@ export function PrintPreview() {
   const width = landscape ? 11 : 8.5;
   const height = landscape ? 8.5 : 11;
   const colors = pageColors();
+  const paper = printPaper({ inkSaver, paper: colors.paper });
+  const ink = printInk({ inkSaver, ink: colors.ink });
 
   useEffect(() => {
     return registerPrintPreview(() => {
@@ -42,9 +73,17 @@ export function PrintPreview() {
         toast.error("Open or start a page first.");
         return;
       }
+      if (noteGate(current.notebooks, active, current.unlockedIds)) {
+        toast.error("Unlock this page first.");
+        return;
+      }
       setLandscape(current.prefs.pageOrientation === "landscape");
       setIndex(0);
       setConfirm(false);
+      setInkSaver(false);
+      setGrayscaleImages(false);
+      setHeader(true);
+      setPageNumbers(true);
       setOpen(true);
     });
   }, []);
@@ -52,14 +91,13 @@ export function PrintPreview() {
   useEffect(() => {
     if (!open) return;
     const id = window.setTimeout(() => {
-      setWarning(assessPrintSheet(sheetRef.current, colors.paper, colors.ink));
+      setWarning(assessPrintSheet(sheetRef.current, paper, ink));
     }, 80);
     return () => window.clearTimeout(id);
-  }, [open, safeIndex, pages, landscape, colors.paper, colors.ink]);
+  }, [open, safeIndex, pages, landscape, paper, ink, inkSaver, grayscaleImages, header, pageNumbers]);
 
   useEffect(() => {
     if (!open || !note) return;
-    const current = note;
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -76,7 +114,7 @@ export function PrintPreview() {
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [open, pages, landscape, note, confirm, warning]);
+  }, [open, pages, landscape, note, confirm, warning, inkSaver, grayscaleImages, header, pageNumbers]);
 
   async function sendToPrinter() {
     if (!note) return;
@@ -89,6 +127,10 @@ export function PrintPreview() {
         landscape,
         paper: colors.paper,
         ink: colors.ink,
+        inkSaver,
+        grayscaleImages,
+        header,
+        pageNumbers,
       });
     } catch {
       toast.error("Could not open the printer.");
@@ -98,7 +140,7 @@ export function PrintPreview() {
   }
 
   function requestPrint() {
-    const latest = assessPrintSheet(sheetRef.current, colors.paper, colors.ink);
+    const latest = assessPrintSheet(sheetRef.current, paper, ink);
     setWarning(latest);
     if (latest.textMayVanish || latest.heavyInk) {
       setConfirm(true);
@@ -113,68 +155,80 @@ export function PrintPreview() {
 
   return (
     <div className="fixed inset-0 z-[80] flex flex-col bg-[#1a1714] text-cream">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/10 px-3">
-        <p className="min-w-0 flex-1 truncate text-sm font-medium">
-          Print preview · {note.title || "Untitled"}
-        </p>
-        <div className="flex items-center gap-1 rounded-lg bg-white/5 p-0.5">
-          <button
-            type="button"
-            className={cn(
-              "rounded-md px-2.5 py-1 text-xs",
-              !landscape ? "bg-white/15 text-cream" : "text-cream/60 hover:text-cream",
-            )}
-            onClick={() => setLandscape(false)}
-          >
-            Portrait
-          </button>
-          <button
-            type="button"
-            className={cn(
-              "rounded-md px-2.5 py-1 text-xs",
-              landscape ? "bg-white/15 text-cream" : "text-cream/60 hover:text-cream",
-            )}
-            onClick={() => setLandscape(true)}
-          >
-            Landscape
-          </button>
-        </div>
-        <div className="flex items-center gap-1 text-xs text-cream/70">
+      <header className="flex shrink-0 flex-col gap-1 border-b border-white/10 px-3 py-2">
+        <div className="flex h-9 items-center gap-2">
+          <p className="min-w-0 flex-1 truncate text-sm font-medium">
+            Print preview · {note.title || "Untitled"}
+          </p>
+          <div className="flex items-center gap-1 rounded-lg bg-white/5 p-0.5">
+            <button
+              type="button"
+              className={cn(
+                "rounded-md px-2.5 py-1 text-xs",
+                !landscape ? "bg-white/15 text-cream" : "text-cream/60 hover:text-cream",
+              )}
+              onClick={() => setLandscape(false)}
+            >
+              Portrait
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "rounded-md px-2.5 py-1 text-xs",
+                landscape ? "bg-white/15 text-cream" : "text-cream/60 hover:text-cream",
+              )}
+              onClick={() => setLandscape(true)}
+            >
+              Landscape
+            </button>
+          </div>
+          <div className="flex items-center gap-1 text-xs text-cream/70">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="text-cream/80 hover:text-cream"
+              disabled={safeIndex <= 0}
+              aria-label="Previous page"
+              onClick={() => setIndex((value) => Math.max(0, value - 1))}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            {safeIndex + 1} / {pages.length || 1}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="text-cream/80 hover:text-cream"
+              disabled={safeIndex >= pages.length - 1}
+              aria-label="Next page"
+              onClick={() => setIndex((value) => Math.min(pages.length - 1, value + 1))}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+          <Button size="sm" onClick={() => requestPrint()} disabled={busy}>
+            <Printer className="size-4" />
+            {busy ? "Printing…" : "Print"}
+          </Button>
           <Button
             variant="ghost"
             size="icon-sm"
             className="text-cream/80 hover:text-cream"
-            disabled={safeIndex <= 0}
-            aria-label="Previous page"
-            onClick={() => setIndex((value) => Math.max(0, value - 1))}
+            aria-label="Close preview"
+            onClick={() => setOpen(false)}
           >
-            <ChevronLeft className="size-4" />
-          </Button>
-          {safeIndex + 1} / {pages.length || 1}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-cream/80 hover:text-cream"
-            disabled={safeIndex >= pages.length - 1}
-            aria-label="Next page"
-            onClick={() => setIndex((value) => Math.min(pages.length - 1, value + 1))}
-          >
-            <ChevronRight className="size-4" />
+            <X className="size-4" />
           </Button>
         </div>
-        <Button size="sm" onClick={() => requestPrint()} disabled={busy}>
-          <Printer className="size-4" />
-          {busy ? "Printing…" : "Print"}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="text-cream/80 hover:text-cream"
-          aria-label="Close preview"
-          onClick={() => setOpen(false)}
-        >
-          <X className="size-4" />
-        </Button>
+        <div className="flex flex-wrap items-center gap-1 rounded-lg bg-white/5 p-0.5">
+          <Toggle label="Ink-saver" on={inkSaver} onClick={() => setInkSaver((value) => !value)} />
+          <Toggle
+            label="Grayscale pictures"
+            on={grayscaleImages}
+            onClick={() => setGrayscaleImages((value) => !value)}
+          />
+          <Toggle label="Header" on={header} onClick={() => setHeader((value) => !value)} />
+          <Toggle label="Page numbers" on={pageNumbers} onClick={() => setPageNumbers((value) => !value)} />
+        </div>
       </header>
       <div className="min-h-0 flex-1 overflow-auto px-6 py-8">
         {risky ? (
@@ -189,24 +243,38 @@ export function PrintPreview() {
         ) : null}
         <article
           ref={sheetRef}
-          className="quire-doc print-preview-sheet mx-auto shadow-[0_24px_80px_rgb(0_0_0_/_45%)]"
+          className={cn("quire-doc print-preview-sheet mx-auto shadow-[0_24px_80px_rgb(0_0_0_/_45%)]", grayscaleImages && "is-gray")}
           style={{
             width: `${width}in`,
             minHeight: `${height}in`,
             padding: "0.75in",
-            background: colors.paper,
-            color: colors.ink,
+            background: paper,
+            color: ink,
           }}
         >
+          {header ? (
+            <div className="mb-4 flex justify-between border-b pb-2 text-[11px] tracking-wide uppercase opacity-70" style={{ borderColor: ink }}>
+              <span>{note.title || "Untitled"}</span>
+              <span>Quire</span>
+            </div>
+          ) : null}
           {safeIndex === 0 && note.title ? (
-            <h1 className="title mb-4 font-display text-3xl font-semibold tracking-tight" style={{ color: colors.ink }}>
+            <h1 className="title mb-4 font-display text-3xl font-semibold tracking-tight" style={{ color: ink }}>
               {note.title}
             </h1>
           ) : null}
           <div dangerouslySetInnerHTML={{ __html: pages[safeIndex] || "<p></p>" }} />
+          {pageNumbers ? (
+            <p className="mt-8 text-right text-[11px] opacity-70">
+              {safeIndex + 1} / {pages.length || 1}
+            </p>
+          ) : null}
         </article>
         <p className="mx-auto mt-4 max-w-xl text-center text-xs text-cream/45">
-          {width} × {height} in letter · colors match the page on your desk ({prefs.theme})
+          {width} × {height} in letter
+          {inkSaver
+            ? " · ink-saver: white paper, black type"
+            : ` · colors match the page on your desk (${prefs.theme})`}
         </p>
       </div>
 

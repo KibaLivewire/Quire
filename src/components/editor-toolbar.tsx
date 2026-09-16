@@ -28,6 +28,7 @@ import {
   Search,
   SpellCheck,
   Strikethrough,
+  Table2,
   Underline,
   Undo2,
   RectangleHorizontal,
@@ -169,6 +170,7 @@ export function EditorToolbar({
   const [grammarBusy, setGrammarBusy] = useState(false);
   const suggestions = useNotebookStore((s) => s.prefs.suggestions);
   const grammarOn = useNotebookStore((s) => s.prefs.grammar);
+  const dictionary = useNotebookStore((s) => s.prefs.dictionary);
   const pageOrientation = useNotebookStore((s) => s.prefs.pageOrientation) || "portrait";
   const pageBorder = useNotebookStore((s) => s.prefs.border);
   const showRuler = useNotebookStore((s) => s.prefs.showRuler) !== false;
@@ -207,6 +209,7 @@ export function EditorToolbar({
       ordered: ed.isActive("orderedList"),
       task: ed.isActive("taskList"),
       quote: ed.isActive("blockquote"),
+      table: ed.isActive("table"),
       highlight: ed.getAttributes("highlight").color as string | undefined,
       font: ed.getAttributes("textStyle").fontFamily as string | undefined,
       size: ed.getAttributes("textStyle").fontSize as string | undefined,
@@ -315,7 +318,7 @@ export function EditorToolbar({
     setGrammarOpen(true);
     setGrammarBusy(true);
     try {
-      setGrammarIssues(await checkGrammar(editor.getText()));
+      setGrammarIssues(await checkGrammar(editor.getText(), dictionary));
     } catch {
       toast.error("Could not reach the grammar service.");
       setGrammarIssues([]);
@@ -421,6 +424,79 @@ export function EditorToolbar({
         >
           <Quote />
         </ToolBtn>
+        <Popover>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Table"
+                  className={cn("text-ink-muted", ui.table && "bg-paper-inset text-ink")}
+                >
+                  <Table2 />
+                </Button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Table</TooltipContent>
+          </Tooltip>
+          <PopoverContent className="w-48 p-1">
+            {ui.table ? (
+              <>
+                <button
+                  type="button"
+                  className="flex w-full rounded-md px-2.5 py-2 text-left text-sm hover:bg-paper-inset"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => editor.chain().focus().addRowAfter().run()}
+                >
+                  Add row
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full rounded-md px-2.5 py-2 text-left text-sm hover:bg-paper-inset"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => editor.chain().focus().addColumnAfter().run()}
+                >
+                  Add column
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full rounded-md px-2.5 py-2 text-left text-sm hover:bg-paper-inset"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => editor.chain().focus().deleteRow().run()}
+                >
+                  Delete row
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full rounded-md px-2.5 py-2 text-left text-sm hover:bg-paper-inset"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => editor.chain().focus().deleteColumn().run()}
+                >
+                  Delete column
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full rounded-md px-2.5 py-2 text-left text-sm hover:bg-paper-inset"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => editor.chain().focus().deleteTable().run()}
+                >
+                  Remove table
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="flex w-full rounded-md px-2.5 py-2 text-left text-sm hover:bg-paper-inset"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+              >
+                Insert 3×3 table
+              </button>
+            )}
+          </PopoverContent>
+        </Popover>
 
         <Separator orientation="vertical" className="mx-1 h-5" />
 

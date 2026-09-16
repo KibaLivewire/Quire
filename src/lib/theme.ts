@@ -36,6 +36,14 @@ export const THEME_META: Record<
     desk: "#120d0a",
     gathering: "The desk is gathering",
   },
+  rain: {
+    label: "Rain",
+    paper: "#1c2730",
+    ink: "#d7e0e6",
+    accent: "#8aa3b3",
+    desk: "#0b1014",
+    gathering: "A quiet rain",
+  },
 };
 
 const CUSTOM_VARS = [

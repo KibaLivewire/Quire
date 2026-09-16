@@ -1,3 +1,4 @@
+import { buildPdf } from "./pdf";
 import { zipStore } from "./zip";
 import { escapeHtml, plainText } from "./utils";
 import { saveFile } from "./native";
@@ -156,71 +157,9 @@ export async function exportDocx(title: string, content: string) {
   downloadBlob(`${safeName(title)}.docx`, blob);
 }
 
-function pdfEscape(value: string) {
-  return value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-}
-
-export function exportPdf(title: string, content: string) {
-  const text = `${title}\n\n${plainText(content)}`;
-  const lines: string[] = [];
-  for (const paragraph of text.split(/\n/)) {
-    const words = paragraph.split(/\s+/).filter(Boolean);
-    if (!words.length) {
-      lines.push("");
-      continue;
-    }
-    let line = "";
-    for (const word of words) {
-      const next = line ? `${line} ${word}` : word;
-      if (next.length > 90) {
-        lines.push(line);
-        line = word;
-      } else {
-        line = next;
-      }
-    }
-    if (line) lines.push(line);
-  }
-  const pageLines = 48;
-  const pages: string[][] = [];
-  for (let i = 0; i < lines.length; i += pageLines) pages.push(lines.slice(i, i + pageLines));
-  if (!pages.length) pages.push([title]);
-
-  const objects: string[] = [
-    "",
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>",
-  ];
-  const pageIds: number[] = [];
-  pages.forEach((chunk) => {
-    const stream = `BT /F1 12 Tf 72 720 Td 16 TL (${pdfEscape(chunk[0] ?? "")}) Tj\n${chunk
-      .slice(1)
-      .map((line) => `T* (${pdfEscape(line)}) Tj`)
-      .join("\n")}\nET`;
-    const contentId = objects.length;
-    objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
-    const pageId = objects.length;
-    pageIds.push(pageId);
-    objects.push(
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents ${contentId} 0 R /Resources << /Font << /F1 3 0 R >> >> >>`,
-    );
-  });
-  objects[2] = `<< /Type /Pages /Count ${pageIds.length} /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] >>`;
-
-  let body = "%PDF-1.4\n";
-  const offsets = [0];
-  for (let i = 1; i < objects.length; i += 1) {
-    offsets[i] = body.length;
-    body += `${i} 0 obj\n${objects[i]}\nendobj\n`;
-  }
-  const start = body.length;
-  body += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
-  for (let i = 1; i < objects.length; i += 1) {
-    body += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
-  }
-  body += `trailer << /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`;
-  download(`${safeName(title)}.pdf`, body, "application/pdf");
+export async function exportPdf(title: string, content: string, opts?: { grayscaleImages?: boolean }) {
+  const bytes = await buildPdf(title, content, opts);
+  downloadBlob(`${safeName(title)}.pdf`, new Blob([bytes], { type: "application/pdf" }));
 }
 
 function htmlToMarkdown(html: string): string {

@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { buildBackup, readBackupFile, saveBackup } from "@/lib/backup";
 import { appVersion, checkForUpdates } from "@/lib/desktop";
-import { runEditorCommand } from "@/lib/editor-commands";
+import { normalizeWord } from "@/lib/dictionary";
+import { getActiveEditor, runEditorCommand } from "@/lib/editor-commands";
 import {
   exportDoc,
   exportDocx,
@@ -33,12 +34,14 @@ import {
 } from "@/lib/export-note";
 import { openFindBar } from "@/lib/find";
 import { importDocument, OPEN_ACCEPT } from "@/lib/import-note";
+import { isLocked, noteGate } from "@/lib/lock";
 import { notePages } from "@/lib/pages";
 import { openPrintPreview } from "@/lib/print";
 import { useNotebookStore } from "@/lib/store";
 import { openRecipeChooser } from "@/components/recipe-chooser";
 import { stopSharedReading } from "@/components/read-back-chip";
 import { stopReading } from "@/lib/read-back";
+import { openLockDialog } from "@/components/lock-gate";
 import { TrashPanel } from "@/components/trash-panel";
 
 function currentPage() {
@@ -67,6 +70,11 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const setPageMapOpen = useNotebookStore((s) => s.setPageMapOpen);
   const activeNoteId = useNotebookStore((s) => s.activeNoteId);
   const session = useNotebookStore((s) => s.session);
+  const notes = useNotebookStore((s) => s.notes);
+  const notebooks = useNotebookStore((s) => s.notebooks);
+  const addDictionaryWord = useNotebookStore((s) => s.addDictionaryWord);
+  const activeNote = notes.find((item) => item.id === activeNoteId) ?? null;
+  const activeFolder = notebooks.find((nb) => nb.id === (activeNote?.notebookId || session.notebookId)) ?? null;
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -123,12 +131,18 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   async function onExport(kind: "txt" | "rtf" | "doc" | "docx" | "pdf" | "html") {
     const page = needPage();
     if (!page) return;
+    const state = useNotebookStore.getState();
+    const note = state.notes.find((item) => item.id === state.activeNoteId) ?? null;
+    if (noteGate(state.notebooks, note, state.unlockedIds)) {
+      toast.error("Unlock this page first.");
+      return;
+    }
     try {
       if (kind === "txt") exportText(page.title, page.html);
       if (kind === "rtf") exportRtf(page.title, page.html);
       if (kind === "doc") exportDoc(page.title, page.html);
       if (kind === "docx") await exportDocx(page.title, page.html);
-      if (kind === "pdf") exportPdf(page.title, page.html);
+      if (kind === "pdf") await exportPdf(page.title, page.html);
       if (kind === "html") exportHtml(page.title, page.html);
     } catch {
       toast.error("Could not export that file.");
@@ -213,7 +227,75 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           >
             Backup desk…
           </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              const state = useNotebookStore.getState();
+              void saveBackup(buildBackup(state.notebooks, state.notes, state.prefs)).then(
+                () => toast("Copy saved. Restore it on the other device with File → Restore desk. Nothing is sent through the internet."),
+                () => toast.error("Could not save a copy for transfer."),
+              );
+            }}
+          >
+            Transfer to another device…
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => restoreRef.current?.click()}>Restore desk…</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={!activeNote}
+            onSelect={() => {
+              if (!activeNote) return;
+              openLockDialog({
+                kind: "note",
+                id: activeNote.id,
+                mode: isLocked(activeNote) ? "unlock" : "set",
+                title: activeNote.title || "Untitled",
+              });
+            }}
+          >
+            {activeNote && isLocked(activeNote) ? "Unlock this page…" : "Lock this page…"}
+          </DropdownMenuItem>
+          {activeNote && isLocked(activeNote) ? (
+            <DropdownMenuItem
+              onSelect={() =>
+                openLockDialog({
+                  kind: "note",
+                  id: activeNote.id,
+                  mode: "clear",
+                  title: activeNote.title || "Untitled",
+                })
+              }
+            >
+              Remove page lock…
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem
+            disabled={!activeFolder}
+            onSelect={() => {
+              if (!activeFolder) return;
+              openLockDialog({
+                kind: "folder",
+                id: activeFolder.id,
+                mode: isLocked(activeFolder) ? "unlock" : "set",
+                title: activeFolder.name,
+              });
+            }}
+          >
+            {activeFolder && isLocked(activeFolder) ? "Unlock this folder…" : "Lock this folder…"}
+          </DropdownMenuItem>
+          {activeFolder && isLocked(activeFolder) ? (
+            <DropdownMenuItem
+              onSelect={() =>
+                openLockDialog({
+                  kind: "folder",
+                  id: activeFolder.id,
+                  mode: "clear",
+                  title: activeFolder.name,
+                })
+              }
+            >
+              Remove folder lock…
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem onSelect={() => setTrashOpen(true)}>Trash…</DropdownMenuItem>
         </Menu>
         <Menu label="Edit">
@@ -236,6 +318,24 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => openFindBar(true)}>
             Replace… <Shortcut>Ctrl+H</Shortcut>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              const editor = getActiveEditor();
+              const selected = editor
+                ? editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to, " ").trim()
+                : window.getSelection()?.toString().trim() || "";
+              const token = selected.includes(" ") ? selected.split(/\s+/)[0] : selected;
+              const word = normalizeWord(token);
+              if (!word) {
+                toast.error("Select a word first.");
+                return;
+              }
+              addDictionaryWord(word);
+              toast(`“${word}” is in your dictionary`);
+            }}
+          >
+            Add to dictionary
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => runEditorCommand("bold")}>Bold</DropdownMenuItem>
@@ -263,6 +363,12 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             onCheckedChange={setPageMapOpen}
           >
             Page map
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={Boolean(prefs.spread)}
+            onCheckedChange={(checked) => setPrefs({ spread: checked })}
+          >
+            Two-page spread
           </DropdownMenuCheckboxItem>
           <DropdownMenuItem
             onSelect={() => {
@@ -336,13 +442,13 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           <DialogHeader>
             <DialogTitle>Quire {appVersion()}</DialogTitle>
             <DialogDescription>
-              A notebook for pages you keep on this device. Room sound follows your theme. Leather chimes: Epidemic Sound. Ocean, night, and café beds are CC0 (BigSoundBank).
+              A notebook for pages you keep on this device. Room sound follows your theme. Leather chimes: Epidemic Sound. Ocean, night, and café beds are CC0 (BigSoundBank). Rain is made on this device.
             </DialogDescription>
           </DialogHeader>
           <ul className="space-y-1 text-sm text-ink-muted">
             <li>Ctrl+N new page · Ctrl+O open · Ctrl+F find · Ctrl+P print</li>
             <li>Ctrl+Z undo · Esc leaves Focus</li>
-            <li>File → Backup desk keeps every notebook on this computer</li>
+            <li>File → Backup desk, or Transfer to another device, keeps every notebook on this computer</li>
           </ul>
         </DialogContent>
       </Dialog>

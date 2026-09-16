@@ -80,6 +80,7 @@ function createWindow(url) {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      spellcheck: true,
     },
   });
   win.once("ready-to-show", () => win.show());
@@ -175,6 +176,18 @@ function wireIpc() {
       return true;
     } catch (err) {
       console.error("Failed to write Quire prefs:", err);
+      return false;
+    }
+  });
+  ipcMain.handle("quire:add-spell-word", (event, word) => {
+    const clean = String(word || "")
+      .trim()
+      .toLowerCase();
+    if (!clean) return false;
+    try {
+      event.sender.session.addWordToSpellCheckerDictionary(clean);
+      return true;
+    } catch {
       return false;
     }
   });

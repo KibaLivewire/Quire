@@ -227,6 +227,7 @@ function paintRitual(
   if (ritual === "navy") drawNavy(brush, w, h, t, energy, still);
   else if (ritual === "dark") drawDark(brush, w, h, t, still);
   else if (ritual === "light") drawLight(brush, w, h, t, still);
+  else if (ritual === "rain") drawRain(brush, w, h, t, still);
   else drawLeatherStill(brush, w, h);
 }
 
@@ -254,6 +255,48 @@ function drawLeatherStill(brush: CanvasRenderingContext2D, w: number, h: number)
       size: 10 + (i % 5) * 2,
       color: COLORS[i % COLORS.length],
     });
+  }
+}
+
+function drawRain(brush: CanvasRenderingContext2D, w: number, h: number, t: number, still: boolean) {
+  const sky = brush.createLinearGradient(0, 0, 0, h);
+  sky.addColorStop(0, "#1a242c");
+  sky.addColorStop(0.45, "#12181d");
+  sky.addColorStop(1, "#0b1014");
+  brush.fillStyle = sky;
+  brush.fillRect(0, 0, w, h);
+
+  brush.fillStyle = "rgba(70, 84, 96, 0.55)";
+  for (let i = 0; i < 5; i += 1) {
+    const cx = (w * (0.08 + i * 0.22)) % (w + 80) - 40;
+    const cy = 36 + (i % 2) * 18;
+    brush.beginPath();
+    brush.ellipse(cx, cy, 90 + i * 10, 28 + (i % 3) * 6, 0, 0, Math.PI * 2);
+    brush.fill();
+  }
+  brush.fillStyle = "rgba(90, 104, 116, 0.4)";
+  brush.beginPath();
+  brush.ellipse(w * 0.5, 28, w * 0.42, 34, 0, 0, Math.PI * 2);
+  brush.fill();
+
+  brush.strokeStyle = "rgba(215, 224, 230, 0.45)";
+  brush.lineWidth = 1.1;
+  const drops = still ? 40 : 90;
+  for (let i = 0; i < drops; i += 1) {
+    const x = ((i * 97 + (still ? 0 : t * 0.18)) % (w + 20)) - 10;
+    const speed = 0.55 + (i % 7) * 0.08;
+    const y = still ? (i * 53) % h : ((t * speed + i * 47) % (h + 40)) - 20;
+    brush.beginPath();
+    brush.moveTo(x, y);
+    brush.lineTo(x + 2, y + 14);
+    brush.stroke();
+    if (y > h - 28) {
+      brush.strokeStyle = "rgba(215, 224, 230, 0.28)";
+      brush.beginPath();
+      brush.ellipse(x + 2, h - 6, 6 + (i % 3), 2.2, 0, 0, Math.PI * 2);
+      brush.stroke();
+      brush.strokeStyle = "rgba(215, 224, 230, 0.45)";
+    }
   }
 }
 

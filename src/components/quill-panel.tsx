@@ -136,7 +136,7 @@ export function QuillPanel() {
           ))}
         </div>
         <div className="flex flex-wrap gap-1 border-t border-rule px-3 py-2">
-          {["Shorter", "Clearer", "Polish", "Better word"].map((chip) => (
+          {["Shorter", "Clearer", "Fleshed out", "Polish", "Better word"].map((chip) => (
             <button
               key={chip}
               type="button"

@@ -1,3 +1,26 @@
+# Quire 1.8.0 — Desk extras
+
+Released 16 September 2026.
+
+Writing tools that stay on this device.
+
+- **Ink-saver print** — optional black type on white paper, and grayscale pictures, in print preview
+- **Headers and page numbers** on printed sheets
+- **PDF keeps pictures** — File → Export as PDF embeds the images on the page
+- **Tables** — insert a 3×3 table from the toolbar; add or remove rows and columns
+- **Transfer to another device** — save a zip on this computer, restore it on the phone or PC. Nothing goes through the internet
+- **Journal date** — a new Journal page starts with today's date
+- **Lock** — a passcode on a page or a folder. The passcode never leaves this device, and Quire cannot recover it
+- **Two-page spread** — the next sheet sits beside the one you are writing
+- **Add to dictionary** — selected words stay on this device and skip grammar marks
+- **Quill** — can flesh out a short line in your voice; Shorter, Clearer, Fleshed out, Polish, Better word
+- **Quill's face** — a white quill on black, with googly eyes
+- **Rain** — blue-grey paper over a black desk; opening storm with rain, splashes, and distant thunder
+
+Windows installer: Quire-Setup-1.8.0.exe
+
+---
+
 # Quire 1.7.0 — Android
 
 Released 16 September 2026.

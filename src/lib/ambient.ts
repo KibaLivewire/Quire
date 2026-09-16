@@ -1,10 +1,12 @@
 import { THEMES, type ThemeId } from "./types";
+import { rainAmbientUrl } from "./rain-audio";
 
 export const AMBIENT_BY_THEME: Record<ThemeId, string> = {
   leather: "/windchimes.mp3",
   navy: "/ambient/navy-ocean.mp3",
   dark: "/ambient/dark-night.mp3",
   light: "/ambient/light-cafe.mp3",
+  rain: "generated:rain",
 };
 
 const CROSSFADE_SEC = 0.6;
@@ -253,7 +255,9 @@ async function startAmbientInner(volume: number, theme?: string) {
   userVolume = Math.min(1, Math.max(0, volume));
   muted = userVolume <= 0;
   lastTheme = ritualThemeId(theme ?? lastTheme);
-  await switchTo(ambientSrcForTheme(lastTheme));
+  let src = ambientSrcForTheme(lastTheme);
+  if (src === "generated:rain") src = await rainAmbientUrl();
+  await switchTo(src);
 }
 
 export async function startAmbient(volume: number, theme?: string) {

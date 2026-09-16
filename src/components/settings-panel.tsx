@@ -138,7 +138,7 @@ export function SettingsPanel({
 
         <section className="px-1 pb-4">
           <h3 className="text-xs font-medium tracking-wide text-ink-subtle uppercase">Personal palette</h3>
-          <p className="mt-1 text-xs text-ink-muted">Save desk, paper, and ink colors as a new style beside the four defaults.</p>
+          <p className="mt-1 text-xs text-ink-muted">Save desk, paper, and ink colors as a new style beside the built-in modes.</p>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <label className="text-xs text-ink-muted">
               Name
@@ -194,6 +194,12 @@ export function SettingsPanel({
             onCheckedChange={(checked) => setPrefs({ inkOnly: checked })}
           />
           <ToggleRow
+            label="Two-page spread"
+            hint="Show the next sheet beside the one you are writing"
+            checked={Boolean(prefs.spread)}
+            onCheckedChange={(checked) => setPrefs({ spread: checked })}
+          />
+          <ToggleRow
             label="Room sound"
             hint="A soft loop that follows your theme. Ctrl+M mutes"
             checked={prefs.ambient !== false}
@@ -201,13 +207,13 @@ export function SettingsPanel({
           />
           <ToggleRow
             label="Opening scene"
-            hint="Opening scene and room sound follow your theme. Leather keeps leaves and wind chimes."
+            hint="Opening scene and room sound follow your theme. Rain is a quiet storm. Leather keeps leaves and wind chimes."
             checked={prefs.bootLeaves !== false}
             onCheckedChange={(checked) => setPrefs({ bootLeaves: checked })}
           />
           <ToggleRow
             label="Quill"
-            hint="A local helper in the toolbar. Highlight a sentence and ask"
+            hint="A local helper. Highlight a sentence and ask to shorten, flesh out, or polish."
             checked={prefs.quill !== false}
             onCheckedChange={(checked) => setPrefs({ quill: checked })}
           />
@@ -230,6 +236,33 @@ export function SettingsPanel({
               ))}
             </div>
           </div>
+        </section>
+
+        <section className="px-1 pb-4">
+          <h3 className="text-xs font-medium tracking-wide text-ink-subtle uppercase">Dictionary</h3>
+          <p className="mt-1 text-xs text-ink-muted">
+            Words added from Edit → Add to dictionary stay on this device. Grammar skips them. On Windows they also join the spelling book.
+          </p>
+          {(prefs.dictionary ?? []).length === 0 ? (
+            <p className="mt-2 text-sm text-ink-subtle">No extra words yet.</p>
+          ) : (
+            <ul className="mt-2 space-y-1">
+              {(prefs.dictionary ?? []).map((word) => (
+                <li key={word} className="flex items-center justify-between rounded-lg bg-paper px-2 py-1.5 text-sm">
+                  <span>{word}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setPrefs({ dictionary: (prefs.dictionary ?? []).filter((item) => item !== word) })
+                    }
+                  >
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         <ReadBackSettings />

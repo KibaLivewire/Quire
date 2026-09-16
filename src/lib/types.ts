@@ -1,7 +1,7 @@
 export const NOTEBOOK_HUES = ["forest", "slate", "umber", "moss", "wine"] as const;
 export type NotebookHue = (typeof NOTEBOOK_HUES)[number];
 
-export const THEMES = ["dark", "light", "navy", "leather"] as const;
+export const THEMES = ["dark", "light", "navy", "leather", "rain"] as const;
 export type ThemeId = (typeof THEMES)[number];
 
 export const PAGE_ORIENTATIONS = ["portrait", "landscape"] as const;
@@ -67,6 +67,8 @@ export type Notebook = {
   color: string | null;
   createdAt: number;
   deletedAt: number | null;
+  lockSalt?: string | null;
+  lockHash?: string | null;
 };
 
 export type Note = {
@@ -81,6 +83,8 @@ export type Note = {
   createdAt: number;
   updatedAt: number;
   deletedAt: number | null;
+  lockSalt?: string | null;
+  lockHash?: string | null;
 };
 
 export type Session = {
@@ -131,6 +135,8 @@ export type Prefs = {
   ttsVoiceURI?: string;
   /** default 1, clamp ~0.8–1.2 */
   ttsRate?: number;
+  spread: boolean;
+  dictionary: string[];
 };
 
 export const DEFAULT_PREFS: Prefs = {
@@ -161,4 +167,6 @@ export const DEFAULT_PREFS: Prefs = {
   inkOnly: false,
   pageMapOpen: false,
   ttsRate: 1,
+  spread: false,
+  dictionary: [],
 };

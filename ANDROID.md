@@ -37,3 +37,5 @@ and pick Android App Bundle (`.aab`).
 - Export and backup use Android’s share sheet
 - The back key leaves the page list, then the app
 - Wind chimes, Quill, and Focus work the same as on the PC
+- File → Transfer to another device saves a zip you can restore on the phone or PC
+- Rain theme and ink-saver print are in this build

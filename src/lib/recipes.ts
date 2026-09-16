@@ -54,6 +54,28 @@ export function recipeLabel(id: PageRecipeId): string {
   return RECIPE_META.find((item) => item.id === id)?.label ?? "Freewrite";
 }
 
+export function journalStamp(now = new Date()) {
+  return now.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export function starterHtmlForRecipe(recipe: PageRecipeId) {
+  if (recipe === "journal") {
+    return `<p><em>${journalStamp()}</em></p><p></p>`;
+  }
+  if (recipe === "letter") {
+    return `<p></p><p>Dear </p><p></p><p>Yours,</p><p></p>`;
+  }
+  if (recipe === "list") {
+    return `<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p></p></li></ul>`;
+  }
+  return `<p></p>`;
+}
+
 export function applyRecipeToMeta(prev: PageMeta | undefined, recipe: PageRecipeId): PageMeta {
   const base = defaultPageMeta(recipe);
   return {

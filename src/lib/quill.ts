@@ -9,20 +9,73 @@ export type QuillMessage = {
 
 const FILLER = /\b(just|really|very|actually|basically|literally|quite|perhaps|maybe)\b/gi;
 
+type Voice = {
+  person: "i" | "you" | "they" | "mixed";
+  formal: boolean;
+  avgWords: number;
+  contractions: boolean;
+};
+
 export function greetingForNow() {
   const hour = new Date().getHours();
   const when = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  return `${when}. I'm Quill — I sit at this desk with you. Highlight a sentence and ask me to shorten it, polish it, or find a better word. Your pages stay on this computer.`;
+  return `${when}. I'm Quill. Highlight a passage and I can shorten it, flesh it out in your voice, polish the grammar, or sit with a word's sense. Your pages stay on this device.`;
+}
+
+function analyzeVoice(text: string): Voice {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lower = text.toLowerCase();
+  const iCount = (lower.match(/\b(i|i'm|i've|my|me)\b/g) || []).length;
+  const youCount = (lower.match(/\b(you|your|you're)\b/g) || []).length;
+  const theyCount = (lower.match(/\b(he|she|they|them|his|her)\b/g) || []).length;
+  let person: Voice["person"] = "mixed";
+  if (iCount >= youCount && iCount >= theyCount && iCount > 0) person = "i";
+  else if (youCount > iCount && youCount >= theyCount) person = "you";
+  else if (theyCount > 0) person = "they";
+  const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
+  const avgWords = sentences.length ? words.length / sentences.length : words.length;
+  const contractions = /n't|'re|'ve|'ll|'m|'d\b/.test(lower);
+  const formal = !contractions && /\b(therefore|thus|however|moreover|shall)\b/.test(lower);
+  return { person, formal, avgWords, contractions };
 }
 
 async function related(word: string) {
   try {
-    const res = await fetch(`https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=6`);
+    const res = await fetch(`https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=8`);
     if (!res.ok) return [];
     const data = (await res.json()) as { word?: string }[];
     return data.map((item) => item.word).filter((item): item is string => Boolean(item));
   } catch {
     return [];
+  }
+}
+
+async function relatedIdeas(word: string) {
+  try {
+    const res = await fetch(`https://api.datamuse.com/words?ml=${encodeURIComponent(word)}&max=8`);
+    if (!res.ok) return [];
+    const data = (await res.json()) as { word?: string }[];
+    return data.map((item) => item.word).filter((item): item is string => Boolean(item));
+  } catch {
+    return [];
+  }
+}
+
+async function define(word: string): Promise<{ text: string } | null> {
+  try {
+    const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      meanings?: { partOfSpeech?: string; definitions?: { definition?: string; example?: string }[] }[];
+    }[];
+    const meaning = data[0]?.meanings?.[0];
+    const def = meaning?.definitions?.[0];
+    if (!def?.definition) return null;
+    const pos = meaning?.partOfSpeech ? ` (${meaning.partOfSpeech})` : "";
+    const example = def.example ? ` Example: ${def.example}` : "";
+    return { text: `${word}${pos}: ${def.definition}${example}` };
+  } catch {
+    return null;
   }
 }
 
@@ -42,10 +95,31 @@ function clearer(text: string) {
     .trim();
 }
 
-function lengthen(text: string) {
-  const trimmed = text.trim().replace(/[.]+$/, "");
+function fleshOut(text: string, voice: Voice) {
+  const trimmed = text.trim();
   if (!trimmed) return text;
-  return `${trimmed}. Sit with that a moment — the next line will come if you let the last one breathe.`;
+  const parts = trimmed.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const grown = parts.map((sentence) => expandSentence(sentence, voice));
+  return grown.join(" ");
+}
+
+function expandSentence(sentence: string, voice: Voice) {
+  const clean = sentence.trim();
+  if (!clean) return clean;
+  const end = /[.!?]$/.test(clean) ? "" : ".";
+  const body = clean.replace(/[.!?]+$/, "");
+  if (body.split(/\s+/).length >= 22) return clean.endsWith(".") || /[.!?]$/.test(clean) ? clean : `${body}.`;
+  const extra = voice.formal
+    ? "The detail is modest, but it holds the line in place"
+    : voice.person === "i"
+      ? "I can still see it if I stay with the sentence a moment longer"
+      : voice.person === "you"
+        ? "You already know the rest of that picture; it is sitting just behind the words"
+        : "There is a little more in the room than the first pass named";
+  if (voice.contractions && extra.startsWith("There is")) {
+    return `${body} — there's a little more in the room than the first pass named${end || "."}`;
+  }
+  return `${body} — ${extra}${end || "."}`;
 }
 
 async function polish(text: string) {
@@ -63,13 +137,24 @@ async function polish(text: string) {
   }
 }
 
+function perspective(voice: Voice, topic: string) {
+  if (voice.person === "i") {
+    return `From inside the sentence, “${topic}” is something you are living, not reporting. Keep the body close; let the idea arrive as a feeling first.`;
+  }
+  if (voice.formal) {
+    return `Treat “${topic}” as a claim that must earn its keep. What would a careful reader still need in order to believe it?`;
+  }
+  return `“${topic}” wants a second look: what is it next to, what does it cost, and who is in the room when it happens?`;
+}
+
 export async function askQuill(prompt: string, selection: string): Promise<{ reply: string; replacement?: string }> {
   const ask = prompt.trim();
   const lower = ask.toLowerCase();
   const source = selection.trim();
+  const voice = analyzeVoice(source || ask);
 
   if (!ask && !source) {
-    return { reply: "Highlight a line on the page, or tell me what you need — shorter, clearer, polish, or a better word." };
+    return { reply: "Highlight a line on the page, or tell me: shorter, clearer, flesh it out, polish, or the sense of a word." };
   }
 
   if (/help|what can you|who are you|hello|hi\b/.test(lower) && !source) {
@@ -78,26 +163,43 @@ export async function askQuill(prompt: string, selection: string): Promise<{ rep
 
   if (/synonym|better word|another word|thesaurus/.test(lower)) {
     const word = (source || ask).split(/\s+/).pop() || "";
-    const words = await related(word.replace(/[^a-zA-Z'-]/g, ""));
-    if (!words.length) return { reply: `I don't have a better word for “${word}” just now.` };
-    return { reply: `Try: ${words.join(", ")}.` };
+    const clean = word.replace(/[^a-zA-Z'-]/g, "");
+    const words = await related(clean);
+    const ideas = await relatedIdeas(clean);
+    if (!words.length && !ideas.length) return { reply: `I don't have a better word for “${word}” just now.` };
+    const syn = words.length ? `Close words: ${words.join(", ")}.` : "";
+    const near = ideas.length ? ` Nearby ideas: ${ideas.slice(0, 5).join(", ")}.` : "";
+    return { reply: `${syn}${near}`.trim() };
   }
 
-  if (!source && /short|clear|polish|longer|continue|expand/.test(lower)) {
+  if (/mean|define|sense of|what is|look up/.test(lower)) {
+    const word = (source || ask).split(/\s+/).filter((w) => !/mean|define|sense|what|look/i.test(w)).pop() || source;
+    const clean = word.replace(/[^a-zA-Z'-]/g, "");
+    const entry = await define(clean);
+    const ideas = await relatedIdeas(clean);
+    const extra = ideas.length ? ` Kindred words: ${ideas.slice(0, 4).join(", ")}.` : "";
+    if (entry) return { reply: `${entry.text}${extra}\n\n${perspective(voice, clean)}` };
+    return { reply: extra || `I couldn't fetch a definition for “${clean}”.`, };
+  }
+
+  if (!source && /short|clear|polish|long|flesh|expand|continue/.test(lower)) {
     return { reply: "Select the sentence on the page first, then ask me again." };
   }
 
   if (source && (/short|tight|cut/.test(lower) || lower === "shorter")) {
     const replacement = shorten(source);
-    return { reply: replacement === source ? "That line is already lean." : "Here's a tighter cut.", replacement };
+    return { reply: replacement === source ? "That line is already lean." : "A tighter cut, still in your register.", replacement };
   }
 
   if (source && (/clear|plain|simple/.test(lower) || lower === "clearer")) {
     return { reply: "A cleaner pass:", replacement: clearer(source) };
   }
 
-  if (source && (/long|expand|more/.test(lower) || lower === "longer")) {
-    return { reply: "A little more room:", replacement: lengthen(source) };
+  if (source && (/flesh|lengthen|longer|expand|more room|fleshed/.test(lower) || lower === "fleshed out")) {
+    return {
+      reply: "I kept your person and pace, and gave the line a little more air.",
+      replacement: fleshOut(source, voice),
+    };
   }
 
   if (source && (/polish|grammar|fix|correct/.test(lower) || lower === "polish")) {
@@ -107,13 +209,22 @@ export async function askQuill(prompt: string, selection: string): Promise<{ rep
 
   if (source && /continue|next sentence|keep going/.test(lower)) {
     const stem = source.trim().replace(/[.?!]+$/, "");
-    return { reply: "A possible next sentence:", replacement: `${stem}. Let the next line wait until it is ready.` };
+    const next = fleshOut(`${stem}.`, voice).replace(stem, "").trim();
+    return { reply: "A possible next sentence, in the same voice:", replacement: next || `${stem}. The next line can wait until it is ready.` };
+  }
+
+  if (source && /perspective|why|how should/.test(lower)) {
+    const topic = source.split(/\s+/).slice(0, 6).join(" ");
+    return { reply: perspective(voice, topic) };
   }
 
   if (source) {
-    const replacement = await polish(shorten(source));
-    return { reply: "I worked the selected line. Use Insert to put it on the page.", replacement };
+    const replacement = await polish(source);
+    return {
+      reply: "I read the selection in your voice. Insert a polish, or ask me to shorten or flesh it out.",
+      replacement: replacement === source ? undefined : replacement,
+    };
   }
 
-  return { reply: "I can shorten, clarify, polish, or fetch a synonym. Highlight text on the page and ask." };
+  return { reply: "I can shorten, clarify, flesh out, polish, look up a word, or offer a second perspective. Highlight text and ask." };
 }

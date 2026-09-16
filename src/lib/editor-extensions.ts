@@ -4,6 +4,7 @@ import Image from "@tiptap/extension-image";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import Placeholder from "@tiptap/extension-placeholder";
 import TextAlign from "@tiptap/extension-text-align";
+import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import type { DOMOutputSpec } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
@@ -381,6 +382,10 @@ export const editorExtensions = [
     placeholder: "Start a page…",
   }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
+  Table.configure({ resizable: true, HTMLAttributes: { class: "quire-table" } }),
+  TableRow,
+  TableHeader,
+  TableCell,
   TaskList,
   TaskItem.configure({ nested: true }),
 ];

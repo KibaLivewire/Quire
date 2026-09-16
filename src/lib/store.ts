@@ -2,7 +2,9 @@ import { create } from "zustand";
 import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 import { createSeed, DEMO_FOLDER_IDS, DEMO_NOTE_IDS } from "./seed";
 import { NOTEBOOK_HUES, DEFAULT_PREFS, DEFAULT_SESSION, type Note, type Notebook, type NotebookHue, type PageMeta, type PageRecipeId, type Prefs, type RibbonBookmark, type Session } from "./types";
-import { alignPageMeta, applyRecipeToMeta, defaultPageMeta, softCapRibbons } from "./recipes";
+import { alignPageMeta, applyRecipeToMeta, defaultPageMeta, softCapRibbons, starterHtmlForRecipe } from "./recipes";
+import { addToDictionary, normalizeWord } from "./dictionary";
+import { hashPin, newSalt, pinMatches } from "./lock";
 import { notePages } from "./pages";
 import { descendantIds, isAlive, isDescendant } from "./folders";
 import { WELCOME_HTML, WELCOME_VERSION } from "./welcome";
@@ -41,6 +43,7 @@ export type NotebookState = {
   pageMapOpen: boolean;
   prefs: Prefs;
   session: Session;
+  unlockedIds: string[];
   completeHydration: () => void;
   setFocusMode: (value: boolean) => void;
   setQuillOpen: (value: boolean) => void;
@@ -73,6 +76,10 @@ export type NotebookState = {
   togglePin: (id: string) => void;
   moveNote: (id: string, notebookId: string) => void;
   replaceDesk: (payload: { notebooks: Notebook[]; notes: Note[]; prefs?: Partial<Prefs> }) => void;
+  setLock: (kind: "note" | "folder", id: string, pin: string) => Promise<boolean>;
+  unlock: (kind: "note" | "folder", id: string, pin: string) => Promise<boolean>;
+  clearLock: (kind: "note" | "folder", id: string, pin: string) => Promise<boolean>;
+  addDictionaryWord: (word: string) => void;
 };
 
 function openDb(): Promise<IDBDatabase> {
@@ -234,6 +241,7 @@ export const useNotebookStore = create<NotebookState>()(
       focusMode: false,
       quillOpen: false,
       pageMapOpen: false,
+      unlockedIds: [],
       prefs: { ...DEFAULT_PREFS },
       session: { ...DEFAULT_SESSION },
 
@@ -445,13 +453,14 @@ export const useNotebookStore = create<NotebookState>()(
         const target = notebookId ?? get().activeNotebookId ?? get().notebooks.find(isAlive)?.id;
         if (!target) return id;
         const now = Date.now();
-        const pages = [""];
+        const html = starterHtmlForRecipe(recipe);
+        const pages = [html];
         const pageMeta = [defaultPageMeta(recipe)];
         const note: Note = {
           id,
           notebookId: target,
-          title: "Untitled",
-          content: "",
+          title: recipe === "journal" ? "Journal" : "Untitled",
+          content: html,
           pages,
           pageMeta,
           pinned: false,
@@ -504,14 +513,15 @@ export const useNotebookStore = create<NotebookState>()(
         }));
       },
 
-      insertNotePage: (id, atIndex, html = "", recipe = "freewrite") => {
+      insertNotePage: (id, atIndex, html, recipe) => {
         const item = get().notes.find((note) => note.id === id);
         if (!item) return 0;
         const pages = [...notePages(item)];
         const meta = alignPageMeta(pages, item.pageMeta);
         const index = Math.max(0, Math.min(atIndex, pages.length));
-        pages.splice(index, 0, html);
-        meta.splice(index, 0, defaultPageMeta(recipe));
+        const from = recipe ?? meta[Math.max(0, index - 1)]?.recipe ?? "freewrite";
+        pages.splice(index, 0, html ?? starterHtmlForRecipe(from));
+        meta.splice(index, 0, defaultPageMeta(from));
         set((state) => ({
           notes: state.notes.map((note) => (note.id === id ? withPagesAndMeta(note, pages, meta) : note)),
         }));
@@ -603,6 +613,8 @@ export const useNotebookStore = create<NotebookState>()(
           pages,
           pageMeta,
           content: pages.join(""),
+          lockSalt: null,
+          lockHash: null,
         };
         set((state) => ({
           notes: [copy, ...state.notes],
@@ -718,7 +730,85 @@ export const useNotebookStore = create<NotebookState>()(
           activeNotebookId: payload.notebooks.find(isAlive)?.id ?? null,
           activeNoteId: payload.notes.find(isAlive)?.id ?? null,
           session: { ...DEFAULT_SESSION },
+          unlockedIds: [],
         });
+      },
+
+      setLock: async (kind, id, pin) => {
+        const trimmed = pin.trim();
+        if (trimmed.length < 4 || trimmed.length > 32) return false;
+        const salt = newSalt();
+        const hash = await hashPin(trimmed, salt);
+        const key = `${kind}:${id}`;
+        set((state) => {
+          if (kind === "note") {
+            return {
+              notes: state.notes.map((note) =>
+                note.id === id ? { ...note, lockSalt: salt, lockHash: hash, updatedAt: Date.now() } : note,
+              ),
+              unlockedIds: state.unlockedIds.includes(key) ? state.unlockedIds : [...state.unlockedIds, key],
+            };
+          }
+          return {
+            notebooks: state.notebooks.map((nb) =>
+              nb.id === id ? { ...nb, lockSalt: salt, lockHash: hash } : nb,
+            ),
+            unlockedIds: state.unlockedIds.includes(key) ? state.unlockedIds : [...state.unlockedIds, key],
+          };
+        });
+        return true;
+      },
+
+      unlock: async (kind, id, pin) => {
+        const item =
+          kind === "note"
+            ? get().notes.find((note) => note.id === id)
+            : get().notebooks.find((nb) => nb.id === id);
+        if (!item?.lockHash || !item.lockSalt) return false;
+        if (!(await pinMatches(pin, item.lockSalt, item.lockHash))) return false;
+        const key = `${kind}:${id}`;
+        set((state) => ({
+          unlockedIds: state.unlockedIds.includes(key) ? state.unlockedIds : [...state.unlockedIds, key],
+        }));
+        return true;
+      },
+
+      clearLock: async (kind, id, pin) => {
+        const item =
+          kind === "note"
+            ? get().notes.find((note) => note.id === id)
+            : get().notebooks.find((nb) => nb.id === id);
+        if (!item?.lockHash || !item.lockSalt) return false;
+        if (!(await pinMatches(pin, item.lockSalt, item.lockHash))) return false;
+        const key = `${kind}:${id}`;
+        set((state) => {
+          if (kind === "note") {
+            return {
+              notes: state.notes.map((note) =>
+                note.id === id ? { ...note, lockSalt: null, lockHash: null, updatedAt: Date.now() } : note,
+              ),
+              unlockedIds: state.unlockedIds.filter((itemId) => itemId !== key),
+            };
+          }
+          return {
+            notebooks: state.notebooks.map((nb) =>
+              nb.id === id ? { ...nb, lockSalt: null, lockHash: null } : nb,
+            ),
+            unlockedIds: state.unlockedIds.filter((itemId) => itemId !== key),
+          };
+        });
+        return true;
+      },
+
+      addDictionaryWord: (word) => {
+        const added = normalizeWord(word);
+        if (!added) return;
+        set((state) => ({
+          prefs: { ...state.prefs, dictionary: addToDictionary(state.prefs.dictionary, added) },
+        }));
+        if (typeof window !== "undefined") {
+          void window.quire?.addSpellWord?.(added);
+        }
       },
     }),
     {
