@@ -100,7 +100,7 @@ export function QuillPanel() {
       ) : null}
       <aside
         className={cn(
-          "flex h-full w-[min(20rem,100%)] shrink-0 flex-col border-l border-rule bg-paper-raised",
+          "quill-dock flex h-full w-[min(20rem,100%)] shrink-0 flex-col border-l border-rule bg-paper-raised",
           !open && "hidden",
         )}
       >
@@ -110,7 +110,7 @@ export function QuillPanel() {
             <p className="font-display text-sm text-ink">Quill</p>
             <p className="text-[11px] text-ink-subtle">A writing aide at this desk</p>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+          <Button variant="ghost" size="sm" data-close-on-back onClick={() => setOpen(false)}>
             Hide
           </Button>
         </header>

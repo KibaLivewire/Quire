@@ -156,7 +156,7 @@ export function EditorPane({
       <FindBar />
       <header className="flex items-center gap-1 border-b border-rule/80 bg-paper-raised/80 px-2 py-1.5">
         {onBack ? (
-          <Button variant="ghost" size="icon" className="md:hidden" aria-label="Back to pages" onClick={onBack}>
+          <Button variant="ghost" size="icon" className="md:hidden" aria-label="Back to pages" data-mobile-back onClick={onBack}>
             <ArrowLeft />
           </Button>
         ) : null}
@@ -301,13 +301,13 @@ export function EditorPane({
             size="icon-sm"
             aria-label="Zoom out"
             className="size-8"
-            onClick={() => setPrefs({ zoom: Math.max(0.7, Math.round((prefs.zoom - 0.1) * 10) / 10) })}
+            onClick={() => setPrefs({ zoom: Math.max(0.4, Math.round((prefs.zoom - 0.1) * 10) / 10) })}
           >
             <Minus className="size-3.5" />
           </Button>
           <Slider
             className="w-24"
-            min={70}
+            min={40}
             max={160}
             step={5}
             value={[zoomPct]}

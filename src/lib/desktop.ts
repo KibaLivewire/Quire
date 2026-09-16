@@ -1,5 +1,6 @@
 import { version as PACKAGE_VERSION } from "../../package.json";
 import type { Prefs } from "./types";
+import { isNativeApp, openNativeUrl } from "./native";
 
 type QuireBridge = {
   version?: () => Promise<string>;
@@ -46,6 +47,10 @@ export async function openExternal(href: string): Promise<void> {
   if (!url || !isHttpUrl(url)) return;
   if (typeof window !== "undefined" && window.quire?.openExternal) {
     await window.quire.openExternal(url);
+    return;
+  }
+  if (isNativeApp()) {
+    await openNativeUrl(url);
     return;
   }
   window.open(url, "_blank", "noopener,noreferrer");

@@ -166,15 +166,18 @@ export default defineConfig(({ command, isPreview }) => ({
     // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
     grokPwaPlugin(),
     tailwindcss(),
-    tanstackStart(),
+    tanstackStart(process.env.QUIRE_ANDROID === "1" ? { spa: { enabled: true } } : undefined),
     ...(command === "build" || isPreview
       ? [
           nitro({
-            preset: process.env.QUIRE_DESKTOP === "1" ? "node-server" : "vercel",
-            // Auto-registers server/middleware/* (the PWA install page +
-            // manifest + head-tag middleware). Nitro v3 defaults serverDir to
-            // false, so removing this silently unwires /?install=1 on deploys.
-            serverDir: "./server",
+            preset:
+              process.env.QUIRE_ANDROID === "1"
+                ? "static"
+                : process.env.QUIRE_DESKTOP === "1"
+                  ? "node-server"
+                  : "vercel",
+            serverDir: process.env.QUIRE_ANDROID === "1" ? false : "./server",
+            ...(process.env.QUIRE_ANDROID === "1" ? { prerender: { crawlLinks: false, routes: ["/"] as string[] } } : {}),
           }),
         ]
       : []),

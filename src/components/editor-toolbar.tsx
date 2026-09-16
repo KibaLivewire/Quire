@@ -49,6 +49,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { FONT_SIZES, HIGHLIGHTS, INK_COLORS } from "@/lib/fonts";
 import { BORDER_META } from "@/lib/borders";
 import { collectImageFiles, IMAGE_ACCEPT, insertImages, selectedImageSrc } from "@/lib/image";
+import { isNativeApp, pickNativeImages } from "@/lib/native";
 import { useNotebookStore } from "@/lib/store";
 import type { Note } from "@/lib/types";
 import type { WordSense } from "@/lib/word-tools";
@@ -230,7 +231,7 @@ export function EditorToolbar({
     }),
   });
 
-  async function onPickImages(files: FileList | null) {
+  async function onPickImages(files: FileList | File[] | null) {
     const images = collectImageFiles(files);
     if (!images.length) {
       toast.error("Use a JPEG, PNG, GIF, or WebP image.");
@@ -345,7 +346,7 @@ export function EditorToolbar({
 
   return (
     <div className="border-b border-rule bg-paper-raised/90 backdrop-blur-sm">
-      <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5">
+      <div className="quire-toolbar-row flex flex-wrap items-center gap-0.5 px-2 py-1.5">
         <ToolBtn label="Undo" onClick={() => editor.chain().focus().undo().run()}>
           <Undo2 />
         </ToolBtn>
@@ -723,7 +724,18 @@ export function EditorToolbar({
             e.target.value = "";
           }}
         />
-        <ToolBtn label="Insert image" onClick={() => fileRef.current?.click()}>
+        <ToolBtn
+          label="Insert image"
+          onClick={() => {
+            if (isNativeApp()) {
+              void pickNativeImages()
+                .then((files) => onPickImages(files))
+                .catch(() => toast.error("Could not add that image."));
+              return;
+            }
+            fileRef.current?.click();
+          }}
+        >
           <ImagePlus />
         </ToolBtn>
         {ui.image ? (

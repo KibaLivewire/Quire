@@ -5,3 +5,9 @@ node_modules/
 .env.*
 release/
 .output/
+android-www/
+android/.gradle/
+android/local.properties
+android/app/build/
+android/app/src/main/assets/public
+

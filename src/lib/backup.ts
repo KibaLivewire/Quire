@@ -1,4 +1,5 @@
 import { unzip, zipStore } from "./zip";
+import { saveFile } from "./native";
 import type { Note, Notebook, Prefs } from "./types";
 
 export type BackupPayload = {
@@ -33,24 +34,7 @@ export function backupFilename() {
 
 export async function saveBackup(payload: BackupPayload) {
   const blob = await backupBlob(payload);
-  const name = backupFilename();
-  const picker = (window as Window & { showSaveFilePicker?: (opts: unknown) => Promise<{ createWritable: () => Promise<{ write: (b: Blob) => Promise<void>; close: () => Promise<void> }> }> }).showSaveFilePicker;
-  if (typeof picker === "function") {
-    const handle = await picker({
-      suggestedName: name,
-      types: [{ description: "Quire backup", accept: { "application/zip": [".zip"] } }],
-    });
-    const writable = await handle.createWritable();
-    await writable.write(blob);
-    await writable.close();
-    return;
-  }
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
+  await saveFile(backupFilename(), blob);
 }
 
 export async function readBackupFile(file: File): Promise<BackupPayload> {

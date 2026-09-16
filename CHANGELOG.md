@@ -1,3 +1,19 @@
+# Quire 1.7.0 — Android
+
+Released 16 September 2026.
+
+Quire is now a phone app as well as a Windows notebook.
+
+- Android app via Capacitor (same desk, pages still on this device)
+- Camera and gallery when you insert a picture
+- Export and backup use the Android share sheet
+- Phone layout: folders and pages first, letter sheet second, rulers tucked away
+- System back key leaves a page, then the app
+
+See ANDROID.md. Windows installer: Quire-Setup-1.7.0.exe
+
+---
+
 # Quire 1.6.3
 
 Released 13 September 2026.

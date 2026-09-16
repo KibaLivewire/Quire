@@ -12,6 +12,7 @@ import { SettingsPanel } from "@/components/settings-panel";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { startAmbient, stopAmbient, toggleAmbientMute } from "@/lib/ambient";
+import { initNativeShell } from "@/lib/native";
 import { applyTheme } from "@/lib/theme";
 import { stopSharedReading } from "@/components/read-back-chip";
 import { getActiveEditor } from "@/lib/editor-commands";
@@ -30,7 +31,7 @@ export function AppShell() {
   const setPrefs = useNotebookStore((s) => s.setPrefs);
   const hasHydrated = useNotebookStore((s) => s.hasHydrated);
   const [notebooksOpen, setNotebooksOpen] = useState(false);
-  const [mobileList, setMobileList] = useState(false);
+  const [mobileList, setMobileList] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [booting, setBooting] = useState(true);
   const bootingRef = useRef(true);
@@ -38,6 +39,7 @@ export function AppShell() {
 
   useEffect(() => {
     void useNotebookStore.persist.rehydrate();
+    void initNativeShell();
   }, []);
 
   useEffect(() => {
@@ -171,8 +173,8 @@ export function AppShell() {
 
   return (
     <TooltipProvider>
-      <div className="flex h-dvh flex-col overflow-hidden bg-paper text-ink">
-        <div className={cn(focusMode && "hidden")}>
+      <div className="quire-shell flex h-dvh flex-col overflow-hidden bg-paper text-ink">
+        <div className={cn("hidden md:block", focusMode && "md:hidden")}>
           <MenuBar onOpenSettings={() => setSettingsOpen(true)} />
         </div>
         <div className="flex min-h-0 flex-1 overflow-hidden">

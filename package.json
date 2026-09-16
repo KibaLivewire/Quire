@@ -1,6 +1,6 @@
 {
   "name": "app-builder-workspace",
-  "version": "1.6.3",
+  "version": "1.7.0",
   "description": "A quiet notebook for writing on this device.",
   "author": "KibaLivewire",
   "private": true,
@@ -25,9 +25,19 @@
     "format": "prettier --write .",
     "electron": "electron .",
     "build:desktop": "node scripts/desktop-build.mjs",
-    "dist:win": "npm run build:desktop && electron-builder --win nsis"
+    "dist:win": "npm run build:desktop && electron-builder --win nsis",
+    "build:android": "node scripts/android-build.mjs",
+    "android:open": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/camera": "^8.2.4",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/filesystem": "^8.1.3",
+    "@capacitor/keyboard": "^8.0.5",
+    "@capacitor/share": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.3",
     "@electric-sql/pglite": "^0.5.4",
     "@hookform/resolvers": "^5.7.0",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -95,12 +105,16 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
     "@eslint/js": "^9.20.0",
     "@types/node": "^22.16.5",
     "@types/pg": "^8.11.10",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.12",
     "eslint": "^9.20.0",
     "eslint-config-prettier": "^10.1.1",
     "eslint-plugin-prettier": "^5.2.6",
@@ -113,9 +127,7 @@
     "prettier": "^3.4.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.56.1",
-    "vite": "^8.2.0",
-    "electron": "^38.0.0",
-    "electron-builder": "^26.0.12"
+    "vite": "^8.2.0"
   },
   "build": {
     "appId": "com.kibalivewire.quire",

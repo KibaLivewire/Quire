@@ -1,17 +1,13 @@
 import { zipStore } from "./zip";
 import { escapeHtml, plainText } from "./utils";
+import { saveFile } from "./native";
 
 function safeName(title: string) {
   return title.replace(/[^\w\s-]+/g, "").trim() || "untitled";
 }
 
 function downloadBlob(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  void saveFile(filename, blob);
 }
 
 function download(filename: string, contents: string, type: string) {

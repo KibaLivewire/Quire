@@ -228,6 +228,44 @@ html[data-theme="leather"] {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+.quire-shell {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (max-width: 767px) {
+  .page-frame:not(.is-bare) {
+    grid-template-columns: var(--page-w, 8.5in);
+    grid-template-rows: var(--page-h, 11in);
+    width: var(--page-w, 8.5in);
+    min-width: var(--page-w, 8.5in);
+  }
+  .page-frame:not(.is-bare) .ruler,
+  .page-frame:not(.is-bare) .ruler-corner {
+    display: none !important;
+  }
+  .page-frame:not(.is-bare) > :last-child {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .quire-toolbar-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .quill-dock {
+    position: fixed;
+    inset: env(safe-area-inset-top) 0 0 auto;
+    z-index: 45;
+    width: min(20rem, 100%);
+    height: auto;
+    max-height: 100dvh;
+    box-shadow: var(--shadow-lift);
+  }
+}
+
 .quire-page {
   background:
     radial-gradient(ellipse at 50% 0%, color-mix(in oklab, var(--color-paper-raised) 70%, transparent), transparent 52%),

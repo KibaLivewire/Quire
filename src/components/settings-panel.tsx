@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { TrashPanel } from "@/components/trash-panel";
+import { buildBackup, readBackupFile, saveBackup } from "@/lib/backup";
 import { checkForUpdates, appVersion } from "@/lib/desktop";
 import { parsePlugin, pluginTemplate } from "@/lib/plugins";
 import { allThemes } from "@/lib/theme";
@@ -29,7 +31,10 @@ export function SettingsPanel({
 }) {
   const prefs = useNotebookStore((s) => s.prefs);
   const setPrefs = useNotebookStore((s) => s.setPrefs);
+  const replaceDesk = useNotebookStore((s) => s.replaceDesk);
   const pluginRef = useRef<HTMLInputElement>(null);
+  const restoreRef = useRef<HTMLInputElement>(null);
+  const [trashOpen, setTrashOpen] = useState(false);
   const [draft, setDraft] = useState<CustomTheme>({
     id: "",
     label: "",
@@ -283,9 +288,53 @@ export function SettingsPanel({
           </ul>
         </section>
 
+        <section className="px-1 pb-4">
+          <h3 className="text-xs font-medium tracking-wide text-ink-subtle uppercase">This device</h3>
+          <p className="mt-1 text-xs text-ink-muted">Backup, restore, and trash — the same tools as File on a computer.</p>
+          <input
+            ref={restoreRef}
+            type="file"
+            accept=".zip,.json,application/zip,application/json"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (!file) return;
+              void readBackupFile(file)
+                .then((payload) => {
+                  if (!window.confirm("Replace everything on this desk with the backup?")) return;
+                  replaceDesk(payload);
+                  toast("Desk restored from backup");
+                })
+                .catch((error) => toast.error(error instanceof Error ? error.message : "Could not restore that backup."));
+            }}
+          />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const state = useNotebookStore.getState();
+                void saveBackup(buildBackup(state.notebooks, state.notes, state.prefs)).then(
+                  () => toast("Backup saved"),
+                  () => toast.error("Could not save the backup."),
+                );
+              }}
+            >
+              Backup desk
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => restoreRef.current?.click()}>
+              Restore desk
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setTrashOpen(true)}>
+              Trash
+            </Button>
+          </div>
+        </section>
+
         <section className="px-1 pb-2">
           <h3 className="text-xs font-medium tracking-wide text-ink-subtle uppercase">About</h3>
-          <p className="mt-1 text-sm text-ink-muted">Quire {appVersion()} · Start menu name: Quire</p>
+          <p className="mt-1 text-sm text-ink-muted">Quire {appVersion()} · Android and Windows</p>
           <Button className="mt-2" variant="outline" size="sm" onClick={() => void onCheckUpdates()}>
             Check for updates
           </Button>
