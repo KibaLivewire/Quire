@@ -13,6 +13,8 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { startAmbient, stopAmbient, toggleAmbientMute } from "@/lib/ambient";
 import { initNativeShell } from "@/lib/native";
+import { peekBoot } from "@/lib/boot-peek";
+import { applyDevice } from "@/lib/device";
 import { applyTheme } from "@/lib/theme";
 import { stopSharedReading } from "@/components/read-back-chip";
 import { getActiveEditor } from "@/lib/editor-commands";
@@ -23,6 +25,16 @@ import { cn } from "@/lib/utils";
 export function AppShell() {
   useEffect(() => {
     hydrateAppVersion();
+    const peek = peekBoot();
+    applyTheme(peek.theme, []);
+    applyDevice();
+    const onResize = () => applyDevice();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
   }, []);
 
   const focusMode = useNotebookStore((s) => s.focusMode);
@@ -41,14 +53,6 @@ export function AppShell() {
     void useNotebookStore.persist.rehydrate();
     void initNativeShell();
   }, []);
-
-  useEffect(() => {
-    if (!hasHydrated) return;
-    if (prefs.bootLeaves === false) {
-      setBooting(false);
-      window.dispatchEvent(new Event("quire-desk-ready"));
-    }
-  }, [hasHydrated, prefs.bootLeaves]);
 
   useEffect(() => {
     if (!hasHydrated) return;
@@ -156,7 +160,7 @@ export function AppShell() {
       if (meta && event.key === "-") {
         event.preventDefault();
         const zoom = useNotebookStore.getState().prefs.zoom;
-        setPrefs({ zoom: Math.max(0.7, Math.round((zoom - 0.1) * 10) / 10) });
+        setPrefs({ zoom: Math.max(0.4, Math.round((zoom - 0.1) * 10) / 10) });
       }
       if (meta && event.key === "0") {
         event.preventDefault();
@@ -200,8 +204,9 @@ export function AppShell() {
         </div>
       </div>
 
-      {hasHydrated && booting && prefs.bootLeaves !== false ? (
+      {booting ? (
         <BootLeaves
+          deskReady={hasHydrated}
           onDone={() => {
             setBooting(false);
             window.dispatchEvent(new Event("quire-desk-ready"));

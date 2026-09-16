@@ -2,6 +2,8 @@ export type PrintJob = {
   title: string;
   pages: string[];
   landscape: boolean;
+  paper?: string;
+  ink?: string;
 };
 
 const PRINT_CSS = `
@@ -10,13 +12,15 @@ const PRINT_CSS = `
   html, body {
     margin: 0;
     padding: 0;
-    background: white;
-    color: #1c1917;
+    background: {{paper}};
+    color: {{ink}};
     font-family: "Source Sans 3", "Segoe UI", Georgia, serif;
     font-size: 12pt;
     line-height: 1.5;
   }
   .sheet {
+    background: {{paper}};
+    color: {{ink}};
     page-break-after: always;
     break-after: page;
   }
@@ -30,9 +34,10 @@ const PRINT_CSS = `
     font-weight: 650;
     letter-spacing: -0.02em;
     margin: 0 0 0.6em;
+    color: {{ink}};
   }
   p { margin: 0 0 0.7em; }
-  h1, h2, h3 { margin: 0.9em 0 0.4em; line-height: 1.25; }
+  h1, h2, h3 { margin: 0.9em 0 0.4em; line-height: 1.25; color: {{ink}}; }
   h1 { font-size: 18pt; }
   h2 { font-size: 14pt; }
   h3 { font-size: 12.5pt; }
@@ -40,14 +45,15 @@ const PRINT_CSS = `
   blockquote {
     margin: 0.8em 0;
     padding-left: 0.9em;
-    border-left: 2px solid #3d6b4f;
-    color: #44403c;
+    border-left: 2px solid color-mix(in srgb, {{ink}} 35%, {{paper}});
+    color: {{ink}};
     font-style: italic;
   }
   img { max-width: 100%; height: auto; }
   mark { background: #f3e2a0; color: #1c1917; padding: 0 0.12em; }
-  a { color: #3d6b4f; }
-  hr { border: 0; border-top: 1px solid #d6d3d1; margin: 1.2em 0; }
+  a { color: inherit; text-decoration: underline; }
+  hr { border: 0; border-top: 1px solid color-mix(in srgb, {{ink}} 22%, {{paper}}); margin: 1.2em 0; }
+  figure { margin: 0.6em 0; }
 `;
 
 export function buildPrintDocument(job: PrintJob): string {
@@ -60,7 +66,9 @@ export function buildPrintDocument(job: PrintJob): string {
       return `<section class="sheet">${title}${html || "<p></p>"}</section>`;
     })
     .join("");
-  const css = PRINT_CSS.replace("{{orient}}", job.landscape ? "landscape" : "portrait");
+  const css = PRINT_CSS.replace("{{orient}}", job.landscape ? "landscape" : "portrait")
+    .replaceAll("{{paper}}", job.paper || "#ffffff")
+    .replaceAll("{{ink}}", job.ink || "#1c1917");
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(job.title || "Untitled")}</title><style>${css}</style></head><body>${sheets}</body></html>`;
 }
 

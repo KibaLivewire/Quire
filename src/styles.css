@@ -989,8 +989,8 @@ html[data-theme="leather"] {
     max-height: none !important;
     overflow: visible !important;
     box-shadow: none !important;
-    background: white !important;
-    color: black !important;
+    background: var(--color-paper-raised) !important;
+    color: var(--color-ink) !important;
   }
 }
 
@@ -1481,4 +1481,14 @@ html[data-focus-mode="true"][data-ink-only="true"] .paper-sheet {
   .recipe-chooser-grid > :nth-child(4) {
     grid-column: auto;
   }
+}
+
+html[data-device="phone"] .quire-shell {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.print-preview-sheet img {
+  max-width: 100%;
+  height: auto;
 }

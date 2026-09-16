@@ -6,6 +6,7 @@ import { alignPageMeta, applyRecipeToMeta, defaultPageMeta, softCapRibbons } fro
 import { notePages } from "./pages";
 import { descendantIds, isAlive, isDescendant } from "./folders";
 import { WELCOME_HTML, WELCOME_VERSION } from "./welcome";
+import { rememberBoot } from "./boot-peek";
 import { readDesktopPrefs, writeDesktopPrefs } from "./desktop";
 
 const DB_NAME = "quire";
@@ -303,6 +304,7 @@ export const useNotebookStore = create<NotebookState>()(
         set((state) => ({
           prefs: { ...state.prefs, ...patch },
         }));
+        rememberBoot(get().prefs);
       },
 
       setSession: (patch) => {
@@ -735,6 +737,7 @@ export const useNotebookStore = create<NotebookState>()(
       onRehydrateStorage: () => (state) => {
         persistEnabled = true;
         state?.completeHydration();
+        rememberBoot(useNotebookStore.getState().prefs);
       },
       merge: (persisted, current) => {
         const from = (persisted ?? {}) as Partial<PersistedSlice>;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ritualThemeId, snapshot, startAmbient, subscribeAmbient } from "@/lib/ambient";
+import { peekBoot } from "@/lib/boot-peek";
 import { THEME_META } from "@/lib/theme";
 import { useNotebookStore } from "@/lib/store";
 import type { ThemeId } from "@/lib/types";
@@ -21,21 +22,35 @@ const LEAVE_MS = 1150;
 const REDUCED_MS = 1200;
 const TAU = Math.PI * 2;
 
-export function BootLeaves({ onDone }: { onDone: () => void }) {
+export function BootLeaves({ onDone, deskReady = true }: { onDone: () => void; deskReady?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const prefs = useNotebookStore((s) => s.prefs);
-  const ritual = ritualThemeId(prefs.theme);
+  const hasHydrated = useNotebookStore((s) => s.hasHydrated);
+  const ritual = ritualThemeId(hasHydrated ? prefs.theme : peekBoot().theme);
   const [leaving, setLeaving] = useState(false);
   const [ready, setReady] = useState(false);
   const [blocked, setBlocked] = useState(false);
-  const [reduced] = useState(() => prefersReducedMotion());
+  const [holding, setHolding] = useState(false);
+  const [reduced] = useState(() => prefersReducedMotion() || peekBoot().bootLeaves === false);
   const leavingRef = useRef(false);
+  const deskReadyRef = useRef(deskReady);
+  deskReadyRef.current = deskReady;
 
   function beginLeave() {
     if (leavingRef.current) return;
     leavingRef.current = true;
+    setHolding(false);
     setLeaving(true);
     window.setTimeout(onDone, LEAVE_MS);
+  }
+
+  function maybeLeave() {
+    if (leavingRef.current) return;
+    if (!deskReadyRef.current) {
+      setHolding(true);
+      return;
+    }
+    beginLeave();
   }
 
   useEffect(() => {
@@ -48,12 +63,12 @@ export function BootLeaves({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     function skip() {
-      beginLeave();
+      maybeLeave();
     }
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        beginLeave();
+        maybeLeave();
       }
     }
     window.addEventListener("quire-boot-skip", skip);
@@ -87,7 +102,7 @@ export function BootLeaves({ onDone }: { onDone: () => void }) {
 
     if (reduced) {
       paintRitual(brush, ritual, w, h, DURATION * 0.72, 0, true);
-      const id = window.setTimeout(beginLeave, REDUCED_MS);
+      const id = window.setTimeout(maybeLeave, REDUCED_MS);
       return () => {
         window.clearTimeout(id);
         window.removeEventListener("resize", resize);
@@ -137,7 +152,7 @@ export function BootLeaves({ onDone }: { onDone: () => void }) {
       }
       frame += 1;
       if (t < DURATION) raf = requestAnimationFrame(tick);
-      else beginLeave();
+      else maybeLeave();
     }
     raf = requestAnimationFrame(tick);
     return () => {
@@ -153,11 +168,25 @@ export function BootLeaves({ onDone }: { onDone: () => void }) {
       await startAmbient(prefs.ambient ? prefs.ambientVolume : 0, prefs.theme);
       return;
     }
-    beginLeave();
+    maybeLeave();
   }
 
+  useEffect(() => {
+    if (deskReady && holding) beginLeave();
+  }, [deskReady, holding]);
+
+  useEffect(() => {
+    if (deskReady && prefs.bootLeaves === false) beginLeave();
+  }, [deskReady, prefs.bootLeaves]);
+
   const tagline =
-    ready && blocked ? "Click to hear the room" : reduced ? "" : THEME_META[ritual].gathering;
+    ready && blocked
+      ? "Click to hear the room"
+      : holding
+        ? "Opening the desk"
+        : reduced
+          ? ""
+          : THEME_META[ritual].gathering;
 
   return (
     <div

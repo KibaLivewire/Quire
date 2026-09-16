@@ -8,6 +8,7 @@ import { PageSheet } from "@/components/page-sheet";
 import { ReadBackControls, useStopReadingOnPageChange } from "@/components/read-back-chip";
 import { RibbonMarginMarks } from "@/components/ribbon-bookmarks";
 import { Button } from "@/components/ui/button";
+import { applyDevice, pageFitScale, readDevice } from "@/lib/device";
 import { editorExtensions } from "@/lib/editor-extensions";
 import { collectImageFiles, insertImages } from "@/lib/image";
 import { isHttpUrl, openExternal } from "@/lib/desktop";
@@ -273,6 +274,27 @@ export function RichEditor({
   const zoom = prefs.zoom;
   const pageWidth = Number(prefs.pageWidth) > 0 ? Number(prefs.pageWidth) : 8.5;
   const pageHeight = Number(prefs.pageHeight) > 0 ? Number(prefs.pageHeight) : 11;
+  const deskRef = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState(1);
+
+  useEffect(() => {
+    const desk = deskRef.current;
+    if (!desk) return;
+    function measure() {
+      const box = deskRef.current;
+      if (!box) return;
+      const device = applyDevice(readDevice());
+      setFit(pageFitScale(box.clientWidth, box.clientHeight, pageWidth, pageHeight, device.kind));
+    }
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(desk);
+    window.addEventListener("orientationchange", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("orientationchange", measure);
+    };
+  }, [pageWidth, pageHeight, prefs.pageOrientation]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -286,10 +308,10 @@ export function RichEditor({
         <div className="h-12 border-b border-rule bg-paper-raised" />
       )}
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div ref={deskRef} className="min-h-0 flex-1 overflow-auto">
         <div
-          className="mx-auto flex w-full max-w-full flex-col items-center px-4 pt-5 pb-16 md:px-6"
-          style={{ zoom } as React.CSSProperties}
+          className="mx-auto flex w-full max-w-full flex-col items-center px-3 pt-4 pb-16 md:px-6 md:pt-5"
+          style={{ zoom: fit * zoom } as React.CSSProperties}
         >
           <textarea
             value={title}
@@ -308,7 +330,8 @@ export function RichEditor({
                 editor?.commands.focus("start");
               }
             }}
-            className="mb-4 w-full max-w-[8.5in] resize-none bg-transparent font-display text-3xl leading-tight font-semibold tracking-tight text-ink placeholder:text-ink-subtle focus:outline-none"
+            className="mb-4 w-full resize-none bg-transparent font-display text-3xl leading-tight font-semibold tracking-tight text-ink placeholder:text-ink-subtle focus:outline-none"
+            style={{ maxWidth: `${pageWidth}in` }}
           />
           {!focusMode && !inkOnly ? (
             <button
