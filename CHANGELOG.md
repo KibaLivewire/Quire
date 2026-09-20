@@ -1,3 +1,15 @@
+# Quire 1.8.1 — Bookmarks, notes, and a page menu
+
+Released 18 September 2026.
+
+- **Color bookmarks** — select a letter, word, or passage and mark it Wine, Moss, Gilt, Sky, or Umber. The toolbar lists them so you can jump back
+- **Notes** — add a note to a selection. A number in brackets sits beside it; hover the number to read the note. The Notes tab in the toolbar holds every note on the sheet
+- **Right-click menu** — cut, copy, paste, select all, look up a word, narrate, add to dictionary, highlight, bookmark, add a note, and Quill (Shorter, Clearer, Fleshed out, Polish, Better word)
+
+Windows installer: Quire-Setup-1.8.1.exe
+
+---
+
 # Quire 1.8.0 — Desk extras
 
 Released 16 September 2026.

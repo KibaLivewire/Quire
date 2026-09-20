@@ -76,6 +76,9 @@ const PRINT_CSS = `
   }
   img { max-width: 100%; height: auto; {{imgFilter}} }
   mark { background: #f3e2a0; color: #1c1917; padding: 0 0.12em; }
+  .quire-note { border-bottom: 1px dotted currentColor; }
+  .quire-note[data-note]::after { content: " [" attr(data-note) "]"; font-size: 0.85em; opacity: 0.8; }
+  .quire-bookmark { border-bottom: 0.12em solid currentColor; }
   a { color: inherit; text-decoration: underline; }
   hr { border: 0; border-top: 1px solid color-mix(in srgb, {{ink}} 22%, {{paper}}); margin: 1.2em 0; }
   figure { margin: 0.6em 0; }

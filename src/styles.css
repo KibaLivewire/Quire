@@ -1594,3 +1594,128 @@ html[data-device="phone"] .quire-shell {
 html[data-device="phone"] .quire-spread .is-facing {
   display: none;
 }
+
+.quire-bookmark[data-bookmark="wine"] {
+  box-shadow: inset 0 -0.22em 0 color-mix(in oklab, var(--color-destructive) 80%, transparent);
+}
+.quire-bookmark[data-bookmark="moss"] {
+  box-shadow: inset 0 -0.22em 0 color-mix(in oklab, var(--color-forest) 75%, transparent);
+}
+.quire-bookmark[data-bookmark="gilt"] {
+  box-shadow: inset 0 -0.22em 0 color-mix(in oklab, var(--color-gilt) 85%, transparent);
+}
+.quire-bookmark[data-bookmark="sky"] {
+  box-shadow: inset 0 -0.22em 0 color-mix(in oklab, var(--color-ink-muted) 55%, #4f6f8f);
+}
+.quire-bookmark[data-bookmark="umber"] {
+  box-shadow: inset 0 -0.22em 0 color-mix(in oklab, var(--color-gilt) 40%, #8a5a32);
+}
+
+.quire-bookmark-chip {
+  border-radius: 999px;
+  border: 1px solid var(--color-rule);
+  padding: 0.2rem 0.6rem;
+  font-size: 0.7rem;
+  color: var(--color-ink);
+}
+.quire-bookmark-chip.is-wine,
+.quire-bookmark-dot.is-wine {
+  background: color-mix(in oklab, var(--color-destructive) 28%, var(--color-paper));
+}
+.quire-bookmark-chip.is-moss,
+.quire-bookmark-dot.is-moss {
+  background: color-mix(in oklab, var(--color-forest) 32%, var(--color-paper));
+}
+.quire-bookmark-chip.is-gilt,
+.quire-bookmark-dot.is-gilt {
+  background: color-mix(in oklab, var(--color-gilt) 38%, var(--color-paper));
+}
+.quire-bookmark-chip.is-sky,
+.quire-bookmark-dot.is-sky {
+  background: color-mix(in oklab, var(--color-ink-muted) 28%, var(--color-paper-raised));
+}
+.quire-bookmark-chip.is-umber,
+.quire-bookmark-dot.is-umber {
+  background: color-mix(in oklab, var(--color-gilt) 22%, var(--color-paper-inset));
+}
+.quire-bookmark-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+}
+
+.quire-note {
+  background: color-mix(in oklab, var(--color-forest) 14%, transparent);
+  border-bottom: 1px dotted var(--color-forest);
+  border-radius: 0.12em;
+}
+
+.quire-note-ref {
+  display: inline;
+  margin: 0 0.1em;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-forest);
+  font-family: inherit;
+  font-size: 0.78em;
+  font-weight: 650;
+  line-height: 1;
+  cursor: help;
+  position: relative;
+  vertical-align: super;
+}
+
+.quire-note-ref:hover::after,
+.quire-note-ref:focus-visible::after {
+  content: attr(data-note);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.4rem);
+  transform: translateX(-50%);
+  min-width: 8rem;
+  max-width: 16rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--color-rule);
+  background: var(--color-paper-raised);
+  color: var(--color-ink);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  z-index: 40;
+  box-shadow: var(--shadow-lift);
+  text-align: left;
+}
+
+.quire-context-menu {
+  position: fixed;
+  z-index: 70;
+  min-width: 13.5rem;
+  max-width: min(20rem, calc(100vw - 1rem));
+  max-height: min(28rem, calc(100dvh - 1rem));
+  overflow-y: auto;
+  padding: 0.3rem;
+  border-radius: 0.85rem;
+  border: 1px solid var(--color-rule);
+  background: var(--color-paper-raised);
+  color: var(--color-ink);
+  box-shadow: var(--shadow-lift);
+}
+.quire-context-menu hr {
+  border: 0;
+  border-top: 1px solid var(--color-rule);
+  margin: 0.25rem 0.4rem;
+}
+.quire-context-label {
+  padding: 0.35rem 0.65rem 0.15rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-subtle);
+}
+.quire-context-menu [role="menuitem"]:hover:not(:disabled) {
+  background: var(--color-paper-inset);
+}

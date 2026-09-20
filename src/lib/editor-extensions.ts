@@ -8,6 +8,7 @@ import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import type { DOMOutputSpec } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
+import { PageBookmark, PageNote } from "./page-marks";
 
 const QuireHighlight = Highlight.extend({
   addAttributes() {
@@ -388,4 +389,6 @@ export const editorExtensions = [
   TableCell,
   TaskList,
   TaskItem.configure({ nested: true }),
+  PageBookmark,
+  PageNote,
 ];

@@ -38,6 +38,7 @@ import { toast } from "sonner";
 import { FontPicker } from "@/components/font-picker";
 import { ImageEditor } from "@/components/image-editor";
 import { ReadBackControls } from "@/components/read-back-chip";
+import { PageNotesControl, SelectionBookmarksControl } from "@/components/page-notes";
 import { RibbonBookmarksControl } from "@/components/ribbon-bookmarks";
 import { fetchSense, WordLookupCard } from "@/components/word-lookup";
 import { checkGrammar, type GrammarIssue } from "@/lib/grammar";
@@ -977,6 +978,8 @@ export function EditorToolbar({
         <ToolBtn label="Page map" active={pageMapOpen} onClick={() => setPageMapOpen(!pageMapOpen)}>
           <ListTree />
         </ToolBtn>
+        <SelectionBookmarksControl editor={editor} />
+        <PageNotesControl editor={editor} />
         <RibbonBookmarksControl editor={editor} note={note} pageIndex={pageIndex} />
         <ReadBackControls editor={editor} />
         {quillOn ? (

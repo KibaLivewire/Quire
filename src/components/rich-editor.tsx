@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { EditorContextMenu } from "@/components/editor-context-menu";
 import { EditorToolbar } from "@/components/editor-toolbar";
 import { PageMapPanel } from "@/components/page-map";
 import { PageSheet } from "@/components/page-sheet";
@@ -470,6 +471,7 @@ export function RichEditor({
           </div>
         </div>
       </div>
+      {editor ? <EditorContextMenu editor={editor} /> : null}
       <PageMapPanel editor={editor} />
       </div>
     </div>
