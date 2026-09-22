@@ -1,3 +1,13 @@
+# Quire 1.8.2 — The room stays quiet
+
+Released 22 September 2026.
+
+- **Mute stays muted** — creating a folder or a page, or renaming either one, no longer turns the room sound back on if you had muted it. Mute (or Ctrl+M) still toggles it. Dragging the volume slider still brings it back.
+
+Windows installer: Quire-Setup-1.8.2.exe
+
+---
+
 # Quire 1.8.1 — Bookmarks, notes, and a page menu
 
 Released 18 September 2026.

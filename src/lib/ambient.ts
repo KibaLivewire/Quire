@@ -253,7 +253,9 @@ async function switchTo(src: string) {
 
 async function startAmbientInner(volume: number, theme?: string) {
   userVolume = Math.min(1, Math.max(0, volume));
-  muted = userVolume <= 0;
+  // A mute is a session choice. Restarting the room (a new folder, a new page,
+  // a rename that remounts the desk) must not turn it back up. Volume 0 still mutes.
+  if (userVolume <= 0) muted = true;
   lastTheme = ritualThemeId(theme ?? lastTheme);
   let src = ambientSrcForTheme(lastTheme);
   if (src === "generated:rain") src = await rainAmbientUrl();
@@ -271,7 +273,7 @@ export async function startAmbient(volume: number, theme?: string) {
 
 export function setAmbientVolume(volume: number) {
   userVolume = Math.min(1, Math.max(0, volume));
-  if (volume > 0) muted = false;
+  if (userVolume <= 0) muted = true;
   if (!currentSlot()) ensureGraph();
   applyMaster();
   if (currentSlot() && !currentSlot()!.gain) {

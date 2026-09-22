@@ -123,35 +123,7 @@ export function EditorPane({
     savePage.flush();
   }, [save, savePage]);
 
-  if (!note) {
-    return (
-      <section className={cn("flex h-full min-h-0 flex-col quire-page", className)}>
-        {onBack ? (
-          <div className="flex items-center px-2 pt-3 md:hidden">
-            <Button variant="ghost" size="icon" aria-label="Back to pages" onClick={onBack}>
-              <ArrowLeft />
-            </Button>
-          </div>
-        ) : null}
-        <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-          <h2 className="font-display text-2xl font-semibold tracking-tight text-ink">A blank desk</h2>
-          <p className="mt-2 max-w-sm text-pretty text-ink-muted">
-            Start a page in this notebook, or choose one from the list.
-          </p>
-          <Button className="mt-5" onClick={() => openRecipeChooser({ mode: "create" })}>
-            New page
-          </Button>
-        </div>
-        <footer className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-t border-rule/80 px-3 py-2">
-          <span />
-          <AmbientDial />
-          <span />
-        </footer>
-      </section>
-    );
-  }
-
-  const allHtml = notePages(note).join(" ");
+  const allHtml = note ? notePages(note).join(" ") : "";
   const words = wordCount(allHtml);
   const chars = plainText(allHtml).length;
   const zoomPct = Math.round(prefs.zoom * 100);
@@ -165,7 +137,28 @@ export function EditorPane({
   }
 
   return (
-    <section className={cn("relative flex h-full min-h-0 flex-col bg-paper quire-page", className)}>
+    <section className={cn("relative flex h-full min-h-0 flex-col quire-page", note && "bg-paper", className)}>
+      {!note ? (
+        <>
+          {onBack ? (
+            <div className="flex items-center px-2 pt-3 md:hidden">
+              <Button variant="ghost" size="icon" aria-label="Back to pages" onClick={onBack}>
+                <ArrowLeft />
+              </Button>
+            </div>
+          ) : null}
+          <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+            <h2 className="font-display text-2xl font-semibold tracking-tight text-ink">A blank desk</h2>
+            <p className="mt-2 max-w-sm text-pretty text-ink-muted">
+              Start a page in this notebook, or choose one from the list.
+            </p>
+            <Button className="mt-5" onClick={() => openRecipeChooser({ mode: "create" })}>
+              New page
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
       <FindBar />
       <header className="flex items-center gap-1 border-b border-rule/80 bg-paper-raised/80 px-2 py-1.5">
         {onBack ? (
@@ -328,8 +321,11 @@ export function EditorPane({
         }}
       />
       )}
+        </>
+      )}
 
-      <footer className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-t border-rule/80 px-3 py-2 text-xs text-ink-subtle">
+      <footer className={cn("grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-t border-rule/80 px-3 py-2", note && "text-xs text-ink-subtle")}>
+        {note ? (
         <span className="min-w-0 truncate tabular-nums">
           {gate ? (
             "Locked on this device"
@@ -342,7 +338,11 @@ export function EditorPane({
             <span suppressHydrationWarning>Edited {formatDistanceToNow(note.updatedAt, { addSuffix: true })}</span>
           )}
         </span>
+        ) : (
+          <span />
+        )}
         <AmbientDial />
+        {note ? (
         <div className="flex items-center justify-end gap-1.5">
           <Button
             variant="ghost"
@@ -373,8 +373,12 @@ export function EditorPane({
           </Button>
           <span className="w-9 text-right tabular-nums">{zoomPct}%</span>
         </div>
+        ) : (
+          <span />
+        )}
       </footer>
 
+      {note ? (
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -398,6 +402,7 @@ export function EditorPane({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      ) : null}
     </section>
   );
 }

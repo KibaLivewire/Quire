@@ -5,6 +5,7 @@ import { Slider } from "@/components/ui/slider";
 import {
   setAmbientMuted,
   setAmbientVolume,
+  snapshot,
   startAmbient,
   stopAmbient,
   subscribeAmbient,
@@ -16,8 +17,8 @@ import { cn } from "@/lib/utils";
 export function AmbientDial() {
   const prefs = useNotebookStore((s) => s.prefs);
   const setPrefs = useNotebookStore((s) => s.setPrefs);
-  const [muted, setMuted] = useState(false);
-  const [volume, setVolume] = useState(prefs.ambientVolume ?? 0.22);
+  const [muted, setMuted] = useState(() => snapshot().muted);
+  const [volume, setVolume] = useState(() => snapshot().volume);
 
   useEffect(() => {
     return subscribeAmbient((state) => {
