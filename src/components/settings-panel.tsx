@@ -101,7 +101,8 @@ export function SettingsPanel({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+    <Dialog open={open} onOpenChange={onOpenChange} modal={!trashOpen}>
       <DialogContent className="w-[min(calc(100%-1.5rem),36rem)] max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Desk</DialogTitle>
@@ -379,6 +380,8 @@ export function SettingsPanel({
         </div>
       </DialogContent>
     </Dialog>
+    <TrashPanel open={trashOpen} onOpenChange={setTrashOpen} />
+    </>
   );
 }
 

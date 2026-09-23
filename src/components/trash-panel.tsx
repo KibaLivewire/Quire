@@ -31,7 +31,7 @@ export function TrashPanel({ open, onOpenChange }: { open: boolean; onOpenChange
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(calc(100%-1.5rem),32rem)] max-h-[80dvh] overflow-y-auto">
+      <DialogContent className="z-[60] w-[min(calc(100%-1.5rem),32rem)] max-h-[80dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Trash</DialogTitle>
           <DialogDescription>Pages and folders wait here for 30 days, then they are gone.</DialogDescription>

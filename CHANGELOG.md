@@ -1,4 +1,15 @@
+# Quire 1.8.3 — Trash from Desk
+
+Released 22 September 2026.
+
+- **Desk → Trash** — the Trash button in Desk settings opens the same list as File → Trash, including archived pages and folders
+
+Windows installer: Quire-Setup-1.8.3.exe
+
+---
+
 # Quire 1.8.2 — The room stays quiet
+
 
 Released 22 September 2026.
 
