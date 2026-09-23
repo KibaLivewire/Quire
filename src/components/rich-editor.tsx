@@ -13,10 +13,11 @@ import { applyDevice, pageFitScale, readDevice } from "@/lib/device";
 import { editorExtensions } from "@/lib/editor-extensions";
 import { collectImageFiles, insertImages } from "@/lib/image";
 import { isHttpUrl, openExternal } from "@/lib/desktop";
-import { registerEditorCommands, setActiveEditor } from "@/lib/editor-commands";
+import { copyEditorSelection, pasteEditor, registerEditorCommands, setActiveEditor } from "@/lib/editor-commands";
 import { isPageEmpty, notePages, splitOverflow } from "@/lib/pages";
 import { pageMetaAt, recipeBorder, recipeLabel } from "@/lib/recipes";
 import { openRecipeChooser } from "@/lib/recipe-chooser";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 import { useNotebookStore } from "@/lib/store";
 import type { Note } from "@/lib/types";
 import { cn, debounce } from "@/lib/utils";
@@ -158,19 +159,15 @@ export function RichEditor({
       if (command === "underline") return editor.chain().focus().toggleUnderline().run();
       if (command === "selectAll") return editor.chain().focus().selectAll().run();
       if (command === "copy") {
-        const { from, to } = editor.state.selection;
-        void navigator.clipboard.writeText(editor.state.doc.textBetween(from, to, " "));
+        void copyEditorSelection(editor, false);
         return true;
       }
       if (command === "cut") {
-        const { from, to } = editor.state.selection;
-        void navigator.clipboard.writeText(editor.state.doc.textBetween(from, to, " "));
-        return editor.chain().focus().deleteSelection().run();
+        void copyEditorSelection(editor, true);
+        return true;
       }
       if (command === "paste") {
-        void navigator.clipboard.readText().then((text) => {
-          if (text) editor.chain().focus().insertContent(text).run();
-        });
+        void pasteEditor(editor);
         return true;
       }
       return false;
@@ -241,11 +238,12 @@ export function RichEditor({
         current[safeIndex] = editor.getHTML();
         const nextIndex = safeIndex + 1;
         if (current[nextIndex]) {
-          current[nextIndex] = `${moved}${current[nextIndex]}`;
+          current[nextIndex] = `${moved.html}${current[nextIndex]}`;
+          setNotePages(note.id, current, { prependAt: nextIndex, shift: moved.size });
         } else {
-          current.splice(nextIndex, 0, moved);
+          current.splice(nextIndex, 0, moved.html);
+          setNotePages(note.id, current, { insertAt: nextIndex });
         }
-        setNotePages(note.id, current);
         if (editor.view.hasFocus()) onPageIndexChange(nextIndex);
         setOversized(false);
       } else {
@@ -379,7 +377,7 @@ export function RichEditor({
               {editor ? (
                 <EditorContent editor={editor} />
               ) : (
-                <div className="quire-doc" dangerouslySetInnerHTML={{ __html: pageHtml }} />
+                <div className="quire-doc" dangerouslySetInnerHTML={{ __html: sanitizeHtml(pageHtml) }} />
               )}
             </div>
           </PageSheet>
@@ -399,7 +397,7 @@ export function RichEditor({
                 className={cn("paper-body px-6 py-6 md:px-8", `recipe-${meta.recipe}`)}
               >
                 {pages[safeIndex + 1] ? (
-                  <div className="quire-doc" dangerouslySetInnerHTML={{ __html: pages[safeIndex + 1] }} />
+                  <div className="quire-doc" dangerouslySetInnerHTML={{ __html: sanitizeHtml(pages[safeIndex + 1] || "") }} />
                 ) : (
                   <p className="pt-8 text-center text-sm text-ink-subtle">Facing page</p>
                 )}
@@ -461,7 +459,7 @@ export function RichEditor({
                 size="sm"
                 onClick={() => {
                   const nextPages = pages.filter((_, i) => i !== safeIndex);
-                  setNotePages(note.id, nextPages.length ? nextPages : [""]);
+                  setNotePages(note.id, nextPages.length ? nextPages : [""], { removeAt: safeIndex });
                   onPageIndexChange(Math.max(0, safeIndex - 1));
                 }}
               >

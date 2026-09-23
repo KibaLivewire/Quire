@@ -12,6 +12,7 @@ import { notePages } from "@/lib/pages";
 import { noteGate } from "@/lib/lock";
 import { assessPrintSheet, pageColors, type PrintWarning } from "@/lib/print-ink";
 import { printDocument, printInk, printPaper, registerPrintPreview } from "@/lib/print";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 import { useNotebookStore } from "@/lib/store";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,7 @@ export function PrintPreview() {
   const [grayscaleImages, setGrayscaleImages] = useState(false);
   const [header, setHeader] = useState(true);
   const [pageNumbers, setPageNumbers] = useState(true);
+  const [thisSheetOnly, setThisSheetOnly] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [warning, setWarning] = useState<PrintWarning | null>(null);
@@ -78,12 +80,13 @@ export function PrintPreview() {
         return;
       }
       setLandscape(current.prefs.pageOrientation === "landscape");
-      setIndex(0);
       setConfirm(false);
       setInkSaver(false);
       setGrayscaleImages(false);
       setHeader(true);
       setPageNumbers(true);
+      setThisSheetOnly(true);
+      setIndex(current.session.pageIndex || 0);
       setOpen(true);
     });
   }, []);
@@ -114,7 +117,7 @@ export function PrintPreview() {
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [open, pages, landscape, note, confirm, warning, inkSaver, grayscaleImages, header, pageNumbers]);
+  }, [open, pages, landscape, note, confirm, warning, inkSaver, grayscaleImages, header, pageNumbers, thisSheetOnly, safeIndex]);
 
   async function sendToPrinter() {
     if (!note) return;
@@ -123,7 +126,7 @@ export function PrintPreview() {
     try {
       await printDocument({
         title: note.title || "Untitled",
-        pages,
+        pages: thisSheetOnly ? [pages[safeIndex] || ""] : pages,
         landscape,
         paper: colors.paper,
         ink: colors.ink,
@@ -228,6 +231,7 @@ export function PrintPreview() {
           />
           <Toggle label="Header" on={header} onClick={() => setHeader((value) => !value)} />
           <Toggle label="Page numbers" on={pageNumbers} onClick={() => setPageNumbers((value) => !value)} />
+          <Toggle label="This sheet only" on={thisSheetOnly} onClick={() => setThisSheetOnly((value) => !value)} />
         </div>
       </header>
       <div className="min-h-0 flex-1 overflow-auto px-6 py-8">
@@ -263,7 +267,7 @@ export function PrintPreview() {
               {note.title}
             </h1>
           ) : null}
-          <div dangerouslySetInnerHTML={{ __html: pages[safeIndex] || "<p></p>" }} />
+          <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(pages[safeIndex] || "<p></p>") }} />
           {pageNumbers ? (
             <p className="mt-8 text-right text-[11px] opacity-70">
               {safeIndex + 1} / {pages.length || 1}

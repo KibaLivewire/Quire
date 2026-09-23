@@ -137,6 +137,8 @@ export type Prefs = {
   ttsRate?: number;
   spread: boolean;
   dictionary: string[];
+  /** Bumped on every desk-setting write so an older prefs file cannot roll the desk back. */
+  prefsRevision?: number;
 };
 
 export const DEFAULT_PREFS: Prefs = {

@@ -1,3 +1,5 @@
+import { sanitizeHtml } from "./sanitize-html";
+
 export type PrintJob = {
   title: string;
   pages: string[];
@@ -109,7 +111,7 @@ export function buildPrintDocument(job: PrintJob): string {
         job.pageNumbers !== false
           ? `<div class="folio">${index + 1} / ${job.pages.length}</div>`
           : "";
-      return `<section class="sheet">${running}${title}${html || "<p></p>"}${folio}</section>`;
+      return `<section class="sheet">${running}${title}${sanitizeHtml(html || "<p></p>")}${folio}</section>`;
     })
     .join("");
   const css = PRINT_CSS.replace("{{orient}}", job.landscape ? "landscape" : "portrait")

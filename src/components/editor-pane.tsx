@@ -50,6 +50,7 @@ import { notePages } from "@/lib/pages";
 import { openPrintPreview } from "@/lib/print";
 import { openRecipeChooser } from "@/lib/recipe-chooser";
 import { useNotebookStore } from "@/lib/store";
+import { registerPendingFlush } from "@/lib/pending-save";
 import { cn, debounce, plainText, wordCount } from "@/lib/utils";
 
 export function EditorPane({
@@ -92,8 +93,15 @@ export function EditorPane({
     const session = useNotebookStore.getState().session;
     if (note && session.noteId === note.id) setPageIndex(session.pageIndex || 0);
     else setPageIndex(0);
-    lastWords.current = note ? wordCount(notePages(note)[session.noteId === note.id ? session.pageIndex || 0 : 0] || "") : 0;
   }, [note?.id]);
+
+  useEffect(() => {
+    if (!note) {
+      lastWords.current = 0;
+      return;
+    }
+    lastWords.current = wordCount(notePages(note)[pageIndex] || "");
+  }, [note?.id, pageIndex]);
 
   useEffect(() => {
     if (!note) return;
@@ -122,6 +130,11 @@ export function EditorPane({
     save.flush();
     savePage.flush();
   }, [save, savePage]);
+
+  useEffect(() => registerPendingFlush(() => {
+    save.flush();
+    savePage.flush();
+  }), [save, savePage]);
 
   const allHtml = note ? notePages(note).join(" ") : "";
   const words = wordCount(allHtml);
@@ -248,8 +261,8 @@ export function EditorPane({
                 {notebooks.filter((nb) => !nb.deletedAt).map((nb) => (
                   <DropdownMenuItem
                     key={nb.id}
-                    disabled={nb.id === note.notebookId}
-                    onSelect={() => moveNote(note.id, nb.id)}
+                    disabled={nb.id === note.notebookId || Boolean(gate)}
+                    onSelect={() => unlessLocked(() => moveNote(note.id, nb.id))}
                   >
                     {nb.name}
                   </DropdownMenuItem>
@@ -289,7 +302,7 @@ export function EditorPane({
               Print preview
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+            <DropdownMenuItem variant="destructive" disabled={Boolean(gate)} onSelect={() => unlessLocked(() => setDeleteOpen(true))}>
               <Trash2 className="size-4" />
               Delete
             </DropdownMenuItem>

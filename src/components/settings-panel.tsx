@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { TrashPanel } from "@/components/trash-panel";
 import { buildBackup, readBackupFile, saveBackup } from "@/lib/backup";
-import { checkForUpdates, appVersion } from "@/lib/desktop";
+import { checkForUpdates, appVersion, isNewerVersion } from "@/lib/desktop";
 import { parsePlugin, pluginTemplate } from "@/lib/plugins";
 import { allThemes } from "@/lib/theme";
 import { type CustomTheme } from "@/lib/types";
@@ -93,7 +93,7 @@ export function SettingsPanel({
       setUpdateNote(info.error);
       return;
     }
-    if (info.latest && info.latest !== info.current) {
+    if (isNewerVersion(info.latest, info.current)) {
       setUpdateNote(`Version ${info.latest} is available (you have ${info.current}).`);
     } else {
       setUpdateNote(`Quire ${info.current} is up to date.`);
@@ -214,7 +214,7 @@ export function SettingsPanel({
           />
           <ToggleRow
             label="Quill"
-            hint="A local helper. Highlight a sentence and ask to shorten, flesh out, or polish."
+            hint="Highlight a sentence and ask to shorten or flesh it out on this desk. Polish and definitions send that sentence only."
             checked={prefs.quill !== false}
             onCheckedChange={(checked) => setPrefs({ quill: checked })}
           />
@@ -254,9 +254,10 @@ export function SettingsPanel({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() =>
-                      setPrefs({ dictionary: (prefs.dictionary ?? []).filter((item) => item !== word) })
-                    }
+                    onClick={() => {
+                      setPrefs({ dictionary: (prefs.dictionary ?? []).filter((item) => item !== word) });
+                      void window.quire?.removeSpellWord?.(word);
+                    }}
                   >
                     Remove
                   </Button>

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { fetchSense, WordLookupCard } from "@/components/word-lookup";
 import { HIGHLIGHTS } from "@/lib/fonts";
 import { applyPageBookmark, applyPageNote, BOOKMARK_TONES } from "@/lib/page-marks";
+import { copyEditorSelection, pasteEditor } from "@/lib/editor-commands";
 import { askQuill } from "@/lib/quill";
 import { extractReadText, speakText } from "@/lib/read-back";
 import { useNotebookStore } from "@/lib/store";
@@ -84,22 +85,18 @@ export function EditorContextMenu({ editor }: { editor: Editor }) {
   }
 
   function cut() {
-    const { from, to } = editor.state.selection;
-    void navigator.clipboard.writeText(editor.state.doc.textBetween(from, to, " "));
-    editor.chain().focus().deleteSelection().run();
+    void copyEditorSelection(editor, true);
     setPos(null);
   }
 
   function copy() {
-    const { from, to } = editor.state.selection;
-    void navigator.clipboard.writeText(editor.state.doc.textBetween(from, to, " "));
+    void copyEditorSelection(editor, false);
     setPos(null);
   }
 
   async function paste() {
     try {
-      const text = await navigator.clipboard.readText();
-      if (text) editor.chain().focus().insertContent(text).run();
+      await pasteEditor(editor);
     } catch {
       toast.error("Could not paste from the clipboard.");
     }
@@ -137,7 +134,7 @@ export function EditorContextMenu({ editor }: { editor: Editor }) {
       return;
     }
     setBusy(true);
-    const result = await askQuill(chip, word);
+    const result = await askQuill(chip, word, prefs.dictionary);
     setBusy(false);
     if (result.replacement) {
       editor.chain().focus().insertContent(result.replacement).run();

@@ -11,6 +11,7 @@ type QuireBridge = {
   onFlushRequest?: (handler: () => void | Promise<void>) => () => void;
   notifyFlushDone?: () => void;
   addSpellWord?: (word: string) => Promise<boolean>;
+  removeSpellWord?: (word: string) => Promise<boolean>;
 };
 
 declare global {
@@ -55,6 +56,18 @@ export async function openExternal(href: string): Promise<void> {
     return;
   }
   window.open(url, "_blank", "noopener,noreferrer");
+}
+
+export function isNewerVersion(latest: string | null | undefined, current: string) {
+  if (!latest) return false;
+  const a = latest.trim().replace(/^v/i, "").split(".").map((n) => Number(n) || 0);
+  const b = current.trim().replace(/^v/i, "").split(".").map((n) => Number(n) || 0);
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i += 1) {
+    if ((a[i] || 0) > (b[i] || 0)) return true;
+    if ((a[i] || 0) < (b[i] || 0)) return false;
+  }
+  return false;
 }
 
 export async function checkForUpdates() {

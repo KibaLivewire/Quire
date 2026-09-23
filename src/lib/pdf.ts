@@ -21,6 +21,25 @@ function pdfEscape(value: string) {
   return value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 }
 
+/** Times-Roman speaks WinAnsi, not UTF-8. Map the bytes so the stream length stays honest. */
+function winAnsi(value: string) {
+  const out = new Uint8Array(value.length);
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code === 0x2018 || code === 0x2019) out[i] = 0x91 + (code - 0x2018);
+    else if (code === 0x201c || code === 0x201d) out[i] = 0x93 + (code - 0x201c);
+    else if (code === 0x2014) out[i] = 0x97;
+    else if (code === 0x2013) out[i] = 0x96;
+    else if (code === 0x2026) out[i] = 0x85;
+    else if (code === 0x2022) out[i] = 0x95;
+    else if (code >= 32 && code <= 126) out[i] = code;
+    else if (code >= 160 && code <= 255) out[i] = code;
+    else if (code === 10 || code === 13 || code === 9) out[i] = code;
+    else out[i] = 0x3f;
+  }
+  return out;
+}
+
 async function jpegFromSrc(src: string, grayscale: boolean): Promise<{ jpeg: Uint8Array; width: number; height: number } | null> {
   if (!src.startsWith("data:image")) return null;
   const img = await loadImage(src);
@@ -110,6 +129,8 @@ export async function buildPdf(title: string, html: string, opts?: { grayscaleIm
   let used = 0;
   const xobjects: string[] = [];
 
+  let imageSerial = 0;
+
   function flush() {
     pages.push({ commands, xobjects: [...xobjects] });
     commands = "";
@@ -142,7 +163,7 @@ export async function buildPdf(title: string, html: string, opts?: { grayscaleIm
     const h = block.img.height * scale * (72 / 96);
     const drawW = w * (72 / 96);
     ensure(drawW > 0 ? h + 16 : 80);
-    const name = `Im${xobjects.length + 1}`;
+    const name = `Im${(imageSerial += 1)}`;
     xobjects.push(name);
     const y = pageH - margin - used - h;
     commands += `q ${drawW.toFixed(2)} 0 0 ${h.toFixed(2)} ${margin} ${Math.max(margin, y).toFixed(2)} cm /${name} Do Q\n`;
@@ -177,7 +198,8 @@ export async function buildPdf(title: string, html: string, opts?: { grayscaleIm
   const pageIds: number[] = [];
   for (const page of pages) {
     const contentId = objs.length;
-    objs.push(`<< /Length ${page.commands.length} >>\nstream\n${page.commands}endstream`);
+    const body = winAnsi(page.commands);
+    objs.push(concat([str(`<< /Length ${body.length} >>\nstream\n`), body, str("endstream")]));
     const xobj = page.xobjects
       .map((name) => {
         const id = imgByName[name];

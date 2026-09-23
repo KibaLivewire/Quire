@@ -44,7 +44,7 @@ function blockStart(editor: Editor, index: number): number {
   return -1;
 }
 
-export function splitOverflow(editor: Editor, maxHeight: number): string | null {
+export function splitOverflow(editor: Editor, maxHeight: number): { html: string; size: number } | null {
   const root = editor.view.dom;
   const children = Array.from(root.children) as HTMLElement[];
   const blocks = children.filter((el) => !el.classList.contains("ProseMirror-trailingBreak"));
@@ -69,11 +69,16 @@ export function splitOverflow(editor: Editor, maxHeight: number): string | null 
   const content = json.content ?? [];
   if (content.length <= firstOverflow) return null;
 
+  let pos = 0;
+  const doc = editor.state.doc;
+  for (let i = 0; i < firstOverflow && i < doc.childCount; i += 1) pos += doc.child(i).nodeSize;
+  const size = Math.max(0, doc.content.size - pos);
+
   const keep = content.slice(0, firstOverflow);
   const moved = content.slice(firstOverflow);
   editor.commands.setContent({
     type: "doc",
     content: keep.length ? keep : [{ type: "paragraph" }],
   });
-  return jsonToHtml(editor, { type: "doc", content: moved });
+  return { html: jsonToHtml(editor, { type: "doc", content: moved }), size };
 }

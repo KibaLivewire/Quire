@@ -19,7 +19,7 @@ type Voice = {
 export function greetingForNow() {
   const hour = new Date().getHours();
   const when = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  return `${when}. I'm Quill. Highlight a passage and I can shorten it, flesh it out in your voice, polish the grammar, or sit with a word's sense. Your pages stay on this device.`;
+  return `${when}. I'm Quill. Highlight a passage and I can shorten it, flesh it out in your voice, polish the grammar, or sit with a word's sense. The notebook stays on this device. A definition or a polish sends only that sentence out.`;
 }
 
 function analyzeVoice(text: string): Voice {
@@ -122,9 +122,9 @@ function expandSentence(sentence: string, voice: Voice) {
   return `${body} — ${extra}${end || "."}`;
 }
 
-async function polish(text: string) {
+async function polish(text: string, dictionary?: string[]) {
   try {
-    const issues = await checkGrammar(text);
+    const issues = await checkGrammar(text, dictionary);
     let next = text;
     for (const issue of [...issues].sort((a, b) => b.offset - a.offset)) {
       const swap = issue.replacements[0];
@@ -147,7 +147,11 @@ function perspective(voice: Voice, topic: string) {
   return `“${topic}” wants a second look: what is it next to, what does it cost, and who is in the room when it happens?`;
 }
 
-export async function askQuill(prompt: string, selection: string): Promise<{ reply: string; replacement?: string }> {
+function asks(lower: string, pattern: RegExp) {
+  return pattern.test(lower);
+}
+
+export async function askQuill(prompt: string, selection: string, dictionary?: string[]): Promise<{ reply: string; replacement?: string }> {
   const ask = prompt.trim();
   const lower = ask.toLowerCase();
   const source = selection.trim();
@@ -157,11 +161,36 @@ export async function askQuill(prompt: string, selection: string): Promise<{ rep
     return { reply: "Highlight a line on the page, or tell me: shorter, clearer, flesh it out, polish, or the sense of a word." };
   }
 
-  if (/help|what can you|who are you|hello|hi\b/.test(lower) && !source) {
+  if (asks(lower, /\b(help|hello|hi)\b|what can you|who are you/) && !source) {
     return { reply: greetingForNow() };
   }
 
-  if (/synonym|better word|another word|thesaurus/.test(lower)) {
+  if (!source && asks(lower, /\b(shorter|shorten|clearer|polish|fleshed|flesh|expand|continue)\b/)) {
+    return { reply: "Select the sentence on the page first, then ask me again." };
+  }
+
+  if (source && asks(lower, /\b(shorter|shorten|tighten|tighter)\b/)) {
+    const replacement = shorten(source);
+    return { reply: replacement === source ? "That line is already lean." : "A tighter cut, still in your register.", replacement };
+  }
+
+  if (source && asks(lower, /\b(clearer|clarify|plain|simpler)\b/)) {
+    return { reply: "A cleaner pass:", replacement: clearer(source) };
+  }
+
+  if (source && asks(lower, /\b(flesh|fleshed|lengthen|longer|expand)\b|more room/)) {
+    return {
+      reply: "I kept your person and pace, and gave the line a little more air.",
+      replacement: fleshOut(source, voice),
+    };
+  }
+
+  if (source && (asks(lower, /\b(polish|grammar|correct)\b/) || lower === "fix")) {
+    const replacement = await polish(source, dictionary);
+    return { reply: replacement === source ? "I wouldn't change the grammar here." : "Polished, with the original sense kept.", replacement };
+  }
+
+  if (asks(lower, /\b(synonym|thesaurus)\b|better word|another word/)) {
     const word = (source || ask).split(/\s+/).pop() || "";
     const clean = word.replace(/[^a-zA-Z'-]/g, "");
     const words = await related(clean);
@@ -172,54 +201,29 @@ export async function askQuill(prompt: string, selection: string): Promise<{ rep
     return { reply: `${syn}${near}`.trim() };
   }
 
-  if (/mean|define|sense of|what is|look up/.test(lower)) {
-    const word = (source || ask).split(/\s+/).filter((w) => !/mean|define|sense|what|look/i.test(w)).pop() || source;
+  if (asks(lower, /\b(define|definition)\b|sense of|what is|look up|\bmean\b|\bmeans\b/)) {
+    const word = (source || ask).split(/\s+/).filter((w) => !/^(mean|means|define|definition|sense|what|is|look|up|of|a|the)$/i.test(w)).pop() || source;
     const clean = word.replace(/[^a-zA-Z'-]/g, "");
     const entry = await define(clean);
     const ideas = await relatedIdeas(clean);
     const extra = ideas.length ? ` Kindred words: ${ideas.slice(0, 4).join(", ")}.` : "";
     if (entry) return { reply: `${entry.text}${extra}\n\n${perspective(voice, clean)}` };
-    return { reply: extra || `I couldn't fetch a definition for “${clean}”.`, };
+    return { reply: extra || `I couldn't fetch a definition for “${clean}”.` };
   }
 
-  if (!source && /short|clear|polish|long|flesh|expand|continue/.test(lower)) {
-    return { reply: "Select the sentence on the page first, then ask me again." };
-  }
-
-  if (source && (/short|tight|cut/.test(lower) || lower === "shorter")) {
-    const replacement = shorten(source);
-    return { reply: replacement === source ? "That line is already lean." : "A tighter cut, still in your register.", replacement };
-  }
-
-  if (source && (/clear|plain|simple/.test(lower) || lower === "clearer")) {
-    return { reply: "A cleaner pass:", replacement: clearer(source) };
-  }
-
-  if (source && (/flesh|lengthen|longer|expand|more room|fleshed/.test(lower) || lower === "fleshed out")) {
-    return {
-      reply: "I kept your person and pace, and gave the line a little more air.",
-      replacement: fleshOut(source, voice),
-    };
-  }
-
-  if (source && (/polish|grammar|fix|correct/.test(lower) || lower === "polish")) {
-    const replacement = await polish(source);
-    return { reply: replacement === source ? "I wouldn't change the grammar here." : "Polished, with the original sense kept.", replacement };
-  }
-
-  if (source && /continue|next sentence|keep going/.test(lower)) {
+  if (source && asks(lower, /\b(continue)\b|next sentence|keep going/)) {
     const stem = source.trim().replace(/[.?!]+$/, "");
     const next = fleshOut(`${stem}.`, voice).replace(stem, "").trim();
     return { reply: "A possible next sentence, in the same voice:", replacement: next || `${stem}. The next line can wait until it is ready.` };
   }
 
-  if (source && /perspective|why|how should/.test(lower)) {
+  if (source && asks(lower, /\b(perspective)\b|why\b|how should/)) {
     const topic = source.split(/\s+/).slice(0, 6).join(" ");
     return { reply: perspective(voice, topic) };
   }
 
   if (source) {
-    const replacement = await polish(source);
+    const replacement = await polish(source, dictionary);
     return {
       reply: "I read the selection in your voice. Insert a polish, or ask me to shorten or flesh it out.",
       replacement: replacement === source ? undefined : replacement,

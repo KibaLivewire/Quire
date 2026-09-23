@@ -121,22 +121,36 @@ function xmlEscape(value: string) {
     .replace(/"/g, "\u0026quot;");
 }
 
+function inlineRuns(el: HTMLElement, bold = false, italic = false): string {
+  let out = "";
+  el.childNodes.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent ?? "";
+      if (!text) return;
+      const props = `${bold ? "<w:b/>" : ""}${italic ? "<w:i/>" : ""}`;
+      out += `<w:r>${props ? `<w:rPr>${props}</w:rPr>` : ""}<w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r>`;
+      return;
+    }
+    if (!(node instanceof HTMLElement)) return;
+    const tag = node.tagName;
+    out += inlineRuns(node, bold || tag === "STRONG" || tag === "B" || /^H[1-3]$/.test(tag), italic || tag === "EM" || tag === "I");
+  });
+  return out;
+}
+
 function htmlToDocxParagraphs(title: string, html: string) {
   const root = document.createElement("div");
   root.innerHTML = html;
   const blocks: string[] = [
     `<w:p><w:r><w:rPr><w:b/><w:sz w:val="36"/></w:rPr><w:t xml:space="preserve">${xmlEscape(title)}</w:t></w:r></w:p>`,
   ];
-  const chunks = root.querySelectorAll("p, h1, h2, h3, li, blockquote");
+  const selector = "p, h1, h2, h3, li, blockquote";
+  const chunks = [...root.querySelectorAll(selector)].filter((el) => !el.parentElement?.closest(selector));
   const sources = chunks.length ? chunks : [root];
   sources.forEach((el) => {
-    const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
-    if (!text) return;
-    const heading = el.tagName === "H1" || el.tagName === "H2" || el.tagName === "H3";
-    const run = heading
-      ? `<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r>`
-      : `<w:r><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r>`;
-    blocks.push(`<w:p>${run}</w:p>`);
+    const runs = inlineRuns(el as HTMLElement);
+    if (!runs.trim()) return;
+    blocks.push(`<w:p>${runs}</w:p>`);
   });
   return blocks.join("");
 }

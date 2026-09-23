@@ -1,4 +1,32 @@
+# Quire 1.8.4 — Keep the ink
+
+Released 23 September 2026.
+
+- **Closing the window keeps the last keystrokes.** A save that was still waiting is written before Quire quits. Closing again while that write is running waits, instead of throwing the window away
+- **Ctrl+S saves the page** on this device. It no longer exports a Word file. Export stays in the File menu. Cancelling a save dialog is not an error
+- **Replace All stops.** Replacing “cat” with “catalog” no longer runs forever
+- **Sheets keep their recipe and ribbons** when a page overflows or a blank sheet is removed
+- **Trash restore is more careful.** Restoring a folder does not bring back pages you trashed on their own, and it does not restart the 30 days for things already in Trash
+- **Welcome is left alone.** Upgrading no longer replaces writing on “Welcome to Quire”
+- **The daily word count** starts over when you change sheets, so a long sheet is not counted twice
+- **Find** can see a word that is half bold or half highlighted
+- **Grammar fixes** land on the right words after the first paragraph
+- **A locked page** must be unlocked before Delete or Move, same as export and print. The passcode is still a screen gate, not a lock on the file
+- **Your dictionary** is loaded again when Quire opens on Windows, and Quill’s polish skips those words. Removing a word takes it out of the spelling book
+- **An older Desk file** cannot roll back a newer theme, dictionary, or word aim
+- **One Quire window.** A second launch focuses the window you already have, instead of two copies writing one desk
+- **Print** opens on the sheet you are writing and prints that sheet unless you turn off “This sheet only”
+- **Open** keeps characters from Word and RTF instead of showing the raw codes or doubling them
+- **Word export** no longer prints the same paragraph twice, and it keeps bold and italic
+- **PDF** no longer swaps later pictures for earlier ones, and letters outside plain English no longer break the file
+- **Quill** no longer treats “meant” as “define” or “prefix” as “fix”. Polish and definitions say when a sentence leaves the device. The notebook itself does not
+
+Windows installer: Quire-Setup-1.8.4.exe
+
+---
+
 # Quire 1.8.3 — Trash from Desk
+
 
 Released 22 September 2026.
 

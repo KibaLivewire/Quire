@@ -1,7 +1,7 @@
 export const WELCOME_VERSION = 4;
 
 export const WELCOME_HTML = `
-<p>Quire is a notebook that lives on this computer. Nothing is uploaded. This page is a field guide — every mark below is a real example of a tool you can use.</p>
+<p>Quire is a notebook that lives on this computer. The desk is not uploaded. Grammar, a definition, or Quill's polish may send that sentence to a service. This page is a field guide — every mark below is a real example of a tool you can use.</p>
 
 <h2>The desk</h2>
 <p>Folders sit on the left. Pages sit beside them. The letter sheet in the middle is <strong>8.5 × 11 inches</strong> — portrait unless you switch it. A thin ruler tracks the cursor in inches. Hide the ruler from <em>View</em> if you want a quieter page.</p>
@@ -32,7 +32,7 @@ export const WELCOME_HTML = `
 <p>Export as .DOCX, .DOC, .RTF, .TXT, or .PDF from File. Open those same kinds of files from File → Open.</p>
 
 <h2>Quill</h2>
-<p>The feather in the toolbar is <strong>Quill</strong>, a local helper on this desk. Highlight a sentence and ask him to shorten it, polish it, or fetch a better word. He greets you when Quire opens. Turn him off in Desk if you want the page alone.</p>
+<p>The feather in the toolbar is <strong>Quill</strong>. Highlight a sentence and ask him to shorten it, flesh it out, polish it, or fetch a better word. Shorten and flesh-out stay on this desk. Polish and definitions ask a service for that sentence only. He greets you when Quire opens. Turn him off in Desk if you want the page alone.</p>
 
 <h2>Sound and first light</h2>
 <p>Each theme opens with its own quiet scene — a wave, a moon, a cup, or falling leaves — then fades onto the desk. Room sound follows the theme. The dial in the bottom corner sets the volume; the speaker mutes. <strong>Ctrl+M</strong> mutes too. Desk settings can silence the room or skip the opening.</p>

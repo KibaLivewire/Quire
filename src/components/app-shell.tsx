@@ -21,6 +21,8 @@ import { stopSharedReading } from "@/components/read-back-chip";
 import { getActiveEditor } from "@/lib/editor-commands";
 import { hydrateAppVersion, notifyDesktopFlushDone, onDesktopFlushRequest } from "@/lib/desktop";
 import { flushNotebookPersist, useNotebookStore } from "@/lib/store";
+import { flushPendingEdits } from "@/lib/pending-save";
+import { sanitizePluginCss } from "@/lib/sanitize-html";
 import { cn } from "@/lib/utils";
 
 export function AppShell() {
@@ -57,6 +59,12 @@ export function AppShell() {
 
   useEffect(() => {
     if (!hasHydrated) return;
+    const words = useNotebookStore.getState().prefs.dictionary ?? [];
+    for (const word of words) void window.quire?.addSpellWord?.(word);
+  }, [hasHydrated]);
+
+  useEffect(() => {
+    if (!hasHydrated) return;
     if (prefs.ambient === false) {
       stopAmbient();
       return;
@@ -88,6 +96,7 @@ export function AppShell() {
       if (flushing) return;
       flushing = true;
       try {
+        flushPendingEdits();
         stopSharedReading();
         await flushNotebookPersist();
       } finally {
@@ -121,7 +130,7 @@ export function AppShell() {
 
   useEffect(() => {
     const id = "quire-plugin-css";
-    const css = (prefs.plugins ?? []).map((plugin) => plugin.css || "").join("\n");
+    const css = (prefs.plugins ?? []).map((plugin) => sanitizePluginCss(plugin.css || "")).join("\n");
     let el = document.getElementById(id) as HTMLStyleElement | null;
     if (!css.trim()) {
       el?.remove();

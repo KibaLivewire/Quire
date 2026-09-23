@@ -7,7 +7,7 @@ import { addToDictionary, normalizeWord } from "./dictionary";
 import { hashPin, newSalt, pinMatches } from "./lock";
 import { notePages } from "./pages";
 import { descendantIds, isAlive, isDescendant } from "./folders";
-import { WELCOME_HTML, WELCOME_VERSION } from "./welcome";
+import { WELCOME_VERSION } from "./welcome";
 import { rememberBoot } from "./boot-peek";
 import { readDesktopPrefs, writeDesktopPrefs } from "./desktop";
 
@@ -63,7 +63,11 @@ export type NotebookState = {
   updateNote: (id: string, patch: Partial<Pick<Note, "title" | "content" | "pinned" | "notebookId" | "pages" | "pageMeta" | "color">>) => void;
   updateNotePage: (id: string, pageIndex: number, html: string) => void;
   insertNotePage: (id: string, atIndex: number, html?: string, recipe?: PageRecipeId) => number;
-  setNotePages: (id: string, pages: string[], content?: string) => void;
+  setNotePages: (
+    id: string,
+    pages: string[],
+    edit?: { insertAt?: number; removeAt?: number; prependAt?: number; shift?: number },
+  ) => void;
   setPageRecipe: (noteId: string, pageIndex: number, recipe: PageRecipeId) => void;
   placeRibbon: (noteId: string, pageIndex: number, ribbon: Omit<RibbonBookmark, "id" | "createdAt"> & { id?: string; createdAt?: number }) => string | null;
   untieRibbon: (noteId: string, pageIndex: number, ribbonId: string) => void;
@@ -199,15 +203,19 @@ function nextHue(existing: Notebook[]): NotebookHue {
   return NOTEBOOK_HUES.find((hue) => !used.has(hue)) ?? NOTEBOOK_HUES[existing.length % NOTEBOOK_HUES.length];
 }
 
+function pageSearchText(pages: string[]) {
+  return pages.join("\n");
+}
+
 function migrateNote(note: Note): Note {
   const pages = notePages(note);
   const pageMeta = alignPageMeta(pages, note.pageMeta);
-  return { ...note, pages, pageMeta, content: pages.join(""), color: note.color ?? null, deletedAt: note.deletedAt ?? null };
+  return { ...note, pages, pageMeta, content: pageSearchText(pages), color: note.color ?? null, deletedAt: note.deletedAt ?? null };
 }
 
 function withPagesAndMeta(note: Note, pages: string[], pageMeta?: PageMeta[]): Note {
   const meta = alignPageMeta(pages, pageMeta ?? note.pageMeta);
-  return { ...note, pages, pageMeta: meta, content: pages.join(""), updatedAt: Date.now() };
+  return { ...note, pages, pageMeta: meta, content: pageSearchText(pages), updatedAt: Date.now() };
 }
 
 function migrateNotebook(notebook: Notebook): Notebook {
@@ -221,11 +229,26 @@ function migrateNotebook(notebook: Notebook): Notebook {
 
 function purgeExpired(notebooks: Notebook[], notes: Note[]) {
   const cutoff = Date.now() - TRASH_MS;
-  const deadFolders = new Set(notebooks.filter((nb) => nb.deletedAt && nb.deletedAt < cutoff).map((nb) => nb.id));
+  const expired = new Set<string>();
+  for (const folder of notebooks) {
+    if (!folder.deletedAt || folder.deletedAt >= cutoff) continue;
+    for (const id of descendantIds(notebooks, folder.id)) expired.add(id);
+  }
   return {
-    notebooks: notebooks.filter((nb) => !deadFolders.has(nb.id)),
-    notes: notes.filter((note) => !(note.deletedAt && note.deletedAt < cutoff) && !deadFolders.has(note.notebookId)),
+    notebooks: notebooks.filter((nb) => !expired.has(nb.id)),
+    notes: notes.filter((note) => !(note.deletedAt && note.deletedAt < cutoff) && !expired.has(note.notebookId)),
   };
+}
+
+function nextPrefs(prefs: Prefs, patch: Partial<Prefs>): Prefs {
+  return { ...prefs, ...patch, prefsRevision: (prefs.prefsRevision || 0) + 1 };
+}
+
+function mergePrefs(statePrefs: Prefs, filePrefs: Partial<Prefs> | null): Prefs {
+  const fileRev = Number(filePrefs?.prefsRevision) || 0;
+  const stateRev = Number(statePrefs?.prefsRevision) || 0;
+  if (filePrefs && fileRev > stateRev) return { ...DEFAULT_PREFS, ...statePrefs, ...filePrefs };
+  return { ...DEFAULT_PREFS, ...filePrefs, ...statePrefs };
 }
 
 function withJoinedContent(note: Note, pages: string[]): Note {
@@ -263,28 +286,19 @@ export const useNotebookStore = create<NotebookState>()(
           const purged = purgeExpired(notebooks, notes);
           const today = todayKey();
           const filePrefs = takePendingFilePrefs();
-          const prefs = { ...DEFAULT_PREFS, ...state.prefs, ...filePrefs };
+          const prefs = mergePrefs(state.prefs, filePrefs);
           if (prefs.wordsDate !== today) {
             prefs.wordsToday = 0;
             prefs.wordsDate = today;
           }
-          let liveNotes = purged.notes.filter((item) => !DEMO_NOTE_IDS.has(item.id));
-          const liveNotebooks = purged.notebooks.filter((nb) => {
-            if (!DEMO_FOLDER_IDS.has(nb.id)) return true;
-            return liveNotes.some((item) => item.notebookId === nb.id);
-          });
+          let liveNotes = purged.notes;
+          let liveNotebooks = purged.notebooks;
           if ((prefs.welcomeVersion || 0) < WELCOME_VERSION) {
-            liveNotes = liveNotes.map((item) =>
-              item.id === "note_welcome"
-                ? {
-                    ...item,
-                    title: "Welcome to Quire",
-                    pages: [WELCOME_HTML],
-                    content: WELCOME_HTML,
-                    pageMeta: alignPageMeta([WELCOME_HTML], item.pageMeta),
-                  }
-                : item,
-            );
+            liveNotes = liveNotes.filter((item) => !DEMO_NOTE_IDS.has(item.id));
+            liveNotebooks = liveNotebooks.filter((nb) => {
+              if (!DEMO_FOLDER_IDS.has(nb.id)) return true;
+              return liveNotes.some((item) => item.notebookId === nb.id);
+            });
             prefs.welcomeVersion = WELCOME_VERSION;
           }
           const session = { ...DEFAULT_SESSION, ...state.session };
@@ -310,7 +324,7 @@ export const useNotebookStore = create<NotebookState>()(
       setPrefs: (patch) => {
         if (!get().hasHydrated) return;
         set((state) => ({
-          prefs: { ...state.prefs, ...patch },
+          prefs: nextPrefs(state.prefs, patch),
         }));
         rememberBoot(get().prefs);
       },
@@ -328,11 +342,10 @@ export const useNotebookStore = create<NotebookState>()(
         set((state) => {
           const same = state.prefs.wordsDate === today;
           return {
-            prefs: {
-              ...state.prefs,
+            prefs: nextPrefs(state.prefs, {
               wordsDate: today,
               wordsToday: (same ? state.prefs.wordsToday : 0) + added,
-            },
+            }),
           };
         });
       },
@@ -405,8 +418,14 @@ export const useNotebookStore = create<NotebookState>()(
         const { notebooks, notes, activeNotebookId } = get();
         const remove = new Set(descendantIds(notebooks, id));
         const now = Date.now();
-        const nextNotebooks = notebooks.map((nb) => (remove.has(nb.id) ? { ...nb, deletedAt: now } : nb));
-        const nextNotes = notes.map((note) => (remove.has(note.notebookId) ? { ...note, deletedAt: now } : note));
+        const nextNotebooks = notebooks.map((nb) => {
+          if (!remove.has(nb.id) || nb.deletedAt) return nb;
+          return { ...nb, deletedAt: now };
+        });
+        const nextNotes = notes.map((note) => {
+          if (!remove.has(note.notebookId) || note.deletedAt) return note;
+          return { ...note, deletedAt: now };
+        });
         let live = nextNotebooks.filter(isAlive);
         if (live.length === 0) {
           const fresh: Notebook = {
@@ -433,17 +452,29 @@ export const useNotebookStore = create<NotebookState>()(
 
       restoreNotebook: (id) => {
         const notebooks = get().notebooks;
-        const chain = new Set<string>();
-        let current = notebooks.find((nb) => nb.id === id) ?? null;
-        while (current) {
-          chain.add(current.id);
+        const folder = notebooks.find((nb) => nb.id === id);
+        if (!folder) return;
+        const stamp = folder.deletedAt;
+        const ancestors = new Set<string>();
+        const guard = new Set<string>();
+        let current = notebooks.find((nb) => nb.id === folder.parentId) ?? null;
+        while (current && !guard.has(current.id)) {
+          guard.add(current.id);
+          ancestors.add(current.id);
           current = notebooks.find((nb) => nb.id === current?.parentId) ?? null;
         }
-        const kids = descendantIds(notebooks, id);
-        kids.forEach((kid) => chain.add(kid));
+        const descendants = new Set(descendantIds(notebooks, id));
+        const cameWithFolder = (deletedAt: number | null | undefined) => !deletedAt || deletedAt === stamp;
         set((state) => ({
-          notebooks: state.notebooks.map((nb) => (chain.has(nb.id) ? { ...nb, deletedAt: null } : nb)),
-          notes: state.notes.map((note) => (chain.has(note.notebookId) ? { ...note, deletedAt: null } : note)),
+          notebooks: state.notebooks.map((nb) => {
+            if (ancestors.has(nb.id)) return { ...nb, deletedAt: null };
+            if (descendants.has(nb.id) && cameWithFolder(nb.deletedAt)) return { ...nb, deletedAt: null };
+            return nb;
+          }),
+          notes: state.notes.map((note) => {
+            if (!descendants.has(note.notebookId) || !cameWithFolder(note.deletedAt)) return note;
+            return { ...note, deletedAt: null };
+          }),
           activeNotebookId: id,
         }));
       },
@@ -473,7 +504,7 @@ export const useNotebookStore = create<NotebookState>()(
           notes: [note, ...state.notes],
           activeNotebookId: target,
           activeNoteId: id,
-          prefs: { ...state.prefs, lastPageRecipe: recipe },
+          prefs: nextPrefs(state.prefs, { lastPageRecipe: recipe }),
           session: { ...state.session, noteId: id, notebookId: target, pageIndex: 0, cursor: 0 },
         }));
         return id;
@@ -528,13 +559,33 @@ export const useNotebookStore = create<NotebookState>()(
         return index;
       },
 
-      setNotePages: (id, pages) => {
+      setNotePages: (id, pages, edit) => {
         set((state) => ({
           notes: state.notes.map((note) => {
             if (note.id !== id) return note;
-            const prevMeta = alignPageMeta(notePages(note), note.pageMeta);
-            // Keep meta for overlapping indices; new trailing pages get freewrite
-            const nextMeta = pages.map((_, i) => prevMeta[i] ?? defaultPageMeta("freewrite"));
+            const prevMeta: PageMeta[] = alignPageMeta(notePages(note), note.pageMeta).map((meta) => ({
+              ...meta,
+              ribbons: (meta.ribbons ?? []).map((ribbon) => ({ ...ribbon })),
+            }));
+            const nextMeta: PageMeta[] = [...prevMeta];
+            if (edit?.insertAt != null) {
+              const at = Math.max(0, Math.min(edit.insertAt, nextMeta.length));
+              const recipe = nextMeta[Math.max(0, at - 1)]?.recipe ?? "freewrite";
+              nextMeta.splice(at, 0, defaultPageMeta(recipe));
+            } else if (edit?.removeAt != null) {
+              nextMeta.splice(Math.max(0, edit.removeAt), 1);
+            }
+            if (edit?.prependAt != null && edit.shift) {
+              const page = nextMeta[edit.prependAt];
+              if (page) {
+                nextMeta[edit.prependAt] = {
+                  ...page,
+                  ribbons: (page.ribbons ?? []).map((ribbon) => ({ ...ribbon, pos: ribbon.pos + (edit.shift ?? 0) })),
+                };
+              }
+            }
+            while (nextMeta.length < pages.length) nextMeta.push(defaultPageMeta("freewrite"));
+            nextMeta.length = pages.length;
             return withPagesAndMeta(note, pages, nextMeta);
           }),
         }));
@@ -560,8 +611,10 @@ export const useNotebookStore = create<NotebookState>()(
         if (!note) return;
         const notebooks = get().notebooks;
         const chain = new Set<string>();
+        const guard = new Set<string>();
         let current = notebooks.find((nb) => nb.id === note.notebookId) ?? null;
-        while (current) {
+        while (current && !guard.has(current.id)) {
+          guard.add(current.id);
           chain.add(current.id);
           current = notebooks.find((nb) => nb.id === current?.parentId) ?? null;
         }
@@ -612,7 +665,7 @@ export const useNotebookStore = create<NotebookState>()(
           deletedAt: null,
           pages,
           pageMeta,
-          content: pages.join(""),
+          content: pageSearchText(pages),
           lockSalt: null,
           lockHash: null,
         };
@@ -651,7 +704,7 @@ export const useNotebookStore = create<NotebookState>()(
             meta[index] = applyRecipeToMeta(meta[index], recipe);
             return { ...note, pageMeta: meta, updatedAt: Date.now() };
           }),
-          prefs: { ...state.prefs, lastPageRecipe: recipe },
+          prefs: nextPrefs(state.prefs, { lastPageRecipe: recipe }),
         }));
       },
 
@@ -804,7 +857,7 @@ export const useNotebookStore = create<NotebookState>()(
         const added = normalizeWord(word);
         if (!added) return;
         set((state) => ({
-          prefs: { ...state.prefs, dictionary: addToDictionary(state.prefs.dictionary, added) },
+          prefs: nextPrefs(state.prefs, { dictionary: addToDictionary(state.prefs.dictionary, added) }),
         }));
         if (typeof window !== "undefined") {
           void window.quire?.addSpellWord?.(added);

@@ -26,8 +26,10 @@ export function lockKey(kind: "note" | "folder", id: string) {
 
 export function folderChain(notebooks: Notebook[], notebookId: string | null | undefined) {
   const ids: string[] = [];
+  const guard = new Set<string>();
   let current = notebooks.find((nb) => nb.id === notebookId) ?? null;
-  while (current) {
+  while (current && !guard.has(current.id)) {
+    guard.add(current.id);
     ids.push(current.id);
     current = notebooks.find((nb) => nb.id === current?.parentId) ?? null;
   }

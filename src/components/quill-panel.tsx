@@ -53,7 +53,7 @@ export function QuillPanel() {
     const you: QuillMessage = { id: crypto.randomUUID(), from: "you", text: ask };
     setMessages((list) => [...list, you]);
     setBusy(true);
-    const result = await askQuill(ask, selectionText());
+    const result = await askQuill(ask, selectionText(), prefs.dictionary);
     setMessages((list) => [
       ...list,
       { id: crypto.randomUUID(), from: "quill", text: result.reply, replacement: result.replacement },

@@ -92,12 +92,15 @@ function createWindow(url) {
 
   let flushing = false;
   win.on("close", (event) => {
-    if (flushing || win.__quireAllowClose) return;
+    if (win.__quireAllowClose) return;
+    event.preventDefault();
+    if (flushing) return;
     const wc = win.webContents;
     if (!wc || wc.isDestroyed() || wc.isLoadingMainFrame()) {
+      win.__quireAllowClose = true;
+      win.close();
       return;
     }
-    event.preventDefault();
     flushing = true;
     const finish = () => {
       win.__quireAllowClose = true;
@@ -191,6 +194,21 @@ function wireIpc() {
       return false;
     }
   });
+  ipcMain.handle("quire:remove-spell-word", (event, word) => {
+    const clean = String(word || "")
+      .trim()
+      .toLowerCase();
+    if (!clean) return false;
+    try {
+      const session = event.sender.session;
+      if (typeof session.removeWordFromSpellCheckerDictionary === "function") {
+        session.removeWordFromSpellCheckerDictionary(clean);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  });
 }
 
 async function maybeNotifyUpdate() {
@@ -226,14 +244,27 @@ async function boot() {
   }, 8000);
 }
 
-app.whenReady().then(() => {
-  boot().catch((err) => {
-    dialog.showErrorBox("Quire", err?.message || String(err));
-    app.quit();
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
   });
-});
 
-app.on("window-all-closed", () => app.quit());
-app.on("before-quit", () => {
-  if (serverChild && !serverChild.killed) serverChild.kill();
-});
+  app.whenReady().then(() => {
+    boot().catch((err) => {
+      dialog.showErrorBox("Quire", err?.message || String(err));
+      app.quit();
+    });
+  });
+
+  app.on("window-all-closed", () => app.quit());
+  app.on("before-quit", () => {
+    if (serverChild && !serverChild.killed) serverChild.kill();
+  });
+}

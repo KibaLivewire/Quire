@@ -61,13 +61,16 @@ export function FindBar() {
   function replaceAll() {
     const editor = getActiveEditor();
     if (!editor || !query.trim()) return;
-    let hits = findHits(editor.state.doc, query);
-    while (hits.length) {
-      const hit = hits[hits.length - 1];
-      editor.chain().setTextSelection({ from: hit.from, to: hit.to }).insertContent(replacement).run();
-      hits = findHits(editor.state.doc, query);
+    const hits = findHits(editor.state.doc, query);
+    if (!hits.length) return;
+    let chain = editor.chain();
+    for (let i = hits.length - 1; i >= 0; i -= 1) {
+      const hit = hits[i];
+      chain = chain.insertContentAt({ from: hit.from, to: hit.to }, replacement);
     }
+    chain.run();
     setCount(0);
+    setIndex(0);
   }
 
   useEffect(() => {

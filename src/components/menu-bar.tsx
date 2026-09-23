@@ -21,7 +21,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { buildBackup, readBackupFile, saveBackup } from "@/lib/backup";
-import { appVersion, checkForUpdates } from "@/lib/desktop";
+import { appVersion, checkForUpdates, isNewerVersion } from "@/lib/desktop";
+import { flushPendingEdits } from "@/lib/pending-save";
 import { normalizeWord } from "@/lib/dictionary";
 import { getActiveEditor, runEditorCommand } from "@/lib/editor-commands";
 import {
@@ -37,7 +38,7 @@ import { importDocument, OPEN_ACCEPT } from "@/lib/import-note";
 import { isLocked, noteGate } from "@/lib/lock";
 import { notePages } from "@/lib/pages";
 import { openPrintPreview } from "@/lib/print";
-import { useNotebookStore } from "@/lib/store";
+import { useNotebookStore, flushNotebookPersist } from "@/lib/store";
 import { openRecipeChooser } from "@/components/recipe-chooser";
 import { stopSharedReading } from "@/components/read-back-chip";
 import { stopReading } from "@/lib/read-back";
@@ -87,7 +88,8 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       }
       if (key === "s") {
         event.preventDefault();
-        void onExport("docx");
+        flushPendingEdits();
+        void flushNotebookPersist();
       }
       if (key === "p") {
         event.preventDefault();
@@ -144,7 +146,8 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       if (kind === "docx") await exportDocx(page.title, page.html);
       if (kind === "pdf") await exportPdf(page.title, page.html);
       if (kind === "html") exportHtml(page.title, page.html);
-    } catch {
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
       toast.error("Could not export that file.");
     }
   }
@@ -427,7 +430,7 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             onSelect={() => {
               void checkForUpdates().then((info) => {
                 if (info.error) toast.error(info.error);
-                else if (info.latest && info.latest !== info.current) toast(`Quire ${info.latest} is available.`);
+                else if (isNewerVersion(info.latest, info.current)) toast(`Quire ${info.latest} is available.`);
                 else toast(`Quire ${info.current} is up to date.`);
               });
             }}

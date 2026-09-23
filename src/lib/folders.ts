@@ -41,9 +41,11 @@ export function childFolders(notebooks: Notebook[], parentId: string | null): No
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function descendantIds(notebooks: Notebook[], id: string): string[] {
-  const kids = notebooks.filter((nb) => nb.parentId === id);
-  return [id, ...kids.flatMap((kid) => descendantIds(notebooks, kid.id))];
+export function descendantIds(notebooks: Notebook[], id: string, seen = new Set<string>()): string[] {
+  if (seen.has(id)) return [];
+  seen.add(id);
+  const kids = notebooks.filter((nb) => nb.parentId === id && nb.id !== id);
+  return [id, ...kids.flatMap((kid) => descendantIds(notebooks, kid.id, seen))];
 }
 
 export function isDescendant(notebooks: Notebook[], ancestorId: string, maybeId: string): boolean {

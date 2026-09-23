@@ -41,7 +41,7 @@ import { ReadBackControls } from "@/components/read-back-chip";
 import { PageNotesControl, SelectionBookmarksControl } from "@/components/page-notes";
 import { RibbonBookmarksControl } from "@/components/ribbon-bookmarks";
 import { fetchSense, WordLookupCard } from "@/components/word-lookup";
-import { checkGrammar, type GrammarIssue } from "@/lib/grammar";
+import { checkGrammar, plainRange, type GrammarIssue } from "@/lib/grammar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -329,19 +329,8 @@ export function EditorToolbar({
   }
 
   function applyGrammarFix(issue: GrammarIssue, replacement: string) {
-    const fromPlain = issue.offset;
-    const toPlain = issue.offset + issue.length;
-    let seen = 0;
-    let from = 0;
-    let to = 0;
-    editor.state.doc.descendants((node, pos) => {
-      if (!node.isText || !node.text) return;
-      const next = seen + node.text.length;
-      if (!from && fromPlain >= seen && fromPlain <= next) from = pos + (fromPlain - seen);
-      if (toPlain >= seen && toPlain <= next) to = pos + (toPlain - seen);
-      seen = next;
-    });
-    if (from && to && to > from) {
+    const { from, to } = plainRange(editor.state.doc, issue.offset, issue.offset + issue.length);
+    if (from >= 0 && to > from) {
       editor.chain().focus().insertContentAt({ from, to }, replacement).run();
     } else {
       editor.chain().focus().insertContent(replacement).run();

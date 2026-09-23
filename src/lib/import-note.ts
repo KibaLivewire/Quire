@@ -1,4 +1,5 @@
 import { unzip } from "./zip";
+import { sanitizeHtml } from "./sanitize-html";
 
 export const OPEN_ACCEPT = ".txt,.rtf,.doc,.docx,.html,.htm,.md,text/plain,application/rtf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -20,28 +21,83 @@ function paragraphs(text: string) {
     .join("");
 }
 
+function decodeXml(value: string) {
+  return value
+    .replace(/</g, "<")
+    .replace(/>/g, ">")
+    .replace(/"/g, '"')
+    .replace(/'/g, "'")
+    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(Number(num)))
+    .replace(/&/g, "&");
+}
+
 function rtfToText(rtf: string) {
-  return rtf
-    .replace(/\\'[0-9a-fA-F]{2}/g, (code) => String.fromCharCode(parseInt(code.slice(2), 16)))
-    .replace(/\\u(-?\d+)\??/g, (_, num) => String.fromCharCode(Number(num)))
-    .replace(/\\par[d]?/g, "\n")
-    .replace(/\\line/g, "\n")
-    .replace(/\\tab/g, "\t")
-    .replace(/\\[a-z]+-?\d* ?/g, "")
-    .replace(/[{}]/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  let uc = 1;
+  let i = 0;
+  let out = "";
+  while (i < rtf.length) {
+    const ch = rtf[i];
+    if (ch === "{" || ch === "}") {
+      i += 1;
+      continue;
+    }
+    if (ch !== "\\") {
+      out += ch;
+      i += 1;
+      continue;
+    }
+    if (rtf[i + 1] === "\\" || rtf[i + 1] === "{" || rtf[i + 1] === "}") {
+      out += rtf[i + 1];
+      i += 2;
+      continue;
+    }
+    if (rtf.startsWith("\\'", i)) {
+      const hex = rtf.slice(i + 2, i + 4);
+      if (/^[0-9a-fA-F]{2}$/.test(hex)) {
+        out += String.fromCharCode(parseInt(hex, 16));
+        i += 4;
+        continue;
+      }
+    }
+    const uni = /^\\u(-?\d+)\s?/.exec(rtf.slice(i));
+    if (uni) {
+      let n = Number(uni[1]);
+      if (n < 0) n += 65536;
+      out += String.fromCharCode(n & 0xffff);
+      i += uni[0].length;
+      let skip = uc;
+      while (skip > 0 && i < rtf.length) {
+        if (rtf.startsWith("\\'", i)) {
+          i += 4;
+          skip -= 1;
+          continue;
+        }
+        if (rtf[i] === "\\") break;
+        i += 1;
+        skip -= 1;
+      }
+      continue;
+    }
+    const word = /^\\([a-zA-Z]+)(-?\d+)? ?/.exec(rtf.slice(i));
+    if (word) {
+      if (word[1] === "uc") uc = Math.max(0, Number(word[2] || 0));
+      if (word[1] === "par" || word[1] === "pard") out += "\n";
+      if (word[1] === "line") out += "\n";
+      if (word[1] === "tab") out += "\t";
+      i += word[0].length;
+      continue;
+    }
+    i += 1;
+  }
+  return out.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function docxXmlToHtml(xml: string) {
   return xml
     .replace(/<w:p[ >][\s\S]*?<\/w:p>/g, (block) => {
       const text = Array.from(block.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g))
-        .map((match) => match[1])
-        .join("")
-        .replace(/&/g, "&")
-        .replace(/</g, "<")
-        .replace(/>/g, ">");
+        .map((match) => decodeXml(match[1]))
+        .join("");
       return text.trim() ? `<p>${escapeText(text)}</p>` : "";
     })
     .replace(/<[^>]+>/g, "")
@@ -77,7 +133,7 @@ export async function importDocument(file: File): Promise<{ title: string; html:
 
   if (name.endsWith(".html") || name.endsWith(".htm") || /<html/i.test(text)) {
     const body = text.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? text;
-    return { title, html: body };
+    return { title, html: sanitizeHtml(body) };
   }
 
   if (name.endsWith(".md")) {
