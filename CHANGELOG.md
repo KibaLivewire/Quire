@@ -1,3 +1,22 @@
+# Quire 1.8.5 — The next sheet
+
+Released 23 September 2026.
+
+- **A full sheet turns the page.** A long paragraph now continues on the next sheet. A picture taller than the page stays where it is, instead of trapping the rest of the writing
+- **A split stays split.** The page that overflowed is not pasted back onto sheet 1, so the same words are not written twice
+- **Quitting waits for the save.** If a save is already running, Quire waits for it and tries once more if the write fails. The window is not told the save finished until the notebook is actually stored. The header says “Saved on this device” only after that write, and stays on “Saving” if it does not
+- **Word files open as words.** Ampersands and quotes are no longer left as `&` and `"`. A Word file that stores its size at the end of each part is read through, including the document
+- **An older Desk file** cannot replace a newer theme, dictionary, or word aim when both copies are already on this computer
+- **Startup does not wait forever.** If the local server never answers, or port 4173 is already taken, Quire stops and says so
+- **PDF** places pictures where they sat in the writing, and sizes them to the page instead of shrinking them twice. Letters outside the normal Latin set can still appear as a question mark
+- **A personal theme** is the desk you see when Quire opens, not a flash of Dark first
+- **Export** separates sheets with a new line, from the File menu and the page menu, so the last word of one sheet does not stick to the first word of the next
+- **Remove from the spelling book** no longer claims success when Windows cannot drop the word yet. The passcode is still a screen gate: it hides a page on this device, and it does not encrypt the notebook or a backup
+
+Windows installer: Quire-Setup-1.8.5.exe
+
+---
+
 # Quire 1.8.4 — Keep the ink
 
 Released 23 September 2026.

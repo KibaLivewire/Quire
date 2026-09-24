@@ -22,13 +22,15 @@ function paragraphs(text: string) {
 }
 
 function decodeXml(value: string) {
+  const amp = String.fromCharCode(38);
   return value
-    .replace(/</g, "<")
-    .replace(/>/g, ">")
-    .replace(/"/g, '"')
-    .replace(/'/g, "'")
-    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(Number(num)))
-    .replace(/&/g, "&");
+    .replaceAll(`${amp}lt;`, "<")
+    .replaceAll(`${amp}gt;`, ">")
+    .replaceAll(`${amp}quot;`, '"')
+    .replaceAll(`${amp}apos;`, "'")
+    .replace(new RegExp(`${amp}#(\\d+);`, "g"), (_, num: string) => String.fromCharCode(Number(num)))
+    .replace(new RegExp(`${amp}#x([0-9a-fA-F]+);`, "g"), (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+    .replaceAll(`${amp}amp;`, amp);
 }
 
 function rtfToText(rtf: string) {

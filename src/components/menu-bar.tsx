@@ -50,7 +50,7 @@ function currentPage() {
   const note = notes.find((item) => item.id === activeNoteId);
   return {
     title: note?.title || "Untitled",
-    html: note ? notePages(note).join("") : "",
+    html: note ? notePages(note).join("\n") : "",
     hasNote: Boolean(note),
   };
 }

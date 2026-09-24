@@ -29,7 +29,7 @@ export function AppShell() {
   useEffect(() => {
     hydrateAppVersion();
     const peek = peekBoot();
-    applyTheme(peek.theme, []);
+    applyTheme(peek.theme, peek.custom ? [peek.custom] : []);
     applyDevice();
     const onResize = () => applyDevice();
     window.addEventListener("resize", onResize);
@@ -91,17 +91,28 @@ export function AppShell() {
   }, [prefs.inkOnly, focusMode]);
 
   useEffect(() => {
-    let flushing = false;
-    async function flushPersist() {
-      if (flushing) return;
-      flushing = true;
-      try {
+    let chain: Promise<void> = Promise.resolve();
+    function flushPersist(): Promise<boolean> {
+      const run = chain.then(async () => {
         flushPendingEdits();
         stopSharedReading();
-        await flushNotebookPersist();
-      } finally {
-        flushing = false;
-      }
+        try {
+          await flushNotebookPersist();
+          return true;
+        } catch {
+          try {
+            await flushNotebookPersist();
+            return true;
+          } catch {
+            return false;
+          }
+        }
+      });
+      chain = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      return run;
     }
 
     function onQuit() {
@@ -116,8 +127,8 @@ export function AppShell() {
     window.addEventListener("pagehide", onQuit);
     document.addEventListener("visibilitychange", onVisibility);
     const stopFlushListener = onDesktopFlushRequest(async () => {
-      await flushPersist();
-      notifyDesktopFlushDone();
+      const ok = await flushPersist();
+      if (ok) notifyDesktopFlushDone();
     });
 
     return () => {

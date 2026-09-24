@@ -1,6 +1,7 @@
-import { plainText } from "./utils";
 
-type PdfImage = { id: number; width: number; height: number; jpeg: Uint8Array };
+type PdfImage = { src: string; width: number; height: number; jpeg: Uint8Array };
+type PdfPiece = { kind: "lines"; lines: string[] } | { kind: "image"; img: PdfImage };
+type PdfXRef = { name: string; src: string };
 
 function concat(parts: Uint8Array[]) {
   const total = parts.reduce((n, p) => n + p.length, 0);
@@ -95,40 +96,80 @@ function wrapText(text: string, width = 86) {
   return lines;
 }
 
+function flowPieces(html: string, images: Map<string, PdfImage>): PdfPiece[] {
+  const doc = new DOMParser().parseFromString(`<div id="quire-pdf">${html}</div>`, "text/html");
+  const root = doc.getElementById("quire-pdf") ?? doc.body;
+  const pieces: PdfPiece[] = [];
+  let buf = "";
+  const blocks = new Set(["P", "DIV", "H1", "H2", "H3", "H4", "LI", "TR", "BLOCKQUOTE", "PRE", "SECTION", "UL", "OL", "TABLE"]);
+
+  function flush() {
+    if (!buf.trim() && !buf.includes("\n")) {
+      buf = "";
+      return;
+    }
+    const lines = wrapText(buf);
+    buf = "";
+    if (lines.length) pieces.push({ kind: "lines", lines });
+  }
+
+  function walk(node: Node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      buf += node.textContent || "";
+      return;
+    }
+    if (!(node instanceof HTMLElement)) return;
+    if (node.tagName === "SCRIPT" || node.tagName === "STYLE") return;
+    if (node.tagName === "BR") {
+      buf += "\n";
+      return;
+    }
+    if (node.tagName === "IMG") {
+      flush();
+      const src = node.getAttribute("src") || "";
+      const img = images.get(src);
+      if (img) pieces.push({ kind: "image", img });
+      return;
+    }
+    const block = blocks.has(node.tagName);
+    if (block && buf && !buf.endsWith("\n")) buf += "\n";
+    node.childNodes.forEach(walk);
+    if (block && buf && !buf.endsWith("\n")) buf += "\n";
+  }
+
+  root.childNodes.forEach(walk);
+  flush();
+  return pieces;
+}
+
 export async function buildPdf(title: string, html: string, opts?: { grayscaleImages?: boolean }) {
-  const images: { src: string; jpeg: Uint8Array; width: number; height: number }[] = [];
-  const seen = new Set<string>();
-  const srcs = [...html.matchAll(/<img[^>]+src="([^"]+)"/gi)].map((m) => m[1]);
+  const imageBySrc = new Map<string, PdfImage>();
+  const srcs = [...html.matchAll(/<img[^>]+src="([^"]+)"/gi)].map((match) => match[1]);
   for (const src of srcs) {
-    if (seen.has(src)) continue;
-    seen.add(src);
+    if (imageBySrc.has(src)) continue;
     try {
       const got = await jpegFromSrc(src, Boolean(opts?.grayscaleImages));
-      if (got) images.push({ src, ...got });
+      if (got) imageBySrc.set(src, { src, ...got });
     } catch {
-      /* skip */
+      /* skip a picture that will not decode */
     }
   }
 
-  const text = `${title}\n\n${plainText(html)}`;
-  const lines = wrapText(text);
+  const pieces: PdfPiece[] = [];
+  if (title.trim()) pieces.push({ kind: "lines", lines: [...wrapText(title.trim()), ""] });
+  pieces.push(...flowPieces(html, imageBySrc));
+
   const pageW = 612;
   const pageH = 792;
   const margin = 72;
   const leading = 16;
   const usable = pageH - margin * 2;
-  const lineCap = Math.floor(usable / leading);
 
-  type Block = { kind: "text"; lines: string[] } | { kind: "image"; img: (typeof images)[0] };
-  const blocks: Block[] = [{ kind: "text", lines }];
-  for (const img of images) blocks.push({ kind: "image", img });
-
-  type Page = { commands: string; xobjects: string[] };
+  type Page = { commands: string; xobjects: PdfXRef[] };
   const pages: Page[] = [];
   let commands = "";
   let used = 0;
-  const xobjects: string[] = [];
-
+  const xobjects: PdfXRef[] = [];
   let imageSerial = 0;
 
   function flush() {
@@ -142,32 +183,33 @@ export async function buildPdf(title: string, html: string, opts?: { grayscaleIm
     if (used + height > usable && commands) flush();
   }
 
-  if (blocks[0]?.kind === "text") {
-    const chunk = blocks[0].lines;
-    for (let i = 0; i < chunk.length; i += lineCap) {
-      const slice = chunk.slice(i, i + lineCap);
-      ensure(slice.length * leading);
-      const startY = pageH - margin - used - 12;
-      commands += `BT /F1 12 Tf ${margin} ${startY} Td ${leading} TL (${pdfEscape(slice[0] ?? "")}) Tj\n`;
-      commands += slice.slice(1).map((line) => `T* (${pdfEscape(line)}) Tj`).join("\n");
-      commands += "\nET\n";
-      used += slice.length * leading;
+  function drawLines(lines: string[]) {
+    for (const line of lines) {
+      ensure(leading);
+      const y = pageH - margin - used - 12;
+      commands += `BT /F1 12 Tf ${margin} ${y.toFixed(2)} Td (${pdfEscape(line)}) Tj ET\n`;
+      used += leading;
     }
   }
 
-  for (const block of blocks) {
-    if (block.kind !== "image") continue;
+  function drawImage(img: PdfImage) {
     const maxW = pageW - margin * 2;
-    const scale = Math.min(1, maxW / block.img.width);
-    const w = block.img.width * scale;
-    const h = block.img.height * scale * (72 / 96);
-    const drawW = w * (72 / 96);
-    ensure(drawW > 0 ? h + 16 : 80);
+    const natW = img.width * (72 / 96);
+    const natH = img.height * (72 / 96);
+    const fit = natW > maxW ? maxW / natW : 1;
+    const drawW = natW * fit;
+    const drawH = natH * fit;
+    ensure(drawH + 16);
     const name = `Im${(imageSerial += 1)}`;
-    xobjects.push(name);
-    const y = pageH - margin - used - h;
-    commands += `q ${drawW.toFixed(2)} 0 0 ${h.toFixed(2)} ${margin} ${Math.max(margin, y).toFixed(2)} cm /${name} Do Q\n`;
-    used += h + 12;
+    xobjects.push({ name, src: img.src });
+    const y = pageH - margin - used - drawH;
+    commands += `q ${drawW.toFixed(2)} 0 0 ${drawH.toFixed(2)} ${margin} ${Math.max(margin, y).toFixed(2)} cm /${name} Do Q\n`;
+    used += drawH + 12;
+  }
+
+  for (const piece of pieces) {
+    if (piece.kind === "lines") drawLines(piece.lines);
+    else drawImage(piece.img);
   }
   if (commands) flush();
   if (!pages.length) pages.push({ commands: "BT /F1 12 Tf 72 720 Td ( ) Tj ET\n", xobjects: [] });
@@ -176,18 +218,14 @@ export async function buildPdf(title: string, html: string, opts?: { grayscaleIm
   const fontId = 3;
   objs.push("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>");
 
-  const imgObjIds: number[] = [];
-  const imgByName: Record<string, number> = {};
-  let imgIndex = 0;
+  const srcToId = new Map<string, number>();
   for (const page of pages) {
-    for (const name of page.xobjects) {
-      if (imgByName[name]) continue;
-      const img = images[imgIndex];
-      imgIndex += 1;
+    for (const ref of page.xobjects) {
+      if (srcToId.has(ref.src)) continue;
+      const img = imageBySrc.get(ref.src);
       if (!img) continue;
       const id = objs.length;
-      imgObjIds.push(id);
-      imgByName[name] = id;
+      srcToId.set(ref.src, id);
       const header = str(
         `<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.jpeg.length} >>\nstream\n`,
       );
@@ -201,9 +239,9 @@ export async function buildPdf(title: string, html: string, opts?: { grayscaleIm
     const body = winAnsi(page.commands);
     objs.push(concat([str(`<< /Length ${body.length} >>\nstream\n`), body, str("endstream")]));
     const xobj = page.xobjects
-      .map((name) => {
-        const id = imgByName[name];
-        return id ? `/${name} ${id} 0 R` : "";
+      .map((ref) => {
+        const id = srcToId.get(ref.src);
+        return id ? `/${ref.name} ${id} 0 R` : "";
       })
       .filter(Boolean)
       .join(" ");

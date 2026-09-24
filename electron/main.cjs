@@ -11,6 +11,7 @@ const RELEASES = "https://api.github.com/repos/KibaLivewire/Quire/releases/lates
 const RELEASE_PAGE = "https://github.com/KibaLivewire/Quire/releases/latest";
 
 let serverChild = null;
+let serverFailed = false;
 
 function prefsPath() {
   return path.join(app.getPath("userData"), "quire-prefs.json");
@@ -19,17 +20,47 @@ function prefsPath() {
 function waitForUrl(url, timeoutMs) {
   return new Promise((resolve, reject) => {
     const started = Date.now();
+    let settled = false;
+    const fail = (message) => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(message));
+    };
+    let waiting = false;
     const attempt = () => {
+      if (settled || waiting) return;
+      if (serverFailed || (serverChild && serverChild.exitCode !== null)) {
+        fail("Quire could not start. Port 4173 may already be in use.");
+        return;
+      }
+      if (Date.now() - started > timeoutMs) {
+        fail("Quire took too long to start.");
+        return;
+      }
       const req = http.get(url, (res) => {
         res.resume();
+        if (settled) return;
+        settled = true;
         resolve();
       });
+      req.setTimeout(2000, () => {
+        req.destroy();
+      });
       req.on("error", () => {
-        if (Date.now() - started > timeoutMs) {
-          reject(new Error("Quire took too long to start."));
+        if (settled || waiting) return;
+        if (serverFailed || (serverChild && serverChild.exitCode !== null)) {
+          fail("Quire could not start. Port 4173 may already be in use.");
           return;
         }
-        setTimeout(attempt, 250);
+        if (Date.now() - started > timeoutMs) {
+          fail("Quire took too long to start.");
+          return;
+        }
+        waiting = true;
+        setTimeout(() => {
+          waiting = false;
+          attempt();
+        }, 250);
       });
     };
     attempt();
@@ -41,6 +72,7 @@ function startPackagedServer() {
   if (!fs.existsSync(serverJs)) {
     throw new Error("Quire server files are missing. Reinstall the app.");
   }
+  serverFailed = false;
   serverChild = spawn(process.execPath, [serverJs], {
     env: {
       ...process.env,
@@ -55,7 +87,11 @@ function startPackagedServer() {
     windowsHide: true,
   });
   serverChild.on("error", (err) => {
+    serverFailed = true;
     console.error("Failed to start Quire server:", err);
+  });
+  serverChild.on("exit", () => {
+    serverFailed = true;
   });
   return waitForUrl(PROD_URL, 60000);
 }
@@ -107,7 +143,7 @@ function createWindow(url) {
       flushing = false;
       if (!win.isDestroyed()) win.close();
     };
-    const timer = setTimeout(finish, 2500);
+    const timer = setTimeout(finish, 8000);
     const onDone = () => {
       clearTimeout(timer);
       ipcMain.removeListener("quire:flush-done", onDone);
@@ -201,9 +237,8 @@ function wireIpc() {
     if (!clean) return false;
     try {
       const session = event.sender.session;
-      if (typeof session.removeWordFromSpellCheckerDictionary === "function") {
-        session.removeWordFromSpellCheckerDictionary(clean);
-      }
+      if (typeof session.removeWordFromSpellCheckerDictionary !== "function") return false;
+      session.removeWordFromSpellCheckerDictionary(clean);
       return true;
     } catch {
       return false;

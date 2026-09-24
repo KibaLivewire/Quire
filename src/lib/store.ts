@@ -173,7 +173,7 @@ const idbStorage: PersistStorage<PersistedSlice> = {
           ...stored,
           state: {
             ...stored.state,
-            prefs: { ...DEFAULT_PREFS, ...stored.state.prefs, ...filePrefs },
+            prefs: mergePrefs({ ...DEFAULT_PREFS, ...stored.state.prefs }, filePrefs),
           },
         };
       }
@@ -516,13 +516,13 @@ export const useNotebookStore = create<NotebookState>()(
             if (item.id !== id) return item;
             const next = { ...item, ...patch, updatedAt: Date.now() };
             if (patch.pages) {
-              next.content = patch.pages.join("");
+              next.content = pageSearchText(patch.pages);
               next.pageMeta = alignPageMeta(patch.pages, patch.pageMeta ?? item.pageMeta);
             } else if (patch.content !== undefined && !patch.pages) {
               const pages = [...notePages(item)];
               pages[0] = patch.content;
               next.pages = pages;
-              next.content = pages.join("");
+              next.content = pageSearchText(pages);
               next.pageMeta = alignPageMeta(pages, patch.pageMeta ?? item.pageMeta);
             } else if (patch.pageMeta) {
               next.pageMeta = alignPageMeta(notePages(next), patch.pageMeta);

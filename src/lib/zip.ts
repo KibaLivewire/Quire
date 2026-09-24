@@ -110,15 +110,31 @@ export async function unzip(buffer: ArrayBuffer) {
     const extraLen = view.getUint16(i + 28, true);
     const name = decoder.decode(bytes.subarray(i + 30, i + 30 + nameLen));
     const dataStart = i + 30 + nameLen + extraLen;
+    let descriptor = 0;
     if (flags & 0x08) {
-      let scan = dataStart;
-      while (scan + 16 <= bytes.length) {
-        const sig = view.getUint32(scan, true);
-        if (sig === 0x08074b50 || sig === 0x04034b50 || sig === 0x02014b50) break;
-        scan += 1;
-      }
-      if (view.getUint32(scan, true) === 0x08074b50) {
-        compact = view.getUint32(scan + 8, true);
+      if (!compact) {
+        let scan = dataStart;
+        while (scan + 4 <= bytes.length) {
+          const sig = view.getUint32(scan, true);
+          if (sig === 0x08074b50 || sig === 0x04034b50 || sig === 0x02014b50) break;
+          scan += 1;
+        }
+        const sig = scan + 4 <= bytes.length ? view.getUint32(scan, true) : 0;
+        if (sig === 0x08074b50 && scan + 16 <= bytes.length) {
+          compact = Math.max(0, scan - dataStart);
+          descriptor = 16;
+        } else if (sig === 0x04034b50 || sig === 0x02014b50) {
+          compact = Math.max(0, scan - dataStart - 12);
+          descriptor = 12;
+        } else {
+          const rest = Math.max(0, bytes.length - dataStart);
+          compact = rest >= 12 ? rest - 12 : rest;
+          descriptor = rest >= 12 ? 12 : 0;
+        }
+      } else {
+        const after = dataStart + compact;
+        const sig = after + 4 <= bytes.length ? view.getUint32(after, true) : 0;
+        descriptor = sig === 0x08074b50 ? 16 : 12;
       }
     }
     const packed = bytes.subarray(dataStart, dataStart + compact);
@@ -130,7 +146,7 @@ export async function unzip(buffer: ArrayBuffer) {
       text = await new Response(stream).text();
     }
     files.set(name, text);
-    i = dataStart + compact + (flags & 0x08 ? 12 : 0);
+    i = dataStart + compact + descriptor;
   }
   return files;
 }

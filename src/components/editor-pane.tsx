@@ -49,8 +49,8 @@ import { isLocked, noteGate } from "@/lib/lock";
 import { notePages } from "@/lib/pages";
 import { openPrintPreview } from "@/lib/print";
 import { openRecipeChooser } from "@/lib/recipe-chooser";
-import { useNotebookStore } from "@/lib/store";
-import { registerPendingFlush } from "@/lib/pending-save";
+import { useNotebookStore, flushNotebookPersist } from "@/lib/store";
+import { registerPendingCancel, registerPendingFlush } from "@/lib/pending-save";
 import { cn, debounce, plainText, wordCount } from "@/lib/utils";
 
 export function EditorPane({
@@ -86,6 +86,18 @@ export function EditorPane({
   const [saveState, setSaveState] = useState<"saved" | "saving">("saved");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const lastWords = useRef(0);
+  const saveGen = useRef(0);
+  const settleRef = useRef<(gen: number) => void>(() => {});
+  settleRef.current = (gen: number) => {
+    void (async () => {
+      try {
+        await flushNotebookPersist();
+        if (saveGen.current === gen) setSaveState("saved");
+      } catch {
+        if (saveGen.current === gen) setSaveState("saving");
+      }
+    })();
+  };
 
   useEffect(() => {
     setTitle(note?.title ?? "");
@@ -110,18 +122,18 @@ export function EditorPane({
 
   const save = useMemo(
     () =>
-      debounce((id: string, patch: { title?: string; content?: string }) => {
+      debounce((id: string, patch: { title?: string; content?: string }, gen: number) => {
         updateNote(id, patch);
-        setSaveState("saved");
+        settleRef.current(gen);
       }, 400),
     [updateNote],
   );
 
   const savePage = useMemo(
     () =>
-      debounce((id: string, index: number, content: string) => {
+      debounce((id: string, index: number, content: string, gen: number) => {
         updateNotePage(id, index, content);
-        setSaveState("saved");
+        settleRef.current(gen);
       }, 400),
     [updateNotePage],
   );
@@ -136,7 +148,11 @@ export function EditorPane({
     savePage.flush();
   }), [save, savePage]);
 
-  const allHtml = note ? notePages(note).join(" ") : "";
+  useEffect(() => registerPendingCancel(() => {
+    savePage.cancel();
+  }), [savePage]);
+
+  const allHtml = note ? notePages(note).join("\n") : "";
   const words = wordCount(allHtml);
   const chars = plainText(allHtml).length;
   const zoomPct = Math.round(prefs.zoom * 100);
@@ -323,14 +339,14 @@ export function EditorPane({
         onTitleChange={(next) => {
           setTitle(next);
           setSaveState("saving");
-          save(note.id, { title: next.trim() || "Untitled" });
+          save(note.id, { title: next.trim() || "Untitled" }, ++saveGen.current);
         }}
         onChange={(next, index) => {
           const nextCount = wordCount(next);
           if (nextCount > lastWords.current) recordWords(nextCount - lastWords.current);
           lastWords.current = nextCount;
           setSaveState("saving");
-          savePage(note.id, index, next);
+          savePage(note.id, index, next, ++saveGen.current);
         }}
       />
       )}

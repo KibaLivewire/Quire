@@ -17,6 +17,7 @@ import { copyEditorSelection, pasteEditor, registerEditorCommands, setActiveEdit
 import { isPageEmpty, notePages, splitOverflow } from "@/lib/pages";
 import { pageMetaAt, recipeBorder, recipeLabel } from "@/lib/recipes";
 import { openRecipeChooser } from "@/lib/recipe-chooser";
+import { cancelPendingEdits } from "@/lib/pending-save";
 import { sanitizeHtml } from "@/lib/sanitize-html";
 import { useNotebookStore } from "@/lib/store";
 import type { Note } from "@/lib/types";
@@ -234,9 +235,11 @@ export function RichEditor({
       splittingRef.current = true;
       const moved = splitOverflow(editor, maxHeight);
       if (moved) {
+        cancelPendingEdits();
         const current = [...pagesRef.current];
         current[safeIndex] = editor.getHTML();
         const nextIndex = safeIndex + 1;
+        const keptIndex = safeIndex;
         if (current[nextIndex]) {
           current[nextIndex] = `${moved.html}${current[nextIndex]}`;
           setNotePages(note.id, current, { prependAt: nextIndex, shift: moved.size });
@@ -244,12 +247,15 @@ export function RichEditor({
           current.splice(nextIndex, 0, moved.html);
           setNotePages(note.id, current, { insertAt: nextIndex });
         }
+        const kept = editor.getHTML();
+        splittingRef.current = false;
+        onChangeRef.current(kept, keptIndex);
         if (editor.view.hasFocus()) onPageIndexChange(nextIndex);
         setOversized(false);
       } else {
         setOversized(true);
+        splittingRef.current = false;
       }
-      splittingRef.current = false;
     }
 
     const timer = window.setTimeout(checkOverflow, 120);
