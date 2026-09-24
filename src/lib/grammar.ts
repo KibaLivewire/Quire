@@ -12,7 +12,7 @@ type PlainDoc = {
   nodesBetween: (
     from: number,
     to: number,
-    fn: (node: { isText?: boolean; text?: string; isBlock?: boolean; isLeaf?: boolean; isTextblock?: boolean }, pos: number) => void,
+    fn: (node: { isText?: boolean; text?: string; isBlock?: boolean; isLeaf?: boolean; isTextblock?: boolean }, pos: number) => boolean | void,
   ) => void;
 };
 
@@ -43,8 +43,66 @@ export function plainRange(doc: PlainDoc, fromPlain: number, toPlain: number, bl
   return { from, to };
 }
 
+/** Where a document position sits in editor.getText(), which joins blocks with \\n\\n. */
+export function plainOffset(doc: PlainDoc, target: number, blockSeparator = "\n\n") {
+  let textPos = 0;
+  let first = true;
+  let found = -1;
+  doc.nodesBetween(0, doc.content.size, (node, pos) => {
+    if (found >= 0) return false;
+    if (node.isBlock && (node.isLeaf || node.isTextblock) && blockSeparator) {
+      if (first) first = false;
+      else textPos += blockSeparator.length;
+    }
+    if (node.isText && node.text) {
+      if (target <= pos) {
+        found = textPos;
+        return false;
+      }
+      if (target <= pos + node.text.length) {
+        found = textPos + (target - pos);
+        return false;
+      }
+      textPos += node.text.length;
+    }
+  });
+  return found >= 0 ? found : textPos;
+}
+
+/** The sentence around a cursor in plain text. Long unbroken text is clipped so a check cannot send the whole sheet. */
+export function sentenceAt(text: string, cursor: number) {
+  const at = Math.max(0, Math.min(cursor, text.length));
+  let start = 0;
+  for (let i = at - 1; i >= 0; i -= 1) {
+    const ch = text[i];
+    if (ch === "\n" || ch === "." || ch === "!" || ch === "?") {
+      start = i + 1;
+      break;
+    }
+  }
+  let end = text.length;
+  for (let i = Math.max(at, start); i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === "\n") {
+      end = i;
+      break;
+    }
+    if (ch === "." || ch === "!" || ch === "?") {
+      end = i + 1;
+      break;
+    }
+  }
+  if (end - start > 800) {
+    start = Math.max(start, at - 400);
+    end = Math.min(end, start + 800);
+  }
+  while (start < end && text[start] === " ") start += 1;
+  while (end > start && /\s/.test(text[end - 1] || "")) end -= 1;
+  return { text: text.slice(start, end), start };
+}
+
 export async function checkGrammar(text: string, dictionary?: string[]): Promise<GrammarIssue[]> {
-  const clipped = text.slice(0, 20_000);
+  const clipped = text.slice(0, 800);
   if (!clipped.trim()) return [];
   const body = new URLSearchParams({
     text: clipped,

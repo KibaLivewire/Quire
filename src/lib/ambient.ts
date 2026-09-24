@@ -38,6 +38,7 @@ let energy = 0;
 let blocked = false;
 let muted = false;
 let userVolume = 0.22;
+let meter = false;
 let lastTheme: ThemeId = "leather";
 let slots: [Slot | null, Slot | null] = [null, null];
 let active = 0;
@@ -96,18 +97,30 @@ function ensureGraph() {
   master.gain.value = muted || userVolume <= 0 ? 0 : userVolume;
   analyser.connect(master);
   master.connect(ctx.destination);
+  startMeter();
+}
+
+function startMeter() {
+  if (meter || !analyser) return;
+  meter = true;
   const tick = () => {
-    if (analyser && freq) {
-      analyser.getByteFrequencyData(freq);
-      let sum = 0;
-      for (let i = 2; i < 24; i += 1) sum += freq[i];
-      energy = sum / (22 * 255);
-      emit();
-    }
+    if (!meter || !analyser || !freq) return;
+    analyser.getByteFrequencyData(freq);
+    let sum = 0;
+    for (let i = 2; i < 24; i += 1) sum += freq[i];
+    energy = sum / (22 * 255);
+    emit();
     raf = requestAnimationFrame(tick);
   };
   cancelAnimationFrame(raf);
   raf = requestAnimationFrame(tick);
+}
+
+function stopMeter() {
+  meter = false;
+  cancelAnimationFrame(raf);
+  raf = 0;
+  energy = 0;
 }
 
 function applyMaster() {
@@ -257,6 +270,8 @@ async function startAmbientInner(volume: number, theme?: string) {
   // a rename that remounts the desk) must not turn it back up. Volume 0 still mutes.
   if (userVolume <= 0) muted = true;
   lastTheme = ritualThemeId(theme ?? lastTheme);
+  ensureGraph();
+  startMeter();
   let src = ambientSrcForTheme(lastTheme);
   if (src === "generated:rain") src = await rainAmbientUrl();
   await switchTo(src);
@@ -296,6 +311,7 @@ export function toggleAmbientMute() {
 }
 
 export function stopAmbient() {
+  stopMeter();
   for (const slot of slots) {
     try {
       slot?.el.pause();

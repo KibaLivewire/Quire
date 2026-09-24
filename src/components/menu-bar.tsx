@@ -51,6 +51,7 @@ function currentPage() {
   return {
     title: note?.title || "Untitled",
     html: note ? notePages(note).join("\n") : "",
+    pdfHtml: note ? notePages(note).join("\n<div data-quire-sheet></div>\n") : "",
     hasNote: Boolean(note),
   };
 }
@@ -123,6 +124,10 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     try {
       const next = await importDocument(file);
       const id = createNote();
+      if (!useNotebookStore.getState().notes.some((note) => note.id === id)) {
+        toast.error("Could not open that file.");
+        return;
+      }
       updateNote(id, { title: next.title, pages: [next.html], content: next.html });
       toast(`Opened ${file.name}`);
     } catch (error) {
@@ -144,7 +149,12 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       if (kind === "rtf") exportRtf(page.title, page.html);
       if (kind === "doc") exportDoc(page.title, page.html);
       if (kind === "docx") await exportDocx(page.title, page.html);
-      if (kind === "pdf") await exportPdf(page.title, page.html);
+      if (kind === "pdf") {
+        await exportPdf(page.title, page.pdfHtml, {
+          pageWidth: state.prefs.pageWidth,
+          pageHeight: state.prefs.pageHeight,
+        });
+      }
       if (kind === "html") exportHtml(page.title, page.html);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;

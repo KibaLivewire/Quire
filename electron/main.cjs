@@ -12,9 +12,20 @@ const RELEASE_PAGE = "https://github.com/KibaLivewire/Quire/releases/latest";
 
 let serverChild = null;
 let serverFailed = false;
+let serverLog = "";
+let serverReady = false;
+let quitting = false;
+let serverRestarts = 0;
 
 function prefsPath() {
   return path.join(app.getPath("userData"), "quire-prefs.json");
+}
+
+function serverDownMessage() {
+  if (/EADDRINUSE|address already in use/i.test(serverLog)) {
+    return `Quire could not start. Port ${PROD_PORT} is already in use.`;
+  }
+  return "Quire's local server stopped.";
 }
 
 function waitForUrl(url, timeoutMs) {
@@ -30,7 +41,7 @@ function waitForUrl(url, timeoutMs) {
     const attempt = () => {
       if (settled || waiting) return;
       if (serverFailed || (serverChild && serverChild.exitCode !== null)) {
-        fail("Quire could not start. Port 4173 may already be in use.");
+        fail(serverDownMessage());
         return;
       }
       if (Date.now() - started > timeoutMs) {
@@ -49,7 +60,7 @@ function waitForUrl(url, timeoutMs) {
       req.on("error", () => {
         if (settled || waiting) return;
         if (serverFailed || (serverChild && serverChild.exitCode !== null)) {
-          fail("Quire could not start. Port 4173 may already be in use.");
+          fail(serverDownMessage());
           return;
         }
         if (Date.now() - started > timeoutMs) {
@@ -64,6 +75,40 @@ function waitForUrl(url, timeoutMs) {
       });
     };
     attempt();
+  });
+}
+
+function attachServer(child) {
+  serverLog = "";
+  if (child.stderr) {
+    child.stderr.on("data", (chunk) => {
+      serverLog = (serverLog + chunk.toString()).slice(-4000);
+    });
+  }
+  child.on("error", (err) => {
+    serverFailed = true;
+    serverLog = `${serverLog}\n${err && err.message ? err.message : String(err)}`.slice(-4000);
+    console.error("Failed to start Quire server:", err);
+  });
+  child.on("exit", () => {
+    serverFailed = true;
+    if (quitting || !serverReady) return;
+    if (serverRestarts >= 3) {
+      dialog.showErrorBox("Quire", serverDownMessage());
+      return;
+    }
+    serverRestarts += 1;
+    setTimeout(() => {
+      if (quitting) return;
+      startPackagedServer()
+        .then(() => {
+          const win = BrowserWindow.getAllWindows()[0];
+          if (win && !win.isDestroyed()) void win.loadURL(PROD_URL);
+        })
+        .catch(() => {
+          /* the next exit decides whether to try again */
+        });
+    }, 400);
   });
 }
 
@@ -83,17 +128,14 @@ function startPackagedServer() {
       NITRO_HOST: "127.0.0.1",
       NODE_ENV: "production",
     },
-    stdio: "ignore",
+    stdio: ["ignore", "ignore", "pipe"],
     windowsHide: true,
   });
-  serverChild.on("error", (err) => {
-    serverFailed = true;
-    console.error("Failed to start Quire server:", err);
+  attachServer(serverChild);
+  return waitForUrl(PROD_URL, 60000).then(() => {
+    serverReady = true;
+    serverRestarts = 0;
   });
-  serverChild.on("exit", () => {
-    serverFailed = true;
-  });
-  return waitForUrl(PROD_URL, 60000);
 }
 
 function iconPath() {
@@ -132,31 +174,36 @@ function createWindow(url) {
     event.preventDefault();
     if (flushing) return;
     const wc = win.webContents;
-    if (!wc || wc.isDestroyed() || wc.isLoadingMainFrame()) {
+    if (!wc || wc.isDestroyed()) {
       win.__quireAllowClose = true;
       win.close();
       return;
     }
     flushing = true;
+    let ask = () => {};
     const finish = () => {
+      clearTimeout(timer);
+      wc.removeListener("did-finish-load", ask);
       win.__quireAllowClose = true;
       flushing = false;
       if (!win.isDestroyed()) win.close();
     };
     const timer = setTimeout(finish, 8000);
     const onDone = () => {
-      clearTimeout(timer);
       ipcMain.removeListener("quire:flush-done", onDone);
       finish();
     };
     ipcMain.once("quire:flush-done", onDone);
-    try {
-      wc.send("quire:flush");
-    } catch {
-      clearTimeout(timer);
-      ipcMain.removeListener("quire:flush-done", onDone);
-      finish();
-    }
+    ask = () => {
+      try {
+        wc.send("quire:flush");
+      } catch {
+        ipcMain.removeListener("quire:flush-done", onDone);
+        finish();
+      }
+    };
+    if (wc.isLoadingMainFrame()) wc.once("did-finish-load", ask);
+    else ask();
   });
 }
 
@@ -210,8 +257,10 @@ function wireIpc() {
   ipcMain.handle("quire:prefs-write", (_event, prefs) => {
     try {
       const file = prefsPath();
+      const tmp = `${file}.tmp`;
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(prefs ?? {}), "utf8");
+      fs.writeFileSync(tmp, JSON.stringify(prefs ?? {}), "utf8");
+      fs.renameSync(tmp, file);
       return true;
     } catch (err) {
       console.error("Failed to write Quire prefs:", err);
@@ -300,6 +349,7 @@ if (!gotLock) {
 
   app.on("window-all-closed", () => app.quit());
   app.on("before-quit", () => {
+    quitting = true;
     if (serverChild && !serverChild.killed) serverChild.kill();
   });
 }

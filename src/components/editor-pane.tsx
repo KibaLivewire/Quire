@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import {
   ArrowLeft,
@@ -83,7 +83,7 @@ export function EditorPane({
   const gate = noteGate(notebooks, note, unlockedIds);
   const [title, setTitle] = useState(note?.title ?? "");
   const [pageIndex, setPageIndex] = useState(0);
-  const [saveState, setSaveState] = useState<"saved" | "saving">("saved");
+  const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const lastWords = useRef(0);
   const saveGen = useRef(0);
@@ -94,7 +94,7 @@ export function EditorPane({
         await flushNotebookPersist();
         if (saveGen.current === gen) setSaveState("saved");
       } catch {
-        if (saveGen.current === gen) setSaveState("saving");
+        if (saveGen.current === gen) setSaveState("error");
       }
     })();
   };
@@ -120,22 +120,50 @@ export function EditorPane({
     setSession({ noteId: note.id, notebookId: note.notebookId, pageIndex });
   }, [note?.id, note?.notebookId, pageIndex, setSession]);
 
-  const save = useMemo(
-    () =>
-      debounce((id: string, patch: { title?: string; content?: string }, gen: number) => {
-        updateNote(id, patch);
-        settleRef.current(gen);
-      }, 400),
-    [updateNote],
-  );
+  const save = useMemo(() => {
+    const run = debounce((id: string, patch: { title?: string; content?: string }, gen: number) => {
+      updateNote(id, patch);
+      settleRef.current(gen);
+    }, 400);
+    let lastId: string | null = null;
+    const wrapped = (id: string, patch: { title?: string; content?: string }, gen: number) => {
+      if (lastId && lastId !== id) run.flush();
+      lastId = id;
+      run(id, patch, gen);
+    };
+    wrapped.flush = () => run.flush();
+    wrapped.cancel = () => {
+      lastId = null;
+      run.cancel();
+    };
+    return wrapped;
+  }, [updateNote]);
 
-  const savePage = useMemo(
-    () =>
-      debounce((id: string, index: number, content: string, gen: number) => {
-        updateNotePage(id, index, content);
-        settleRef.current(gen);
-      }, 400),
-    [updateNotePage],
+  const savePage = useMemo(() => {
+    const run = debounce((id: string, index: number, content: string, gen: number) => {
+      updateNotePage(id, index, content);
+      settleRef.current(gen);
+    }, 400);
+    let last: { id: string; index: number } | null = null;
+    const wrapped = (id: string, index: number, content: string, gen: number) => {
+      if (last && (last.id !== id || last.index !== index)) run.flush();
+      last = { id, index };
+      run(id, index, content, gen);
+    };
+    wrapped.flush = () => run.flush();
+    wrapped.cancel = () => {
+      last = null;
+      run.cancel();
+    };
+    return wrapped;
+  }, [updateNotePage]);
+
+  const changePage = useCallback(
+    (index: number) => {
+      savePage.flush();
+      setPageIndex(index);
+    },
+    [savePage],
   );
 
   useEffect(() => () => {
@@ -196,7 +224,7 @@ export function EditorPane({
           </Button>
         ) : null}
         <p className="min-w-0 flex-1 truncate px-2 text-sm text-ink-muted">
-          {saveState === "saving" ? "Saving" : "Saved on this device"}
+          {saveState === "saving" ? "Saving" : saveState === "error" ? "Could not save" : "Saved on this device"}
         </p>
         {prefs.wordGoal > 0 ? (
           <span className="hidden px-2 text-xs text-ink-subtle tabular-nums sm:inline">
@@ -305,7 +333,7 @@ export function EditorPane({
               <FileText className="size-4" />
               Export .DOCX
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => void exportPdf(title || "Untitled", allHtml))}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => void exportPdf(title || "Untitled", notePages(note).join("\n<div data-quire-sheet></div>\n"), { pageWidth: prefs.pageWidth, pageHeight: prefs.pageHeight }))}>
               <FileText className="size-4" />
               Export .PDF
             </DropdownMenuItem>
@@ -335,7 +363,7 @@ export function EditorPane({
         note={note}
         title={title}
         pageIndex={pageIndex}
-        onPageIndexChange={setPageIndex}
+        onPageIndexChange={changePage}
         onTitleChange={(next) => {
           setTitle(next);
           setSaveState("saving");

@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { getActiveEditor } from "@/lib/editor-commands";
 import { askQuill, greetingForNow, type QuillMessage } from "@/lib/quill";
 import { useNotebookStore } from "@/lib/store";
-import { cn } from "@/lib/utils";
+import { cn, escapeHtml } from "@/lib/utils";
 
 function selectionText() {
   const editor = getActiveEditor();
@@ -41,6 +41,27 @@ export function QuillPanel() {
   }, [prefs.quill]);
 
   useEffect(() => {
+    if (!hello) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setHello(false);
+    }
+    function onPointer(event: PointerEvent) {
+      const card = document.querySelector(".quill-hello-card");
+      if (card && event.target instanceof Node && card.contains(event.target)) return;
+      setHello(false);
+    }
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("pointerdown", onPointer, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("pointerdown", onPointer, true);
+    };
+  }, [hello]);
+
+  useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages, open]);
 
@@ -64,7 +85,7 @@ export function QuillPanel() {
   function insert(text: string) {
     const editor = getActiveEditor();
     if (!editor) return;
-    editor.chain().focus().insertContent(text).run();
+    editor.chain().focus().insertContent(escapeHtml(text)).run();
   }
 
   return (

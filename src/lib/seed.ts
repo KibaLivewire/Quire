@@ -32,9 +32,12 @@ export const DEMO_NOTE_IDS = new Set(["note_september", "note_keeping", "note_le
 export const DEMO_FOLDER_IDS = new Set(["nb_letters", "nb_reading", "nb_work"]);
 
 export function createSeed() {
+  const now = Date.now();
   return {
-    notebooks: SEED_NOTEBOOKS,
-    notes: SEED_NOTES,
+    notebooks: SEED_NOTEBOOKS.map((folder) => ({ ...folder, createdAt: now - 14 * DAY })),
+    notes: SEED_NOTES.map((item) =>
+      item.id === "note_welcome" ? { ...item, createdAt: now - 4 * DAY, updatedAt: now } : item,
+    ),
     activeNotebookId: "nb_personal",
     activeNoteId: "note_welcome",
   };

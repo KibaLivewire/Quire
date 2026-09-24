@@ -1,4 +1,5 @@
 import { checkGrammar } from "./grammar";
+import { lookupWord } from "./word-tools";
 
 export type QuillMessage = {
   id: string;
@@ -63,17 +64,11 @@ async function relatedIdeas(word: string) {
 
 async function define(word: string): Promise<{ text: string } | null> {
   try {
-    const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      meanings?: { partOfSpeech?: string; definitions?: { definition?: string; example?: string }[] }[];
-    }[];
-    const meaning = data[0]?.meanings?.[0];
-    const def = meaning?.definitions?.[0];
-    if (!def?.definition) return null;
-    const pos = meaning?.partOfSpeech ? ` (${meaning.partOfSpeech})` : "";
-    const example = def.example ? ` Example: ${def.example}` : "";
-    return { text: `${word}${pos}: ${def.definition}${example}` };
+    const sense = await lookupWord(word);
+    if (!sense?.definition) return null;
+    const pos = sense.partOfSpeech ? ` (${sense.partOfSpeech})` : "";
+    const example = sense.example ? ` Example: ${sense.example}` : "";
+    return { text: `${sense.word || word}${pos}: ${sense.definition}${example}` };
   } catch {
     return null;
   }
@@ -223,10 +218,8 @@ export async function askQuill(prompt: string, selection: string, dictionary?: s
   }
 
   if (source) {
-    const replacement = await polish(source, dictionary);
     return {
-      reply: "I read the selection in your voice. Insert a polish, or ask me to shorten or flesh it out.",
-      replacement: replacement === source ? undefined : replacement,
+      reply: "I can shorten that, make it clearer, flesh it out, or polish it. Ask for one of those, or the sense of a word.",
     };
   }
 

@@ -9,7 +9,7 @@ import { askQuill } from "@/lib/quill";
 import { extractReadText, speakText } from "@/lib/read-back";
 import { useNotebookStore } from "@/lib/store";
 import type { WordSense } from "@/lib/word-tools";
-import { cn } from "@/lib/utils";
+import { cn, escapeHtml } from "@/lib/utils";
 
 type Panel = "main" | "highlight" | "bookmark" | "quill" | "note" | "lookup";
 
@@ -137,7 +137,7 @@ export function EditorContextMenu({ editor }: { editor: Editor }) {
     const result = await askQuill(chip, word, prefs.dictionary);
     setBusy(false);
     if (result.replacement) {
-      editor.chain().focus().insertContent(result.replacement).run();
+      editor.chain().focus().insertContent(escapeHtml(result.replacement)).run();
       toast(result.reply);
     } else {
       setQuillOpen(true);
@@ -308,7 +308,7 @@ export function EditorContextMenu({ editor }: { editor: Editor }) {
               sense={sense}
               loading={looking}
               onReplace={(next) => {
-                editor.chain().focus().insertContent(next).run();
+                editor.chain().focus().insertContent(escapeHtml(next)).run();
                 setPos(null);
               }}
             />

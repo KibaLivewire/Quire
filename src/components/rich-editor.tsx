@@ -17,7 +17,7 @@ import { copyEditorSelection, pasteEditor, registerEditorCommands, setActiveEdit
 import { isPageEmpty, notePages, splitOverflow } from "@/lib/pages";
 import { pageMetaAt, recipeBorder, recipeLabel } from "@/lib/recipes";
 import { openRecipeChooser } from "@/lib/recipe-chooser";
-import { cancelPendingEdits } from "@/lib/pending-save";
+import { cancelPendingEdits, flushPendingEdits } from "@/lib/pending-save";
 import { sanitizeHtml } from "@/lib/sanitize-html";
 import { useNotebookStore } from "@/lib/store";
 import type { Note } from "@/lib/types";
@@ -464,7 +464,10 @@ export function RichEditor({
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  const nextPages = pages.filter((_, i) => i !== safeIndex);
+                  flushPendingEdits();
+                  const live = useNotebookStore.getState().notes.find((item) => item.id === note.id);
+                  const livePages = live ? notePages(live) : pagesRef.current;
+                  const nextPages = livePages.filter((_, i) => i !== safeIndex);
                   setNotePages(note.id, nextPages.length ? nextPages : [""], { removeAt: safeIndex });
                   onPageIndexChange(Math.max(0, safeIndex - 1));
                 }}

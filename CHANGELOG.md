@@ -1,4 +1,29 @@
+# Quire 1.8.6 — The last line stays
+
+Released 24 September 2026.
+
+- **Leaving a sheet keeps the last keystrokes.** Adding a sheet, turning the page, or opening another page within the half-second save no longer drops what you just typed. A title change is kept the same way
+- **Quill’s greeting no longer covers the desk.** It sits in the corner. Escape, a click on the page, or Close dismisses it. Never show again still keeps it away next time
+- **A failed save says so.** The header stays on “Could not save” instead of “Saving” when the write does not land
+- **Large GIFs are reduced** the way large photos already are, so a few animations cannot fill the desk. A small GIF is left as it is
+- **Saves reuse one database connection** instead of opening a new one on every keystroke pause
+- **A new desk’s Welcome** is dated the day you first open Quire, not 12 September 2026
+- **Open needs a folder.** If the desk has none, Quire makes one and puts the file there. It does not say the file opened when the page was never created
+- **Grammar sends the sentence you are in**, not the whole sheet. A fix that cannot find its place is not pasted at the cursor. Quill does not send a selection out unless you ask it to polish. A definition tries another dictionary if the first one is down
+- **Suggestions are typed as text.** A grammar or Quill line that contains `<` or `&` is not treated as markup
+- **RTF keeps emoji and other characters above the old 16-bit line**
+- **PDF starts a new page for each sheet** and uses the page size from Desk. Letters outside the Latin-1 set can still appear as a question mark
+- **Word lists keep their bullets.** Pictures are still left out of the Word file
+- **If the Windows server stops after startup, Quire starts it again.** The message names a busy port only when the port is actually busy. Closing while the first page is still loading waits for the save. Desk settings are written to the side, then moved into place, so a crash mid-write does not leave a half file
+- **Turning the room sound off stops the level meter** as well as the audio
+- **The passcode is still a screen gate.** It does not encrypt the page. A locked page is still plain text on this device
+
+Windows installer: Quire-Setup-1.8.6.exe
+
+---
+
 # Quire 1.8.5 — The next sheet
+
 
 Released 23 September 2026.
 

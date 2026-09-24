@@ -1,6 +1,6 @@
 
 type PdfImage = { src: string; width: number; height: number; jpeg: Uint8Array };
-type PdfPiece = { kind: "lines"; lines: string[] } | { kind: "image"; img: PdfImage };
+type PdfPiece = { kind: "lines"; lines: string[] } | { kind: "image"; img: PdfImage } | { kind: "sheet" };
 type PdfXRef = { name: string; src: string };
 
 function concat(parts: Uint8Array[]) {
@@ -131,6 +131,11 @@ function flowPieces(html: string, images: Map<string, PdfImage>): PdfPiece[] {
       if (img) pieces.push({ kind: "image", img });
       return;
     }
+    if (node.hasAttribute("data-quire-sheet")) {
+      flush();
+      pieces.push({ kind: "sheet" });
+      return;
+    }
     const block = blocks.has(node.tagName);
     if (block && buf && !buf.endsWith("\n")) buf += "\n";
     node.childNodes.forEach(walk);
@@ -142,7 +147,11 @@ function flowPieces(html: string, images: Map<string, PdfImage>): PdfPiece[] {
   return pieces;
 }
 
-export async function buildPdf(title: string, html: string, opts?: { grayscaleImages?: boolean }) {
+export async function buildPdf(
+  title: string,
+  html: string,
+  opts?: { grayscaleImages?: boolean; pageWidth?: number; pageHeight?: number },
+) {
   const imageBySrc = new Map<string, PdfImage>();
   const srcs = [...html.matchAll(/<img[^>]+src="([^"]+)"/gi)].map((match) => match[1]);
   for (const src of srcs) {
@@ -159,8 +168,8 @@ export async function buildPdf(title: string, html: string, opts?: { grayscaleIm
   if (title.trim()) pieces.push({ kind: "lines", lines: [...wrapText(title.trim()), ""] });
   pieces.push(...flowPieces(html, imageBySrc));
 
-  const pageW = 612;
-  const pageH = 792;
+  const pageW = Math.max(216, Math.round((Number(opts?.pageWidth) > 0 ? Number(opts?.pageWidth) : 8.5) * 72));
+  const pageH = Math.max(216, Math.round((Number(opts?.pageHeight) > 0 ? Number(opts?.pageHeight) : 11) * 72));
   const margin = 72;
   const leading = 16;
   const usable = pageH - margin * 2;
@@ -208,7 +217,9 @@ export async function buildPdf(title: string, html: string, opts?: { grayscaleIm
   }
 
   for (const piece of pieces) {
-    if (piece.kind === "lines") drawLines(piece.lines);
+    if (piece.kind === "sheet") {
+      if (commands) flush();
+    } else if (piece.kind === "lines") drawLines(piece.lines);
     else drawImage(piece.img);
   }
   if (commands) flush();

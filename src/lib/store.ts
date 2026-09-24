@@ -10,6 +10,7 @@ import { descendantIds, isAlive, isDescendant } from "./folders";
 import { WELCOME_VERSION } from "./welcome";
 import { rememberBoot } from "./boot-peek";
 import { readDesktopPrefs, writeDesktopPrefs } from "./desktop";
+import { flushPendingEdits } from "./pending-save";
 
 const DB_NAME = "quire";
 const STORE_NAME = "kv";
@@ -86,9 +87,13 @@ export type NotebookState = {
   addDictionaryWord: (word: string) => void;
 };
 
+let dbPromise: Promise<IDBDatabase> | null = null;
+
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
     if (typeof indexedDB === "undefined") {
+      dbPromise = null;
       reject(new Error("IndexedDB unavailable"));
       return;
     }
@@ -98,9 +103,23 @@ function openDb(): Promise<IDBDatabase> {
         request.result.createObjectStore(STORE_NAME);
       }
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      db.onclose = () => {
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+    request.onerror = () => {
+      dbPromise = null;
+      reject(request.error);
+    };
   });
+  return dbPromise;
 }
 
 /** Skip IDB writes until rehydrate getItem finishes so defaults cannot clobber saved desk. */
@@ -351,6 +370,7 @@ export const useNotebookStore = create<NotebookState>()(
       },
 
       setActiveNotebook: (id) => {
+        flushPendingEdits();
         const notes = get().notes.filter((note) => note.notebookId === id && isAlive(note));
         const nextNote =
           notes.find((note) => note.id === get().activeNoteId) ??
@@ -363,11 +383,13 @@ export const useNotebookStore = create<NotebookState>()(
         });
       },
 
-      setActiveNote: (id) =>
+      setActiveNote: (id) => {
+        flushPendingEdits();
         set((state) => ({
           activeNoteId: id,
           session: { ...state.session, noteId: id, pageIndex: id === state.session.noteId ? state.session.pageIndex : 0 },
-        })),
+        }));
+      },
 
       createNotebook: (name, parentId = null) => {
         const id = crypto.randomUUID();
@@ -480,9 +502,13 @@ export const useNotebookStore = create<NotebookState>()(
       },
 
       createNote: (notebookId, recipe = "freewrite") => {
+        flushPendingEdits();
         const id = crypto.randomUUID();
-        const target = notebookId ?? get().activeNotebookId ?? get().notebooks.find(isAlive)?.id;
-        if (!target) return id;
+        const alive = get().notebooks.filter(isAlive);
+        let target = notebookId && alive.some((nb) => nb.id === notebookId) ? notebookId : null;
+        if (!target && alive.some((nb) => nb.id === get().activeNotebookId)) target = get().activeNotebookId;
+        if (!target) target = alive[0]?.id ?? null;
+        if (!target) target = get().createNotebook("Notebook");
         const now = Date.now();
         const html = starterHtmlForRecipe(recipe);
         const pages = [html];
@@ -545,6 +571,7 @@ export const useNotebookStore = create<NotebookState>()(
       },
 
       insertNotePage: (id, atIndex, html, recipe) => {
+        flushPendingEdits();
         const item = get().notes.find((note) => note.id === id);
         if (!item) return 0;
         const pages = [...notePages(item)];

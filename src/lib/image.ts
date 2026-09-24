@@ -28,8 +28,6 @@ export async function fileToDataUrl(file: File): Promise<string> {
     throw new Error("Use a JPEG, PNG, GIF, or WebP image.");
   }
   const type = file.type || guessType(file.name);
-  const isGif = /gif/i.test(type) || /\.gif$/i.test(file.name);
-  if (isGif) return readAsDataUrl(file);
   if (file.size <= PASSTHROUGH_BYTES) return readAsDataUrl(file);
 
   const bitmap = await createImageBitmap(file);

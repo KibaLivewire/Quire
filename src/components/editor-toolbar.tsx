@@ -41,7 +41,7 @@ import { ReadBackControls } from "@/components/read-back-chip";
 import { PageNotesControl, SelectionBookmarksControl } from "@/components/page-notes";
 import { RibbonBookmarksControl } from "@/components/ribbon-bookmarks";
 import { fetchSense, WordLookupCard } from "@/components/word-lookup";
-import { checkGrammar, plainRange, type GrammarIssue } from "@/lib/grammar";
+import { checkGrammar, plainOffset, plainRange, sentenceAt, type GrammarIssue } from "@/lib/grammar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -56,7 +56,7 @@ import { useNotebookStore } from "@/lib/store";
 import type { Note } from "@/lib/types";
 import type { WordSense } from "@/lib/word-tools";
 import { webSearchUrl } from "@/lib/word-tools";
-import { cn } from "@/lib/utils";
+import { cn, escapeHtml } from "@/lib/utils";
 
 function ToolBtn({
   label,
@@ -166,6 +166,7 @@ export function EditorToolbar({
   const [lookupOpen, setLookupOpen] = useState(false);
   const [sense, setSense] = useState<WordSense | null>(null);
   const [looking, setLooking] = useState(false);
+  const grammarBase = useRef(0);
   const [grammarOpen, setGrammarOpen] = useState(false);
   const [grammarIssues, setGrammarIssues] = useState<GrammarIssue[]>([]);
   const [grammarBusy, setGrammarBusy] = useState(false);
@@ -290,7 +291,7 @@ export function EditorToolbar({
   }
 
   function replaceSelection(next: string) {
-    editor.chain().focus().insertContent(next).run();
+    editor.chain().focus().insertContent(escapeHtml(next)).run();
     setLookupOpen(false);
   }
 
@@ -319,7 +320,11 @@ export function EditorToolbar({
     setGrammarOpen(true);
     setGrammarBusy(true);
     try {
-      setGrammarIssues(await checkGrammar(editor.getText(), dictionary));
+      const full = editor.getText();
+      const cursor = plainOffset(editor.state.doc, editor.state.selection.from);
+      const sentence = sentenceAt(full, cursor);
+      grammarBase.current = sentence.start;
+      setGrammarIssues(await checkGrammar(sentence.text, dictionary));
     } catch {
       toast.error("Could not reach the grammar service.");
       setGrammarIssues([]);
@@ -329,11 +334,12 @@ export function EditorToolbar({
   }
 
   function applyGrammarFix(issue: GrammarIssue, replacement: string) {
-    const { from, to } = plainRange(editor.state.doc, issue.offset, issue.offset + issue.length);
+    const base = grammarBase.current;
+    const { from, to } = plainRange(editor.state.doc, base + issue.offset, base + issue.offset + issue.length);
     if (from >= 0 && to > from) {
-      editor.chain().focus().insertContentAt({ from, to }, replacement).run();
+      editor.chain().focus().insertContentAt({ from, to }, escapeHtml(replacement)).run();
     } else {
-      editor.chain().focus().insertContent(replacement).run();
+      toast.error("Could not place that fix on the page.");
     }
   }
 

@@ -42,14 +42,27 @@ export function exportMarkdown(title: string, content: string) {
   download(`${safeName(title)}.md`, `# ${title}\n\n${htmlToMarkdown(content)}\n`, "text/markdown");
 }
 
+function rtfUnicode(code: number) {
+  const units =
+    code > 0xffff
+      ? [0xd800 + ((code - 0x10000) >> 10), 0xdc00 + ((code - 0x10000) & 0x3ff)]
+      : [code];
+  return units
+    .map((unit) => {
+      const signed = unit > 32767 ? unit - 65536 : unit;
+      return `\\u${signed}?`;
+    })
+    .join("");
+}
+
 function rtfEscape(value: string) {
   let out = "";
   for (const char of value) {
-    const code = char.charCodeAt(0);
+    const code = char.codePointAt(0) ?? 0;
     if (char === "\\") out += "\\\\";
     else if (char === "{") out += "\\{";
     else if (char === "}") out += "\\}";
-    else if (code > 127) out += `\\u${code}?`;
+    else if (code > 127) out += rtfUnicode(code);
     else out += char;
   }
   return out;
@@ -148,9 +161,11 @@ function htmlToDocxParagraphs(title: string, html: string) {
   const chunks = [...root.querySelectorAll(selector)].filter((el) => !el.parentElement?.closest(selector));
   const sources = chunks.length ? chunks : [root];
   sources.forEach((el) => {
-    const runs = inlineRuns(el as HTMLElement);
+    const htmlEl = el as HTMLElement;
+    const runs = inlineRuns(htmlEl);
     if (!runs.trim()) return;
-    blocks.push(`<w:p>${runs}</w:p>`);
+    const bullet = htmlEl.tagName === "LI" ? `<w:r><w:t xml:space="preserve">${xmlEscape("• ")}</w:t></w:r>` : "";
+    blocks.push(`<w:p>${bullet}${runs}</w:p>`);
   });
   return blocks.join("");
 }
@@ -171,7 +186,11 @@ export async function exportDocx(title: string, content: string) {
   downloadBlob(`${safeName(title)}.docx`, blob);
 }
 
-export async function exportPdf(title: string, content: string, opts?: { grayscaleImages?: boolean }) {
+export async function exportPdf(
+  title: string,
+  content: string,
+  opts?: { grayscaleImages?: boolean; pageWidth?: number; pageHeight?: number },
+) {
   const bytes = await buildPdf(title, content, opts);
   downloadBlob(`${safeName(title)}.pdf`, new Blob([bytes], { type: "application/pdf" }));
 }
