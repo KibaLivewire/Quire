@@ -1,3 +1,18 @@
+# Quire 1.8.8 — Safer opens
+
+Released 25 September 2026.
+
+- **Opening a link from the page only goes to a normal web address.** A click opens http or https. Other kinds of links are refused the same way the in-app open already was
+- **Links you paste or autolink in the editor stay web or email** — not ftp, tel, and the like
+- **If the local Windows server stops answering with an error, Quire counts that toward starting it again,** the same as a timeout
+- **Windows builds: the test suite actually runs the script tests now.** A couple of symlink checks skip when Windows blocks symlinks
+- **Lint no longer scans the packed release folder**
+- **Small cleanups** in ambient sound and auth parsing
+
+Windows installer: Quire-Setup-1.8.8.exe
+
+---
+
 # Quire 1.8.7 — The whole page
 
 Released 24 September 2026.

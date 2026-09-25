@@ -14,6 +14,9 @@ export default tseslint.config(
       ".vercel/**",
       ".nitro/**",
       "node_modules/**",
+      "release/**",
+      "android/**",
+      "artifacts/**",
       "src/routeTree.gen.ts",
     ],
   },
@@ -40,6 +43,12 @@ export default tseslint.config(
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
       "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
+  {
+    files: ["electron/**/*.cjs"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
     },
   },
   // Disable rules that conflict with Prettier formatting.

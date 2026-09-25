@@ -353,6 +353,7 @@ export const editorExtensions = [
     link: {
       openOnClick: false,
       autolink: true,
+      protocols: ["http", "https", "mailto"],
       HTMLAttributes: {
         rel: "noopener noreferrer",
         class: "quire-link",

@@ -156,7 +156,13 @@ function startHealthWatch() {
     req.on("error", () => {
       if (done || gen !== healthGen) return;
       done = true;
-      healthTimer = setTimeout(ping, 15000);
+      misses += 1;
+      if (misses >= 3 && serverChild && serverChild.exitCode === null && !serverChild.killed) {
+        misses = 0;
+        serverChild.kill();
+        return;
+      }
+      healthTimer = setTimeout(ping, 1000);
     });
   };
   healthTimer = setTimeout(ping, 15000);
@@ -216,7 +222,11 @@ function createWindow(url) {
   win.once("ready-to-show", () => win.show());
   win.loadURL(url);
   win.webContents.setWindowOpenHandler(({ url: next }) => {
-    void shell.openExternal(next);
+    // Match quire:open-external - http(s) only; deny file:/javascript:/etc.
+    const href = String(next || "");
+    if (/^https?:\/\//i.test(href)) {
+      void shell.openExternal(href);
+    }
     return { action: "deny" };
   });
 

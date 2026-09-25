@@ -40,7 +40,7 @@ let muted = false;
 let userVolume = 0.22;
 let meter = false;
 let lastTheme: ThemeId = "leather";
-let slots: [Slot | null, Slot | null] = [null, null];
+const slots: [Slot | null, Slot | null] = [null, null];
 let active = 0;
 let chain: Promise<void> = Promise.resolve();
 
