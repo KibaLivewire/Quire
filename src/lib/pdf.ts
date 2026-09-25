@@ -1,7 +1,7 @@
 
-type PdfImage = { src: string; width: number; height: number; jpeg: Uint8Array };
+type PdfImage = { key: string; src: string; width: number; height: number; jpeg: Uint8Array };
 type PdfPiece = { kind: "lines"; lines: string[] } | { kind: "image"; img: PdfImage } | { kind: "sheet" };
-type PdfXRef = { name: string; src: string };
+type PdfXRef = { name: string; key: string };
 
 function concat(parts: Uint8Array[]) {
   const total = parts.reduce((n, p) => n + p.length, 0);
@@ -41,17 +41,52 @@ function winAnsi(value: string) {
   return out;
 }
 
-async function jpegFromSrc(src: string, grayscale: boolean): Promise<{ jpeg: Uint8Array; width: number; height: number } | null> {
+function readEdit(style: string) {
+  let filter = "";
+  let rotate = 0;
+  let flipH = 1;
+  let flipV = 1;
+  const filterMatch = /filter\s*:\s*([^;]+)/i.exec(style);
+  if (filterMatch) filter = filterMatch[1].trim();
+  const transformMatch = /transform\s*:\s*([^;]+)/i.exec(style);
+  if (transformMatch) {
+    const transform = transformMatch[1];
+    const rot = /rotate\(\s*(-?\d+(?:\.\d+)?)deg\s*\)/i.exec(transform);
+    if (rot) rotate = Number(rot[1]) || 0;
+    const scale = /scale\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/i.exec(transform);
+    if (scale) {
+      flipH = Number(scale[1]) < 0 ? -1 : 1;
+      flipV = Number(scale[2]) < 0 ? -1 : 1;
+    }
+  }
+  const turns = ((rotate % 360) + 360) % 360;
+  return { filter, rotate, flipH, flipV, quarter: turns === 90 || turns === 270 };
+}
+
+async function jpegFromSrc(
+  src: string,
+  grayscale: boolean,
+  editStyle = "",
+): Promise<{ jpeg: Uint8Array; width: number; height: number } | null> {
   if (!src.startsWith("data:image")) return null;
   const img = await loadImage(src);
   const canvas = document.createElement("canvas");
   const max = 1600;
   const scale = Math.min(1, max / Math.max(img.width, img.height));
-  canvas.width = Math.max(1, Math.round(img.width * scale));
-  canvas.height = Math.max(1, Math.round(img.height * scale));
+  const dw = Math.max(1, Math.round(img.width * scale));
+  const dh = Math.max(1, Math.round(img.height * scale));
+  const edit = readEdit(editStyle);
+  canvas.width = edit.quarter ? dh : dw;
+  canvas.height = edit.quarter ? dw : dh;
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  ctx.save();
+  if (edit.filter) ctx.filter = edit.filter;
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((edit.rotate * Math.PI) / 180);
+  ctx.scale(edit.flipH, edit.flipV);
+  ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+  ctx.restore();
   if (grayscale) {
     const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
     for (let i = 0; i < data.data.length; i += 4) {
@@ -96,9 +131,15 @@ function wrapText(text: string, width = 86) {
   return lines;
 }
 
-function flowPieces(html: string, images: Map<string, PdfImage>): PdfPiece[] {
-  const doc = new DOMParser().parseFromString(`<div id="quire-pdf">${html}</div>`, "text/html");
-  const root = doc.getElementById("quire-pdf") ?? doc.body;
+function imageKey(src: string, edit: string) {
+  return `${src}\0${edit}`;
+}
+
+function editOf(node: HTMLElement) {
+  return node.getAttribute("data-edit-style") || "";
+}
+
+function flowPieces(root: HTMLElement, images: Map<string, PdfImage>): PdfPiece[] {
   const pieces: PdfPiece[] = [];
   let buf = "";
   const blocks = new Set(["P", "DIV", "H1", "H2", "H3", "H4", "LI", "TR", "BLOCKQUOTE", "PRE", "SECTION", "UL", "OL", "TABLE"]);
@@ -127,7 +168,7 @@ function flowPieces(html: string, images: Map<string, PdfImage>): PdfPiece[] {
     if (node.tagName === "IMG") {
       flush();
       const src = node.getAttribute("src") || "";
-      const img = images.get(src);
+      const img = images.get(imageKey(src, editOf(node)));
       if (img) pieces.push({ kind: "image", img });
       return;
     }
@@ -153,12 +194,16 @@ export async function buildPdf(
   opts?: { grayscaleImages?: boolean; pageWidth?: number; pageHeight?: number },
 ) {
   const imageBySrc = new Map<string, PdfImage>();
-  const srcs = [...html.matchAll(/<img[^>]+src="([^"]+)"/gi)].map((match) => match[1]);
-  for (const src of srcs) {
-    if (imageBySrc.has(src)) continue;
+  const parsed = new DOMParser().parseFromString(`<div id="quire-pdf">${html}</div>`, "text/html");
+  const root = parsed.getElementById("quire-pdf") ?? parsed.body;
+  for (const node of root.querySelectorAll("img")) {
+    const src = node.getAttribute("src") || "";
+    const edit = editOf(node);
+    const key = imageKey(src, edit);
+    if (!src || imageBySrc.has(key)) continue;
     try {
-      const got = await jpegFromSrc(src, Boolean(opts?.grayscaleImages));
-      if (got) imageBySrc.set(src, { src, ...got });
+      const got = await jpegFromSrc(src, Boolean(opts?.grayscaleImages), edit);
+      if (got) imageBySrc.set(key, { key, src, ...got });
     } catch {
       /* skip a picture that will not decode */
     }
@@ -166,7 +211,7 @@ export async function buildPdf(
 
   const pieces: PdfPiece[] = [];
   if (title.trim()) pieces.push({ kind: "lines", lines: [...wrapText(title.trim()), ""] });
-  pieces.push(...flowPieces(html, imageBySrc));
+  pieces.push(...flowPieces(root, imageBySrc));
 
   const pageW = Math.max(216, Math.round((Number(opts?.pageWidth) > 0 ? Number(opts?.pageWidth) : 8.5) * 72));
   const pageH = Math.max(216, Math.round((Number(opts?.pageHeight) > 0 ? Number(opts?.pageHeight) : 11) * 72));
@@ -181,7 +226,8 @@ export async function buildPdf(
   const xobjects: PdfXRef[] = [];
   let imageSerial = 0;
 
-  function flush() {
+  function flush(force = false) {
+    if (!force && !commands) return;
     pages.push({ commands, xobjects: [...xobjects] });
     commands = "";
     used = 0;
@@ -210,19 +256,26 @@ export async function buildPdf(
     const drawH = natH * fit;
     ensure(drawH + 16);
     const name = `Im${(imageSerial += 1)}`;
-    xobjects.push({ name, src: img.src });
+    xobjects.push({ name, key: img.key });
     const y = pageH - margin - used - drawH;
     commands += `q ${drawW.toFixed(2)} 0 0 ${drawH.toFixed(2)} ${margin} ${Math.max(margin, y).toFixed(2)} cm /${name} Do Q\n`;
     used += drawH + 12;
   }
 
+  let afterSheet = false;
   for (const piece of pieces) {
     if (piece.kind === "sheet") {
-      if (commands) flush();
-    } else if (piece.kind === "lines") drawLines(piece.lines);
-    else drawImage(piece.img);
+      flush(true);
+      afterSheet = true;
+    } else if (piece.kind === "lines") {
+      afterSheet = false;
+      drawLines(piece.lines);
+    } else {
+      afterSheet = false;
+      drawImage(piece.img);
+    }
   }
-  if (commands) flush();
+  if (commands || afterSheet) flush(true);
   if (!pages.length) pages.push({ commands: "BT /F1 12 Tf 72 720 Td ( ) Tj ET\n", xobjects: [] });
 
   const objs: (string | Uint8Array)[] = ["", "<< /Type /Catalog /Pages 2 0 R >>", ""];
@@ -232,11 +285,11 @@ export async function buildPdf(
   const srcToId = new Map<string, number>();
   for (const page of pages) {
     for (const ref of page.xobjects) {
-      if (srcToId.has(ref.src)) continue;
-      const img = imageBySrc.get(ref.src);
+      if (srcToId.has(ref.key)) continue;
+      const img = imageBySrc.get(ref.key);
       if (!img) continue;
       const id = objs.length;
-      srcToId.set(ref.src, id);
+      srcToId.set(ref.key, id);
       const header = str(
         `<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.jpeg.length} >>\nstream\n`,
       );
@@ -251,7 +304,7 @@ export async function buildPdf(
     objs.push(concat([str(`<< /Length ${body.length} >>\nstream\n`), body, str("endstream")]));
     const xobj = page.xobjects
       .map((ref) => {
-        const id = srcToId.get(ref.src);
+        const id = srcToId.get(ref.key);
         return id ? `/${ref.name} ${id} 0 R` : "";
       })
       .filter(Boolean)

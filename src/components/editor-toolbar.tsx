@@ -244,14 +244,18 @@ export function EditorToolbar({
     }
     try {
       await insertImages(editor, images);
-    } catch {
-      toast.error("Could not add that image.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not add that image.");
     }
   }
 
   function applyLink(href: string) {
     const url = href.trim();
     if (!url) return;
+    if (!/^(https?:\/\/|mailto:)/i.test(url) && !(url.startsWith("#") && !url.startsWith("#//"))) {
+      toast.error("Use a web address or an email link.");
+      return;
+    }
     if (ui.image) {
       editor.chain().focus().updateAttributes("image", { href: url }).run();
     } else {
@@ -802,7 +806,7 @@ export function EditorToolbar({
             if (isNativeApp()) {
               void pickNativeImages()
                 .then((files) => onPickImages(files))
-                .catch(() => toast.error("Could not add that image."));
+                .catch((error) => toast.error(error instanceof Error ? error.message : "Could not add that image."));
               return;
             }
             fileRef.current?.click();

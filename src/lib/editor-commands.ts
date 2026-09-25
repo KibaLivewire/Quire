@@ -16,10 +16,20 @@ export type EditorCommand =
 type Handler = (command: EditorCommand) => boolean;
 
 const handlers = new Set<Handler>();
+const editorListeners = new Set<() => void>();
 let activeEditor: Editor | null = null;
 
 export function setActiveEditor(editor: Editor | null) {
   activeEditor = editor;
+  if (!editor) return;
+  for (const fn of editorListeners) fn();
+}
+
+export function onActiveEditor(fn: () => void) {
+  editorListeners.add(fn);
+  return () => {
+    editorListeners.delete(fn);
+  };
 }
 
 export function getActiveEditor() {

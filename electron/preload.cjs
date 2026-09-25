@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld("quire", {
     ipcRenderer.on("quire:flush", listener);
     return () => ipcRenderer.removeListener("quire:flush", listener);
   },
-  notifyFlushDone: () => ipcRenderer.send("quire:flush-done"),
+  notifyFlushDone: (ok) => ipcRenderer.send("quire:flush-done", ok !== false),
   addSpellWord: (word) => ipcRenderer.invoke("quire:add-spell-word", word),
   removeSpellWord: (word) => ipcRenderer.invoke("quire:remove-spell-word", word),
 });

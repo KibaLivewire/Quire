@@ -3,6 +3,7 @@ import type { Editor } from "@tiptap/react";
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.84;
 const PASSTHROUGH_BYTES = 220_000;
+const GIF_MAX_BYTES = 8_000_000;
 const ALLOWED = /image\/(jpeg|jpg|png|gif|webp)/i;
 const ALLOWED_EXT = /\.(jpe?g|png|gif|webp)$/i;
 
@@ -28,6 +29,12 @@ export async function fileToDataUrl(file: File): Promise<string> {
     throw new Error("Use a JPEG, PNG, GIF, or WebP image.");
   }
   const type = file.type || guessType(file.name);
+  if (/gif/i.test(type)) {
+    if (file.size > GIF_MAX_BYTES) {
+      throw new Error("That GIF is too large to keep in motion. Use one under 8 MB.");
+    }
+    return readAsDataUrl(file);
+  }
   if (file.size <= PASSTHROUGH_BYTES) return readAsDataUrl(file);
 
   const bitmap = await createImageBitmap(file);
@@ -44,7 +51,16 @@ export async function fileToDataUrl(file: File): Promise<string> {
   }
   ctx.drawImage(bitmap, 0, 0, width, height);
   bitmap.close();
-  const keepPng = /png/i.test(type);
+  let keepPng = false;
+  if (/png|webp/i.test(type)) {
+    const pixels = ctx.getImageData(0, 0, width, height).data;
+    for (let i = 3; i < pixels.length; i += 4) {
+      if (pixels[i] < 255) {
+        keepPng = true;
+        break;
+      }
+    }
+  }
   return keepPng ? canvas.toDataURL("image/png") : canvas.toDataURL("image/jpeg", JPEG_QUALITY);
 }
 

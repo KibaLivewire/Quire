@@ -55,7 +55,10 @@ function findFitCut(editor: Editor, maxHeight: number): number {
   const doc = editor.state.doc;
   const end = doc.content.size;
   if (end <= 1) return -1;
-  const limit = editor.view.dom.getBoundingClientRect().top + maxHeight;
+  const dom = editor.view.dom;
+  const rect = dom.getBoundingClientRect();
+  const scale = dom.offsetHeight > 0 ? rect.height / dom.offsetHeight : 1;
+  const limit = rect.top + maxHeight * (Number.isFinite(scale) && scale > 0 ? scale : 1);
   if (!fits(editor, Math.min(1, end), limit)) return -1;
   let lo = 1;
   let hi = end;

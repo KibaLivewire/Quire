@@ -7,14 +7,27 @@ export type GrammarIssue = {
   replacements: string[];
 };
 
+type PlainNode = {
+  isText?: boolean;
+  text?: string;
+  isBlock?: boolean;
+  isLeaf?: boolean;
+  isTextblock?: boolean;
+  type?: { name?: string };
+};
+
 type PlainDoc = {
   content: { size: number };
   nodesBetween: (
     from: number,
     to: number,
-    fn: (node: { isText?: boolean; text?: string; isBlock?: boolean; isLeaf?: boolean; isTextblock?: boolean }, pos: number) => boolean | void,
+    fn: (node: PlainNode, pos: number) => boolean | void,
   ) => void;
 };
+
+function isHardBreak(node: PlainNode) {
+  return node.type?.name === "hardBreak";
+}
 
 /** Map a LanguageTool offset (editor.getText, blocks joined by \\n\\n) back onto the document. */
 export function plainRange(doc: PlainDoc, fromPlain: number, toPlain: number, blockSeparator = "\n\n") {
@@ -35,6 +48,13 @@ export function plainRange(doc: PlainDoc, fromPlain: number, toPlain: number, bl
     if (node.isText && node.text) {
       const start = textPos;
       const end = textPos + node.text.length;
+      if (from < 0 && fromPlain >= start && fromPlain <= end) from = pos + (fromPlain - start);
+      if (to < 0 && toPlain >= start && toPlain <= end) to = pos + (toPlain - start);
+      textPos = end;
+    }
+    if (isHardBreak(node)) {
+      const start = textPos;
+      const end = textPos + 1;
       if (from < 0 && fromPlain >= start && fromPlain <= end) from = pos + (fromPlain - start);
       if (to < 0 && toPlain >= start && toPlain <= end) to = pos + (toPlain - start);
       textPos = end;
@@ -64,6 +84,17 @@ export function plainOffset(doc: PlainDoc, target: number, blockSeparator = "\n\
         return false;
       }
       textPos += node.text.length;
+    }
+    if (isHardBreak(node)) {
+      if (target <= pos) {
+        found = textPos;
+        return false;
+      }
+      if (target <= pos + 1) {
+        found = textPos + (target - pos);
+        return false;
+      }
+      textPos += 1;
     }
   });
   return found >= 0 ? found : textPos;

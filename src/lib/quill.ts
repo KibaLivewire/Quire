@@ -196,7 +196,7 @@ export async function askQuill(prompt: string, selection: string, dictionary?: s
     return { reply: `${syn}${near}`.trim() };
   }
 
-  if (asks(lower, /\b(define|definition)\b|sense of|what is|look up|\bmean\b|\bmeans\b/)) {
+  if (asks(lower, /\b(define|definition)\b|sense of|what is|look up/)) {
     const word = (source || ask).split(/\s+/).filter((w) => !/^(mean|means|define|definition|sense|what|is|look|up|of|a|the)$/i.test(w)).pop() || source;
     const clean = word.replace(/[^a-zA-Z'-]/g, "");
     const entry = await define(clean);

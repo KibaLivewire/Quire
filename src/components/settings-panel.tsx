@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { TrashPanel } from "@/components/trash-panel";
 import { buildBackup, readBackupFile, saveBackup } from "@/lib/backup";
 import { checkForUpdates, appVersion, isNewerVersion } from "@/lib/desktop";
+import { flushPendingEdits } from "@/lib/pending-save";
 import { parsePlugin, pluginTemplate } from "@/lib/plugins";
 import { allThemes } from "@/lib/theme";
 import { type CustomTheme } from "@/lib/types";
@@ -349,6 +350,7 @@ export function SettingsPanel({
               variant="outline"
               size="sm"
               onClick={() => {
+                flushPendingEdits();
                 const state = useNotebookStore.getState();
                 void saveBackup(buildBackup(state.notebooks, state.notes, state.prefs)).then(
                   () => toast("Backup saved"),

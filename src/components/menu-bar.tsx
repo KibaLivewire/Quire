@@ -94,6 +94,7 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       }
       if (key === "p") {
         event.preventDefault();
+        flushPendingEdits();
         openPrintPreview();
       }
       if (key === "f") {
@@ -136,6 +137,7 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   }
 
   async function onExport(kind: "txt" | "rtf" | "doc" | "docx" | "pdf" | "html") {
+    flushPendingEdits();
     const page = needPage();
     if (!page) return;
     const state = useNotebookStore.getState();
@@ -225,12 +227,16 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <DropdownMenuItem onSelect={() => void onExport("html")}>.HTML — Web page</DropdownMenuItem>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
-          <DropdownMenuItem onSelect={() => openPrintPreview()}>
+          <DropdownMenuItem onSelect={() => {
+            flushPendingEdits();
+            openPrintPreview();
+          }}>
             Print preview… <Shortcut>Ctrl+P</Shortcut>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={() => {
+              flushPendingEdits();
               const state = useNotebookStore.getState();
               void saveBackup(buildBackup(state.notebooks, state.notes, state.prefs)).then(
                 () => toast("Backup saved"),
@@ -242,6 +248,7 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
+              flushPendingEdits();
               const state = useNotebookStore.getState();
               void saveBackup(buildBackup(state.notebooks, state.notes, state.prefs)).then(
                 () => toast("Copy saved. Restore it on the other device with File → Restore desk. Nothing is sent through the internet."),

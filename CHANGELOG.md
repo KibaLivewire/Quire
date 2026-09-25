@@ -1,3 +1,27 @@
+# Quire 1.8.7 — The whole page
+
+Released 24 September 2026.
+
+- **A full sheet turns when the desk is scaled.** The cut now uses the same size you see, so a fitted window no longer scrolls inside the page, and zooming in does not turn too early
+- **Export, print, and backup keep the last keystrokes.** File, the page menu, and Desk write the page that is on screen, not the one from half a second ago. Ctrl+S already did
+- **Restore desk replaces the open page.** The page you were typing is not written back over the restored copy
+- **Remove on a blank sheet checks again.** Words you just typed are not flushed and then deleted
+- **Closing waits, and asks if the save did not finish.** A failed save, or one that is still going after a longer wait, offers to keep Quire open
+- **GIFs stay in motion,** including ones larger than a small photo. A GIF over 8 MB is refused instead of frozen. A transparent WebP or PNG keeps its clear background
+- **Find and Replace cover every sheet** of the page. What you type is text, so `<` and `&` are not turned into markup
+- **Mute stops the level meter.** Ctrl+M and the speaker quiet the room and the meter. Turning the room sound off still does both
+- **“I mean …” is not a definition.** Define, “what is,” and “look up” still are
+- **A line break inside a paragraph** no longer shifts a grammar fix onto the wrong words
+- **Word export keeps tables** as tables. Pictures are still left out
+- **PDF keeps an empty sheet,** and a filter or rotation on a GIF shows on that page. Letters outside Latin-1 can still appear as a question mark
+- **Definitions read as words.** Ampersands and quotes are not left as dictionary codes
+- **Links must be a web address or an email.** A `javascript:` link is refused. An imported page does not fetch a remote image hidden in a style
+- **If the Windows server stops answering after startup, Quire starts it again.** A crash before the first page is ready is tried once more. The passcode is still a screen gate. It does not encrypt the page
+
+Windows installer: Quire-Setup-1.8.7.exe
+
+---
+
 # Quire 1.8.6 — The last line stays
 
 Released 24 September 2026.

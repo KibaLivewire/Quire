@@ -1,3 +1,10 @@
+function isSafeLink(value: string): boolean {
+  const href = value.trim();
+  if (!href) return false;
+  if (href.startsWith("#") && !href.startsWith("#//") && !/^#javascript:/i.test(href)) return true;
+  return /^(https?:|mailto:)/i.test(href);
+}
+
 /** Drop scripts and event handlers. Formatting, pictures, and Quire marks stay. */
 export function sanitizeHtml(html: string): string {
   if (!html || typeof document === "undefined") return html;
@@ -12,8 +19,22 @@ export function sanitizeHtml(html: string): string {
         el.removeAttribute(attr.name);
         continue;
       }
-      if ((name === "href" || name === "src" || name === "xlink:href") && /^(javascript|vbscript|data:text)/i.test(value)) {
-        el.removeAttribute(attr.name);
+      if (name === "href" || name === "xlink:href") {
+        if (!isSafeLink(value)) el.removeAttribute(attr.name);
+        continue;
+      }
+      if (name === "src") {
+        if (/^(javascript|vbscript):/i.test(value) || (/^data:/i.test(value) && !/^data:image\//i.test(value))) {
+          el.removeAttribute(attr.name);
+        }
+        continue;
+      }
+      if (name === "style") {
+        const cleaned = value.replace(/url\(\s*(['"]?)(?:https?:|\/\/)[^)]*\)/gi, "none");
+        if (cleaned !== value) {
+          if (cleaned.replace(/none/gi, "").trim()) el.setAttribute(attr.name, cleaned);
+          else el.removeAttribute(attr.name);
+        }
       }
     }
   });

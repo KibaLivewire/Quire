@@ -72,12 +72,22 @@ function takeWords(rows: unknown, max = 10): string[] {
 }
 
 function stripMarkup(value: string): string {
+  const amp = String.fromCharCode(38);
+  const named = (entity: string) => new RegExp(amp + entity + ";", "gi");
   return value
     .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&/gi, "&")
-    .replace(/"/gi, '"')
-    .replace(/&#39;/gi, "'")
+    .replace(named("nbsp"), " ")
+    .replace(named("lt"), "<")
+    .replace(named("gt"), ">")
+    .replace(named("quot"), '"')
+    .replace(named("apos"), "'")
+    .replace(new RegExp(amp + "#39;", "gi"), "'")
+    .replace(new RegExp(amp + "#x27;", "gi"), "'")
+    .replace(new RegExp(amp + "#(\\d+);", "gi"), (all, digits: string) => {
+      const code = Number(digits);
+      return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : all;
+    })
+    .replace(named("amp"), amp)
     .replace(/\s+/g, " ")
     .trim();
 }

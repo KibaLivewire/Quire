@@ -9,7 +9,7 @@ type QuireBridge = {
   readPrefs?: () => Promise<Partial<Prefs> | null>;
   writePrefs?: (prefs: Prefs | Partial<Prefs>) => Promise<boolean>;
   onFlushRequest?: (handler: () => void | Promise<void>) => () => void;
-  notifyFlushDone?: () => void;
+  notifyFlushDone?: (ok?: boolean) => void;
   addSpellWord?: (word: string) => Promise<boolean>;
   removeSpellWord?: (word: string) => Promise<boolean>;
 };
@@ -104,7 +104,7 @@ export function onDesktopFlushRequest(handler: () => void | Promise<void>): () =
   return window.quire.onFlushRequest(handler);
 }
 
-export function notifyDesktopFlushDone(): void {
+export function notifyDesktopFlushDone(ok = true): void {
   if (typeof window === "undefined" || !window.quire?.notifyFlushDone) return;
-  window.quire.notifyFlushDone();
+  window.quire.notifyFlushDone(ok);
 }

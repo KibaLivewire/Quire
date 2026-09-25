@@ -97,7 +97,7 @@ function ensureGraph() {
   master.gain.value = muted || userVolume <= 0 ? 0 : userVolume;
   analyser.connect(master);
   master.connect(ctx.destination);
-  startMeter();
+  syncMeter();
 }
 
 function startMeter() {
@@ -121,6 +121,14 @@ function stopMeter() {
   cancelAnimationFrame(raf);
   raf = 0;
   energy = 0;
+}
+
+function syncMeter() {
+  if (muted || userVolume <= 0 || !analyser) {
+    stopMeter();
+    return;
+  }
+  startMeter();
 }
 
 function applyMaster() {
@@ -271,7 +279,7 @@ async function startAmbientInner(volume: number, theme?: string) {
   if (userVolume <= 0) muted = true;
   lastTheme = ritualThemeId(theme ?? lastTheme);
   ensureGraph();
-  startMeter();
+  syncMeter();
   let src = ambientSrcForTheme(lastTheme);
   if (src === "generated:rain") src = await rainAmbientUrl();
   await switchTo(src);
@@ -291,6 +299,7 @@ export function setAmbientVolume(volume: number) {
   if (userVolume <= 0) muted = true;
   if (!currentSlot()) ensureGraph();
   applyMaster();
+  syncMeter();
   if (currentSlot() && !currentSlot()!.gain) {
     currentSlot()!.el.volume = muted ? 0 : userVolume;
   }
@@ -300,12 +309,14 @@ export function setAmbientVolume(volume: number) {
 export function setAmbientMuted(next: boolean) {
   muted = next;
   applyMaster();
+  syncMeter();
   emit();
 }
 
 export function toggleAmbientMute() {
   muted = !muted;
   applyMaster();
+  syncMeter();
   emit();
   return muted;
 }

@@ -128,7 +128,7 @@ export function AppShell() {
     document.addEventListener("visibilitychange", onVisibility);
     const stopFlushListener = onDesktopFlushRequest(async () => {
       const ok = await flushPersist();
-      if (ok) notifyDesktopFlushDone();
+      notifyDesktopFlushDone(ok);
     });
 
     return () => {

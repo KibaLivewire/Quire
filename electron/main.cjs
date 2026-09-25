@@ -14,8 +14,11 @@ let serverChild = null;
 let serverFailed = false;
 let serverLog = "";
 let serverReady = false;
+let everReady = false;
 let quitting = false;
 let serverRestarts = 0;
+let healthTimer = null;
+let healthGen = 0;
 
 function prefsPath() {
   return path.join(app.getPath("userData"), "quire-prefs.json");
@@ -91,8 +94,12 @@ function attachServer(child) {
     console.error("Failed to start Quire server:", err);
   });
   child.on("exit", () => {
+    if (serverChild !== child) return;
+    stopHealthWatch();
     serverFailed = true;
-    if (quitting || !serverReady) return;
+    const wasReady = serverReady;
+    serverReady = false;
+    if (quitting || !wasReady) return;
     if (serverRestarts >= 3) {
       dialog.showErrorBox("Quire", serverDownMessage());
       return;
@@ -110,6 +117,49 @@ function attachServer(child) {
         });
     }, 400);
   });
+}
+
+function stopHealthWatch() {
+  healthGen += 1;
+  if (healthTimer) clearTimeout(healthTimer);
+  healthTimer = null;
+}
+
+function startHealthWatch() {
+  stopHealthWatch();
+  const gen = healthGen;
+  let misses = 0;
+  const ping = () => {
+    if (gen !== healthGen || quitting || !serverReady) return;
+    const child = serverChild;
+    if (!child || child.exitCode !== null) return;
+    let done = false;
+    const req = http.get(PROD_URL, (res) => {
+      res.resume();
+      if (done || gen !== healthGen) return;
+      done = true;
+      misses = 0;
+      healthTimer = setTimeout(ping, 15000);
+    });
+    req.setTimeout(15000, () => {
+      if (done || gen !== healthGen) return;
+      done = true;
+      misses += 1;
+      req.destroy();
+      if (misses >= 3 && serverChild && serverChild.exitCode === null && !serverChild.killed) {
+        misses = 0;
+        serverChild.kill();
+        return;
+      }
+      healthTimer = setTimeout(ping, 1000);
+    });
+    req.on("error", () => {
+      if (done || gen !== healthGen) return;
+      done = true;
+      healthTimer = setTimeout(ping, 15000);
+    });
+  };
+  healthTimer = setTimeout(ping, 15000);
 }
 
 function startPackagedServer() {
@@ -134,7 +184,9 @@ function startPackagedServer() {
   attachServer(serverChild);
   return waitForUrl(PROD_URL, 60000).then(() => {
     serverReady = true;
+    everReady = true;
     serverRestarts = 0;
+    startHealthWatch();
   });
 }
 
@@ -181,6 +233,7 @@ function createWindow(url) {
     }
     flushing = true;
     let ask = () => {};
+    let settled = false;
     const finish = () => {
       clearTimeout(timer);
       wc.removeListener("did-finish-load", ask);
@@ -188,8 +241,43 @@ function createWindow(url) {
       flushing = false;
       if (!win.isDestroyed()) win.close();
     };
-    const timer = setTimeout(finish, 8000);
-    const onDone = () => {
+    const giveUp = (message) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      ipcMain.removeListener("quire:flush-done", onDone);
+      wc.removeListener("did-finish-load", ask);
+      dialog
+        .showMessageBox(win, {
+          type: "warning",
+          title: "Quire",
+          message,
+          buttons: ["Keep Quire open", "Close anyway"],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+        })
+        .then((result) => {
+          if (win.isDestroyed()) return;
+          if (result.response === 1) finish();
+          else flushing = false;
+        })
+        .catch(() => {
+          flushing = false;
+        });
+    };
+    const timer = setTimeout(
+      () => giveUp("The page did not finish saving. A large desk can take a moment. Close anyway?"),
+      20000,
+    );
+    const onDone = (_event, ok) => {
+      if (settled) return;
+      if (ok === false) {
+        giveUp("The page did not finish saving. Close anyway?");
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
       ipcMain.removeListener("quire:flush-done", onDone);
       finish();
     };
@@ -198,8 +286,7 @@ function createWindow(url) {
       try {
         wc.send("quire:flush");
       } catch {
-        ipcMain.removeListener("quire:flush-done", onDone);
-        finish();
+        giveUp("The page did not finish saving. Close anyway?");
       }
     };
     if (wc.isLoadingMainFrame()) wc.once("did-finish-load", ask);
@@ -319,7 +406,24 @@ async function boot() {
   wireIpc();
   let url = DEV_URL;
   if (app.isPackaged) {
-    await startPackagedServer();
+    try {
+      await startPackagedServer();
+    } catch (err) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (serverChild && serverChild.exitCode === null) {
+        const doomed = serverChild;
+        serverChild = null;
+        serverReady = false;
+        try {
+          doomed.kill();
+        } catch {
+          /* already gone */
+        }
+      }
+      serverFailed = false;
+      if (everReady) throw err;
+      await startPackagedServer();
+    }
     url = PROD_URL;
   }
   createWindow(url);
@@ -350,6 +454,7 @@ if (!gotLock) {
   app.on("window-all-closed", () => app.quit());
   app.on("before-quit", () => {
     quitting = true;
+    stopHealthWatch();
     if (serverChild && !serverChild.killed) serverChild.kill();
   });
 }

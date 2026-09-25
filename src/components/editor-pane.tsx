@@ -50,7 +50,8 @@ import { notePages } from "@/lib/pages";
 import { openPrintPreview } from "@/lib/print";
 import { openRecipeChooser } from "@/lib/recipe-chooser";
 import { useNotebookStore, flushNotebookPersist } from "@/lib/store";
-import { registerPendingCancel, registerPendingFlush } from "@/lib/pending-save";
+import { registerPendingCancel, registerPendingFlush, flushPendingEdits } from "@/lib/pending-save";
+import { registerPageJump } from "@/lib/find";
 import { cn, debounce, plainText, wordCount } from "@/lib/utils";
 
 export function EditorPane({
@@ -66,6 +67,7 @@ export function EditorPane({
   const notebooks = useNotebookStore((s) => s.notebooks);
   const activeNoteId = useNotebookStore((s) => s.activeNoteId);
   const focusMode = useNotebookStore((s) => s.focusMode);
+  const deskRevision = useNotebookStore((s) => s.deskRevision);
   const setFocusMode = useNotebookStore((s) => s.setFocusMode);
   const prefs = useNotebookStore((s) => s.prefs);
   const setPrefs = useNotebookStore((s) => s.setPrefs);
@@ -166,6 +168,8 @@ export function EditorPane({
     [savePage],
   );
 
+  useEffect(() => registerPageJump(changePage), [changePage]);
+
   useEffect(() => () => {
     save.flush();
     savePage.flush();
@@ -177,13 +181,25 @@ export function EditorPane({
   }), [save, savePage]);
 
   useEffect(() => registerPendingCancel(() => {
+    save.cancel();
     savePage.cancel();
-  }), [savePage]);
+  }), [save, savePage]);
 
   const allHtml = note ? notePages(note).join("\n") : "";
   const words = wordCount(allHtml);
   const chars = plainText(allHtml).length;
   const zoomPct = Math.round(prefs.zoom * 100);
+
+  function freshExport() {
+    flushPendingEdits();
+    const live = useNotebookStore.getState().notes.find((item) => item.id === note?.id) ?? note;
+    const pages = live ? notePages(live) : [];
+    return {
+      title: live?.title || title || "Untitled",
+      html: pages.join("\n"),
+      pdf: pages.join("\n<div data-quire-sheet></div>\n"),
+    };
+  }
 
   function unlessLocked(run: () => void) {
     if (gate) {
@@ -216,7 +232,7 @@ export function EditorPane({
         </>
       ) : (
         <>
-      <FindBar />
+      <FindBar noteId={note.id} pageIndex={pageIndex} />
       <header className="flex items-center gap-1 border-b border-rule/80 bg-paper-raised/80 px-2 py-1.5">
         {onBack ? (
           <Button variant="ghost" size="icon" className="md:hidden" aria-label="Back to pages" data-mobile-back onClick={onBack}>
@@ -313,35 +329,41 @@ export function EditorPane({
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportHtml(title || "Untitled", allHtml))}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportHtml(freshExport().title, freshExport().html))}>
               <Download className="size-4" />
               Export HTML
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportText(title || "Untitled", allHtml))}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportText(freshExport().title, freshExport().html))}>
               <FileText className="size-4" />
               Export .TXT
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportRtf(title || "Untitled", allHtml))}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportRtf(freshExport().title, freshExport().html))}>
               <FileText className="size-4" />
               Export .RTF
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportDoc(title || "Untitled", allHtml))}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportDoc(freshExport().title, freshExport().html))}>
               <FileText className="size-4" />
               Export .DOC
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => void exportDocx(title || "Untitled", allHtml))}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => void exportDocx(freshExport().title, freshExport().html))}>
               <FileText className="size-4" />
               Export .DOCX
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => void exportPdf(title || "Untitled", notePages(note).join("\n<div data-quire-sheet></div>\n"), { pageWidth: prefs.pageWidth, pageHeight: prefs.pageHeight }))}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => {
+              const fresh = freshExport();
+              void exportPdf(fresh.title, fresh.pdf, { pageWidth: prefs.pageWidth, pageHeight: prefs.pageHeight });
+            })}>
               <FileText className="size-4" />
               Export .PDF
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportMarkdown(title || "Untitled", allHtml))}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => exportMarkdown(freshExport().title, freshExport().html))}>
               <Download className="size-4" />
               Export Markdown
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => openPrintPreview())}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => {
+              flushPendingEdits();
+              openPrintPreview();
+            })}>
               <Printer className="size-4" />
               Print preview
             </DropdownMenuItem>
@@ -359,7 +381,7 @@ export function EditorPane({
         <LockOverlay gate={gate} />
       ) : (
       <RichEditor
-        key={`${note.id}:${pageIndex}`}
+        key={`${note.id}:${pageIndex}:${deskRevision}`}
         note={note}
         title={title}
         pageIndex={pageIndex}

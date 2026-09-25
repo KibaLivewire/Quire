@@ -74,8 +74,8 @@ export function RichEditor({
         const files = collectImageFiles(event.clipboardData?.files);
         if (!files.length || !editorRef.current) return false;
         event.preventDefault();
-        void insertImages(editorRef.current, files).catch(() =>
-          toast.error("Could not paste that image."),
+        void insertImages(editorRef.current, files).catch((error) =>
+          toast.error(error instanceof Error ? error.message : "Could not paste that image."),
         );
         return true;
       },
@@ -84,8 +84,8 @@ export function RichEditor({
         const files = collectImageFiles(event.dataTransfer?.files);
         if (!files.length || !editorRef.current) return false;
         event.preventDefault();
-        void insertImages(editorRef.current, files).catch(() =>
-          toast.error("Could not add that image."),
+        void insertImages(editorRef.current, files).catch((error) =>
+          toast.error(error instanceof Error ? error.message : "Could not add that image."),
         );
         return true;
       },
@@ -467,6 +467,7 @@ export function RichEditor({
                   flushPendingEdits();
                   const live = useNotebookStore.getState().notes.find((item) => item.id === note.id);
                   const livePages = live ? notePages(live) : pagesRef.current;
+                  if (!isPageEmpty(livePages[safeIndex] || "")) return;
                   const nextPages = livePages.filter((_, i) => i !== safeIndex);
                   setNotePages(note.id, nextPages.length ? nextPages : [""], { removeAt: safeIndex });
                   onPageIndexChange(Math.max(0, safeIndex - 1));

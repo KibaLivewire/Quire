@@ -10,7 +10,7 @@ import { descendantIds, isAlive, isDescendant } from "./folders";
 import { WELCOME_VERSION } from "./welcome";
 import { rememberBoot } from "./boot-peek";
 import { readDesktopPrefs, writeDesktopPrefs } from "./desktop";
-import { flushPendingEdits } from "./pending-save";
+import { cancelPendingEdits, flushPendingEdits } from "./pending-save";
 
 const DB_NAME = "quire";
 const STORE_NAME = "kv";
@@ -45,6 +45,7 @@ export type NotebookState = {
   prefs: Prefs;
   session: Session;
   unlockedIds: string[];
+  deskRevision: number;
   completeHydration: () => void;
   setFocusMode: (value: boolean) => void;
   setQuillOpen: (value: boolean) => void;
@@ -284,6 +285,7 @@ export const useNotebookStore = create<NotebookState>()(
       quillOpen: false,
       pageMapOpen: false,
       unlockedIds: [],
+      deskRevision: 0,
       prefs: { ...DEFAULT_PREFS },
       session: { ...DEFAULT_SESSION },
 
@@ -803,6 +805,7 @@ export const useNotebookStore = create<NotebookState>()(
       },
 
       replaceDesk: (payload) => {
+        cancelPendingEdits();
         set({
           notebooks: payload.notebooks.map(migrateNotebook),
           notes: payload.notes.map(migrateNote),
@@ -811,6 +814,7 @@ export const useNotebookStore = create<NotebookState>()(
           activeNoteId: payload.notes.find(isAlive)?.id ?? null,
           session: { ...DEFAULT_SESSION },
           unlockedIds: [],
+          deskRevision: get().deskRevision + 1,
         });
       },
 

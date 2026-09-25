@@ -151,22 +151,93 @@ function inlineRuns(el: HTMLElement, bold = false, italic = false): string {
   return out;
 }
 
+function blockXml(el: HTMLElement): string {
+  const runs = inlineRuns(el);
+  if (!runs.trim()) return "";
+  const bullet = el.tagName === "LI" ? `<w:r><w:t xml:space="preserve">${xmlEscape("• ")}</w:t></w:r>` : "";
+  return `<w:p>${bullet}${runs}</w:p>`;
+}
+
+function cellBody(cell: HTMLElement): string {
+  const paras = [...cell.children].filter((el) => /^(P|H1|H2|H3|LI|BLOCKQUOTE|DIV)$/.test(el.tagName));
+  if (!paras.length) {
+    const runs = inlineRuns(cell);
+    return runs.trim() ? `<w:p>${runs}</w:p>` : "<w:p/>";
+  }
+  const bits = paras
+    .map((el) => {
+      const node = el as HTMLElement;
+      if (node.tagName === "DIV") {
+        const runs = inlineRuns(node);
+        return runs.trim() ? `<w:p>${runs}</w:p>` : "";
+      }
+      return blockXml(node);
+    })
+    .filter(Boolean);
+  return bits.join("") || "<w:p/>";
+}
+
+function tableXml(table: HTMLElement): string {
+  const rows =
+    table instanceof HTMLTableElement
+      ? [...table.rows]
+      : [...table.querySelectorAll(":scope > tr, :scope > thead > tr, :scope > tbody > tr")];
+  if (!rows.length) return "";
+  const width = Math.max(...rows.map((row) => (row instanceof HTMLTableRowElement ? row.cells.length : 1)), 1);
+  const grid = Array.from({ length: width }, () => `<w:gridCol w:w="${Math.round(9000 / width)}"/>`).join("");
+  const body = rows
+    .map((row) => {
+      const cells =
+        row instanceof HTMLTableRowElement
+          ? [...row.cells]
+          : [...row.children].filter((el) => el.tagName === "TD" || el.tagName === "TH");
+      const tds = cells
+        .map(
+          (cell) =>
+            `<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>${cellBody(cell as HTMLElement)}</w:tc>`,
+        )
+        .join("");
+      return `<w:tr>${tds}</w:tr>`;
+    })
+    .join("");
+  return `<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/></w:tblPr><w:tblGrid>${grid}</w:tblGrid>${body}</w:tbl>`;
+}
+
+function walkBlocks(parent: HTMLElement, out: string[]) {
+  parent.childNodes.forEach((child) => {
+    if (child.nodeType === Node.TEXT_NODE) {
+      if ((child.textContent || "").trim()) {
+        out.push(`<w:p><w:r><w:t xml:space="preserve">${xmlEscape(child.textContent || "")}</w:t></w:r></w:p>`);
+      }
+      return;
+    }
+    if (!(child instanceof HTMLElement)) return;
+    const tag = child.tagName;
+    if (tag === "TABLE") {
+      const xml = tableXml(child);
+      if (xml) out.push(xml);
+      return;
+    }
+    if (/^(P|H1|H2|H3|LI|BLOCKQUOTE)$/.test(tag)) {
+      const xml = blockXml(child);
+      if (xml) out.push(xml);
+      return;
+    }
+    walkBlocks(child, out);
+  });
+}
+
 function htmlToDocxParagraphs(title: string, html: string) {
   const root = document.createElement("div");
   root.innerHTML = html;
   const blocks: string[] = [
     `<w:p><w:r><w:rPr><w:b/><w:sz w:val="36"/></w:rPr><w:t xml:space="preserve">${xmlEscape(title)}</w:t></w:r></w:p>`,
   ];
-  const selector = "p, h1, h2, h3, li, blockquote";
-  const chunks = [...root.querySelectorAll(selector)].filter((el) => !el.parentElement?.closest(selector));
-  const sources = chunks.length ? chunks : [root];
-  sources.forEach((el) => {
-    const htmlEl = el as HTMLElement;
-    const runs = inlineRuns(htmlEl);
-    if (!runs.trim()) return;
-    const bullet = htmlEl.tagName === "LI" ? `<w:r><w:t xml:space="preserve">${xmlEscape("• ")}</w:t></w:r>` : "";
-    blocks.push(`<w:p>${bullet}${runs}</w:p>`);
-  });
+  walkBlocks(root, blocks);
+  if (blocks.length === 1) {
+    const runs = inlineRuns(root);
+    if (runs.trim()) blocks.push(`<w:p>${runs}</w:p>`);
+  }
   return blocks.join("");
 }
 
