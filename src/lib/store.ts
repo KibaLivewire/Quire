@@ -594,8 +594,9 @@ export const useNotebookStore = create<NotebookState>()(
           notes: state.notes.map((item) => {
             if (item.id !== id) return item;
             const pages = [...notePages(item)];
-            while (pages.length <= pageIndex) pages.push("");
-            pages[pageIndex] = html;
+            if (pageIndex < 0 || pageIndex > pages.length) return item;
+            if (pageIndex === pages.length) pages.push(html);
+            else pages[pageIndex] = html;
             return withJoinedContent(item, pages);
           }),
         }));

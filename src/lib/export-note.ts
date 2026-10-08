@@ -145,7 +145,7 @@ export function exportDoc(title: string, content: string) {
 </head>
 <body>
 <h1>${escapeHtml(title)}</h1>
-${content}
+${sanitizeHtml(content)}
 </body>
 </html>`;
   download(`${safeName(title)}.doc`, html, "application/msword");
@@ -159,7 +159,79 @@ function xmlEscape(value: string) {
     .replace(/"/g, "\u0026quot;");
 }
 
-function inlineRuns(el: HTMLElement, bold = false, italic = false): string {
+type DocxImage = {
+  id: string;
+  name: string;
+  ext: "png" | "jpeg";
+  bytes: Uint8Array;
+  cx: number;
+  cy: number;
+};
+
+function dataUrlBytes(src: string): { bytes: Uint8Array; ext: "png" | "jpeg" } | null {
+  const match = /^data:image\/(png|jpe?g);base64,([a-z0-9+/=\s]+)$/i.exec(src.trim());
+  if (!match) return null;
+  const kind = match[1].toLowerCase();
+  const bin = atob(match[2].replace(/\s/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i) & 0xff;
+  return { bytes, ext: kind === "png" ? "png" : "jpeg" };
+}
+
+async function prepareDocxImages(root: HTMLElement): Promise<Map<string, DocxImage>> {
+  const map = new Map<string, DocxImage>();
+  if (typeof document === "undefined") return map;
+  let n = 0;
+  for (const node of root.querySelectorAll("img")) {
+    const src = node.getAttribute("src") || "";
+    if (!src.startsWith("data:image") || map.has(src) || n >= 30) continue;
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error("image"));
+        el.src = src;
+      });
+      const maxEdge = 1600;
+      const scale = Math.min(1, maxEdge / Math.max(img.width, img.height, 1));
+      const width = Math.max(1, Math.round(img.width * scale));
+      const height = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) continue;
+      const jpeg = /^data:image\/jpe?g/i.test(src);
+      if (jpeg) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      const url = canvas.toDataURL(jpeg ? "image/jpeg" : "image/png", 0.9);
+      const parsed = dataUrlBytes(url);
+      if (!parsed) continue;
+      const fit = Math.min(1, 576 / width);
+      n += 1;
+      map.set(src, {
+        id: `rIdImg${n}`,
+        name: `image${n}.${parsed.ext === "jpeg" ? "jpeg" : "png"}`,
+        ext: parsed.ext,
+        bytes: parsed.bytes,
+        cx: Math.round(width * fit * 9525),
+        cy: Math.round(height * fit * 9525),
+      });
+    } catch {
+      /* skip a picture Word cannot embed */
+    }
+  }
+  return map;
+}
+
+function imageDrawing(pic: DocxImage) {
+  return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${pic.cx}" cy="${pic.cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${pic.id.replace(/\D/g, "") || "1"}" name="${xmlEscape(pic.name)}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="${xmlEscape(pic.name)}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${pic.id}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${pic.cx}" cy="${pic.cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+}
+
+function inlineRuns(el: HTMLElement, images: Map<string, DocxImage>, bold = false, italic = false): string {
   let out = "";
   el.childNodes.forEach((node) => {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -171,38 +243,43 @@ function inlineRuns(el: HTMLElement, bold = false, italic = false): string {
     }
     if (!(node instanceof HTMLElement)) return;
     const tag = node.tagName;
-    out += inlineRuns(node, bold || tag === "STRONG" || tag === "B" || /^H[1-3]$/.test(tag), italic || tag === "EM" || tag === "I");
+    if (tag === "IMG") {
+      const pic = images.get(node.getAttribute("src") || "");
+      if (pic) out += imageDrawing(pic);
+      return;
+    }
+    out += inlineRuns(node, images, bold || tag === "STRONG" || tag === "B" || /^H[1-3]$/.test(tag), italic || tag === "EM" || tag === "I");
   });
   return out;
 }
 
-function blockXml(el: HTMLElement): string {
-  const runs = inlineRuns(el);
+function blockXml(el: HTMLElement, images: Map<string, DocxImage>): string {
+  const runs = inlineRuns(el, images);
   if (!runs.trim()) return "";
   const bullet = el.tagName === "LI" ? `<w:r><w:t xml:space="preserve">${xmlEscape("• ")}</w:t></w:r>` : "";
   return `<w:p>${bullet}${runs}</w:p>`;
 }
 
-function cellBody(cell: HTMLElement): string {
+function cellBody(cell: HTMLElement, images: Map<string, DocxImage>): string {
   const paras = [...cell.children].filter((el) => /^(P|H1|H2|H3|LI|BLOCKQUOTE|DIV)$/.test(el.tagName));
   if (!paras.length) {
-    const runs = inlineRuns(cell);
+    const runs = inlineRuns(cell, images);
     return runs.trim() ? `<w:p>${runs}</w:p>` : "<w:p/>";
   }
   const bits = paras
     .map((el) => {
       const node = el as HTMLElement;
       if (node.tagName === "DIV") {
-        const runs = inlineRuns(node);
+        const runs = inlineRuns(node, images);
         return runs.trim() ? `<w:p>${runs}</w:p>` : "";
       }
-      return blockXml(node);
+      return blockXml(node, images);
     })
     .filter(Boolean);
   return bits.join("") || "<w:p/>";
 }
 
-function tableXml(table: HTMLElement): string {
+function tableXml(table: HTMLElement, images: Map<string, DocxImage>): string {
   const rows =
     table instanceof HTMLTableElement
       ? [...table.rows]
@@ -219,7 +296,7 @@ function tableXml(table: HTMLElement): string {
       const tds = cells
         .map(
           (cell) =>
-            `<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>${cellBody(cell as HTMLElement)}</w:tc>`,
+            `<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>${cellBody(cell as HTMLElement, images)}</w:tc>`,
         )
         .join("");
       return `<w:tr>${tds}</w:tr>`;
@@ -228,7 +305,7 @@ function tableXml(table: HTMLElement): string {
   return `<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/></w:tblPr><w:tblGrid>${grid}</w:tblGrid>${body}</w:tbl>`;
 }
 
-function walkBlocks(parent: HTMLElement, out: string[]) {
+function walkBlocks(parent: HTMLElement, out: string[], images: Map<string, DocxImage>) {
   parent.childNodes.forEach((child) => {
     if (child.nodeType === Node.TEXT_NODE) {
       if ((child.textContent || "").trim()) {
@@ -238,29 +315,32 @@ function walkBlocks(parent: HTMLElement, out: string[]) {
     }
     if (!(child instanceof HTMLElement)) return;
     const tag = child.tagName;
+    if (tag === "IMG") {
+      const pic = images.get(child.getAttribute("src") || "");
+      if (pic) out.push(`<w:p>${imageDrawing(pic)}</w:p>`);
+      return;
+    }
     if (tag === "TABLE") {
-      const xml = tableXml(child);
+      const xml = tableXml(child, images);
       if (xml) out.push(xml);
       return;
     }
     if (/^(P|H1|H2|H3|LI|BLOCKQUOTE)$/.test(tag)) {
-      const xml = blockXml(child);
+      const xml = blockXml(child, images);
       if (xml) out.push(xml);
       return;
     }
-    walkBlocks(child, out);
+    walkBlocks(child, out, images);
   });
 }
 
-function htmlToDocxParagraphs(title: string, html: string) {
-  const root = document.createElement("div");
-  root.innerHTML = html;
+function htmlToDocxParagraphs(title: string, root: HTMLElement, images: Map<string, DocxImage>) {
   const blocks: string[] = [
     `<w:p><w:r><w:rPr><w:b/><w:sz w:val="36"/></w:rPr><w:t xml:space="preserve">${xmlEscape(title)}</w:t></w:r></w:p>`,
   ];
-  walkBlocks(root, blocks);
+  walkBlocks(root, blocks, images);
   if (blocks.length === 1) {
-    const runs = inlineRuns(root);
+    const runs = inlineRuns(root, images);
     if (runs.trim()) blocks.push(`<w:p>${runs}</w:p>`);
   }
   return blocks.join("");
@@ -268,16 +348,35 @@ function htmlToDocxParagraphs(title: string, html: string) {
 
 export async function exportDocx(title: string, content: string) {
   const encoder = new TextEncoder();
+  const root = document.createElement("div");
+  root.innerHTML = sanitizeHtml(content);
+  const images = await prepareDocxImages(root);
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${htmlToDocxParagraphs(title, content)}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>`;
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>${htmlToDocxParagraphs(title, root, images)}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>`;
+  const extras = [...images.values()];
+  const defaults = [
+    `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>`,
+    `<Default Extension="xml" ContentType="application/xml"/>`,
+  ];
+  if (extras.some((item) => item.ext === "jpeg")) defaults.push(`<Default Extension="jpeg" ContentType="image/jpeg"/>`);
+  if (extras.some((item) => item.ext === "png")) defaults.push(`<Default Extension="png" ContentType="image/png"/>`);
   const types = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">${defaults.join("")}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
   const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
+  const docRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${extras
+    .map(
+      (item) =>
+        `<Relationship Id="${item.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${item.name}"/>`,
+    )
+    .join("")}</Relationships>`;
   const blob = zipStore([
     { name: "[Content_Types].xml", data: encoder.encode(types) },
     { name: "_rels/.rels", data: encoder.encode(rels) },
+    { name: "word/_rels/document.xml.rels", data: encoder.encode(docRels) },
     { name: "word/document.xml", data: encoder.encode(documentXml) },
+    ...extras.map((item) => ({ name: `word/media/${item.name}`, data: item.bytes })),
   ]);
   downloadBlob(`${safeName(title)}.docx`, blob);
 }
@@ -311,6 +410,7 @@ function walkMd(el: Node): string {
   if (tag === "em" || tag === "i") return `*${inner}*`;
   if (tag === "blockquote") return `\n> ${inner.trim()}\n\n`;
   if (tag === "li") return `- ${inner.trim()}\n`;
+  if (tag === "img") return " [picture] ";
   if (tag === "a") {
     const href = el.getAttribute("href") || "";
     return href ? `[${inner}](${href})` : inner;

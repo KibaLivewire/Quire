@@ -240,6 +240,11 @@ function startHealthWatch() {
       done = true;
       if (res.statusCode !== 200) {
         healthState.misses += 1;
+        if (healthState.misses >= 5 && serverChild && serverChild.exitCode === null && !serverChild.killed) {
+          healthState.misses = 0;
+          serverChild.kill();
+          return;
+        }
         healthTimer = setTimeout(ping, 1000);
         return;
       }

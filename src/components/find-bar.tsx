@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { countHtmlHits, findHits, registerFindBar, replaceHtmlHits, requestPageJump } from "@/lib/find";
+import { countHtmlHits, findHits, nonOverlappingHits, registerFindBar, replaceHtmlHits, requestPageJump } from "@/lib/find";
 import { getActiveEditor, onActiveEditor } from "@/lib/editor-commands";
 import { notePages } from "@/lib/pages";
 import { useNotebookStore } from "@/lib/store";
@@ -131,7 +131,7 @@ export function FindBar({ noteId, pageIndex }: { noteId: string; pageIndex: numb
     const current = pageRef.current;
     const nextText = replacementRef.current;
     const next = pages.map((html, i) => (i === current ? html : replaceHtmlHits(html, needle, nextText)));
-    const liveHits = findHits(editor.state.doc, needle);
+    const liveHits = nonOverlappingHits(findHits(editor.state.doc, needle));
     if (liveHits.length) {
       const safe = escapeHtml(nextText);
       let chain = editor.chain();

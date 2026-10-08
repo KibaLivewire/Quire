@@ -40,12 +40,24 @@ function analyzeVoice(text: string): Voice {
   return { person, formal, avgWords, contractions };
 }
 
+async function fetchJson(url: string, ms = 8000): Promise<unknown> {
+  const control = new AbortController();
+  const timer = setTimeout(() => control.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: control.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function related(word: string) {
   try {
-    const res = await fetch(`https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=8`);
-    if (!res.ok) return [];
-    const data = (await res.json()) as { word?: string }[];
-    return data.map((item) => item.word).filter((item): item is string => Boolean(item));
+    const data = (await fetchJson(`https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=8`)) as { word?: string }[] | null;
+    return (data ?? []).map((item) => item.word).filter((item): item is string => Boolean(item));
   } catch {
     return [];
   }
@@ -53,10 +65,8 @@ async function related(word: string) {
 
 async function relatedIdeas(word: string) {
   try {
-    const res = await fetch(`https://api.datamuse.com/words?ml=${encodeURIComponent(word)}&max=8`);
-    if (!res.ok) return [];
-    const data = (await res.json()) as { word?: string }[];
-    return data.map((item) => item.word).filter((item): item is string => Boolean(item));
+    const data = (await fetchJson(`https://api.datamuse.com/words?ml=${encodeURIComponent(word)}&max=8`)) as { word?: string }[] | null;
+    return (data ?? []).map((item) => item.word).filter((item): item is string => Boolean(item));
   } catch {
     return [];
   }

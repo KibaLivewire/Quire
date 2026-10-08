@@ -117,7 +117,9 @@ export function AppShell() {
     }
 
     function onQuit() {
-      void flushPersist();
+      void flushPersist().finally(() => {
+        window.dispatchEvent(new Event("quire-flush-finished"));
+      });
     }
 
     function onVisibility() {

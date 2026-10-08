@@ -110,6 +110,49 @@ function loadImage(src: string) {
   });
 }
 
+function isWinAnsiCode(code: number) {
+  if (code === 0x2018 || code === 0x2019 || code === 0x201c || code === 0x201d) return true;
+  if (code === 0x2014 || code === 0x2013 || code === 0x2026 || code === 0x2022) return true;
+  if (code >= 32 && code <= 126) return true;
+  if (code >= 160 && code <= 255) return true;
+  if (code === 10 || code === 13 || code === 9) return true;
+  return false;
+}
+
+function needsRaster(value: string) {
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (!isWinAnsiCode(code)) return true;
+  }
+  return false;
+}
+
+async function rasterizeLine(line: string): Promise<{ jpeg: Uint8Array; width: number; height: number } | null> {
+  if (typeof document === "undefined" || !line.trim()) return null;
+  const canvas = document.createElement("canvas");
+  const measure = canvas.getContext("2d");
+  if (!measure) return null;
+  const fontPx = 48;
+  const font = `${fontPx}px Times, "Times New Roman", serif`;
+  measure.font = font;
+  const width = Math.max(8, Math.ceil(measure.measureText(line).width) + 8);
+  const height = Math.ceil(fontPx * 1.35);
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "#1c1917";
+  ctx.font = font;
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(line, 4, fontPx);
+  const blob: Blob = await new Promise((resolve, reject) => {
+    canvas.toBlob((next) => (next ? resolve(next) : reject(new Error("jpeg"))), "image/jpeg", 0.92);
+  });
+  return { jpeg: new Uint8Array(await blob.arrayBuffer()), width, height };
+}
+
 function wrapText(text: string, width = 86) {
   const lines: string[] = [];
   for (const paragraph of text.split(/\n/)) {
@@ -213,6 +256,24 @@ export async function buildPdf(
   if (title.trim()) pieces.push({ kind: "lines", lines: [...wrapText(title.trim()), ""] });
   pieces.push(...flowPieces(root, imageBySrc));
 
+  const raster = new Map<string, PdfImage>();
+  for (const piece of pieces) {
+    if (piece.kind !== "lines") continue;
+    for (const line of piece.lines) {
+      if (!needsRaster(line) || raster.has(line)) continue;
+      try {
+        const got = await rasterizeLine(line);
+        if (got) {
+          const img = { key: `text:${line}`, src: "", ...got };
+          raster.set(line, img);
+          imageBySrc.set(img.key, img);
+        }
+      } catch {
+        /* keep the WinAnsi fallback for this line */
+      }
+    }
+  }
+
   const pageW = Math.max(216, Math.round((Number(opts?.pageWidth) > 0 ? Number(opts?.pageWidth) : 8.5) * 72));
   const pageH = Math.max(216, Math.round((Number(opts?.pageHeight) > 0 ? Number(opts?.pageHeight) : 11) * 72));
   const margin = 72;
@@ -238,8 +299,31 @@ export async function buildPdf(
     if (used + height > usable && commands) flush();
   }
 
+  function drawTextImage(img: PdfImage) {
+    const maxW = pageW - margin * 2;
+    const targetH = 14;
+    const ratio = img.width / Math.max(1, img.height);
+    let drawH = targetH;
+    let drawW = ratio * drawH;
+    if (drawW > maxW) {
+      drawW = maxW;
+      drawH = drawW / ratio;
+    }
+    ensure(Math.max(leading, drawH + 2));
+    const name = `Im${(imageSerial += 1)}`;
+    xobjects.push({ name, key: img.key });
+    const y = pageH - margin - used - drawH;
+    commands += `q ${drawW.toFixed(2)} 0 0 ${drawH.toFixed(2)} ${margin} ${Math.max(margin, y).toFixed(2)} cm /${name} Do Q\n`;
+    used += Math.max(leading, drawH + 2);
+  }
+
   function drawLines(lines: string[]) {
     for (const line of lines) {
+      const painted = raster.get(line);
+      if (painted) {
+        drawTextImage(painted);
+        continue;
+      }
       ensure(leading);
       const y = pageH - margin - used - 12;
       commands += `BT /F1 12 Tf ${margin} ${y.toFixed(2)} Td (${pdfEscape(line)}) Tj ET\n`;

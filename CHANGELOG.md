@@ -1,3 +1,22 @@
+# Quire 1.8.11 — The same answer everywhere
+
+Released 7 October 2026.
+
+- **Find counts the same hits on every sheet.** Overlapping matches, including a character past the old 16-bit line, are reported on the sheet you are on and on the ones you are not. Replace All still steps through without eating the same letters twice.
+- **A sheet number that no longer exists is pulled back.** Opening a page, or removing a sheet, cannot leave Find and the save pointed past the last sheet, and a bad index cannot invent a run of blank sheets.
+- **A Windows server that keeps answering with an error is started again,** the same as one that stops answering. Five bad answers, then a flush, then a restart.
+- **Android Back waits until the notebook is written,** up to a few seconds, instead of leaving on a short timer.
+- **Quill’s word lists give up after 8 seconds,** the same as grammar.
+- **An opened zip cannot expand without a limit.** Inflation stops at the same 40 MB cap as the file itself.
+- **Imported picture styles can only be a filter or a turn.** A saved page cannot use that style to cover the desk. Odd picture addresses (`file:`, `blob:`, and the like) are dropped.
+- **PDF keeps letters it used to turn into a question mark,** by drawing that line. Latin text stays real text.
+- **Word export keeps pictures** that already live on the page. The old Word HTML export is cleaned the same way as the web page export.
+- **The passcode is still a screen gate, not encryption.** Pages and backups stay plaintext.
+
+Windows installer: Quire-Setup-1.8.11.exe
+
+---
+
 # Quire 1.8.10 — The window opens
 
 Released 7 October 2026.

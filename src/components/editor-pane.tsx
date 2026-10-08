@@ -89,6 +89,7 @@ export function EditorPane({
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const lastWords = useRef(0);
+  const pageCountRef = useRef(1);
   const saveGen = useRef(0);
   const settleRef = useRef<(gen: number) => void>(() => {});
   settleRef.current = (gen: number) => {
@@ -106,9 +107,19 @@ export function EditorPane({
     setTitle(note?.title ?? "");
     setSaveState("saved");
     const session = useNotebookStore.getState().session;
-    if (note && session.noteId === note.id) setPageIndex(session.pageIndex || 0);
-    else setPageIndex(0);
+    const count = Math.max(1, note ? notePages(note).length : 1);
+    pageCountRef.current = count;
+    const raw = note && session.noteId === note.id ? session.pageIndex || 0 : 0;
+    setPageIndex(Math.max(0, Math.min(raw, count - 1)));
   }, [note?.id]);
+
+  useEffect(() => {
+    if (!note) return;
+    const count = Math.max(1, notePages(note).length);
+    const prev = pageCountRef.current;
+    pageCountRef.current = count;
+    if (count < prev) setPageIndex((current) => Math.min(current, count - 1));
+  }, [note?.id, note?.pages?.length]);
 
   useEffect(() => {
     if (!note) {

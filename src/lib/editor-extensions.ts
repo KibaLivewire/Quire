@@ -11,6 +11,14 @@ import StarterKit from "@tiptap/starter-kit";
 import { PageBookmark, PageNote } from "./page-marks";
 import { isOpenableUrl } from "./desktop";
 
+function safeEditStyle(value: string) {
+  return value
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => /^(?:filter|transform)\s*:/i.test(part) && !/url\s*\(|expression|javascript|@import/i.test(part))
+    .join("; ");
+}
+
 function safeColor(value: string | null | undefined) {
   const next = String(value || "").trim();
   return /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(next) ? next : null;
@@ -121,7 +129,7 @@ const QuireImage = Image.extend({
     const mark = String(rest.watermark || rest["data-watermark"] || "");
     const ox = Number(rest.ox || rest["data-ox"] || 0);
     const oy = Number(rest.oy || rest["data-oy"] || 0);
-    const edit = String(rest.editStyle || rest["data-edit-style"] || "");
+    const edit = safeEditStyle(String(rest.editStyle || rest["data-edit-style"] || ""));
     const style = [
       ox || oy ? `position:relative;left:${ox}px;top:${oy}px` : "",
       edit,
@@ -171,7 +179,7 @@ const QuireImage = Image.extend({
         figure.classList.toggle("has-watermark", Boolean(text));
         img.style.filter = "";
         img.style.transform = "";
-        const edit = String(attrs.editStyle ?? attrs["data-edit-style"] ?? "");
+        const edit = safeEditStyle(String(attrs.editStyle ?? attrs["data-edit-style"] ?? ""));
         if (edit) {
           edit.split(";").forEach((part) => {
             const [prop, ...rest] = part.split(":");

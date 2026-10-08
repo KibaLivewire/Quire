@@ -140,9 +140,15 @@ export async function initNativeShell() {
     }
     flushPendingEdits();
     window.dispatchEvent(new Event("quire-flush-now"));
-    window.setTimeout(() => {
+    let settled = false;
+    const leave = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
       if (canGoBack) window.history.back();
-      else App.exitApp();
-    }, 350);
+      else void App.exitApp();
+    };
+    const timer = window.setTimeout(leave, 8000);
+    window.addEventListener("quire-flush-finished", leave, { once: true });
   });
 }

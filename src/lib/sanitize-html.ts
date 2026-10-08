@@ -7,10 +7,11 @@ function isSafeLink(value: string): boolean {
 
 function isSafeSrc(value: string): boolean {
   const src = value.trim();
-  if (!src) return false;
+  if (!src || /[\u0000-\u001f]/.test(src)) return false;
+  if (/^data:/i.test(src)) return /^data:image\/(?:png|jpe?g|gif|webp)(?:[;,])/i.test(src);
   if (/^(javascript|vbscript):/i.test(src)) return false;
-  if (/^data:/i.test(src)) return /^data:image\/(?:png|jpe?g|gif|webp)/i.test(src);
-  if (/^(https?:|\/\/)/i.test(src)) return false;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(src)) return false;
+  if (src.startsWith("//") || src.startsWith("\\\\")) return false;
   return true;
 }
 
@@ -61,6 +62,15 @@ export function sanitizeHtml(html: string): string {
       if (name === "data-edit-style" || name === "data-color") {
         if (/url\s*\(|expression|javascript|@import/i.test(value)) el.removeAttribute(attr.name);
         else if (name === "data-color" && !/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value)) el.removeAttribute(attr.name);
+        else if (name === "data-edit-style") {
+          const props = value
+            .split(";")
+            .map((part) => part.trim())
+            .filter(Boolean)
+            .filter((part) => /^(?:filter|transform)\s*:/i.test(part));
+          if (props.length) el.setAttribute(attr.name, props.join("; "));
+          else el.removeAttribute(attr.name);
+        }
         continue;
       }
       if (name === "style") {

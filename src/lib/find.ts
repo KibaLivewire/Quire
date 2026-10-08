@@ -30,6 +30,17 @@ export function requestPageJump(index: number) {
 
 export type TextHit = { from: number; to: number };
 
+export function nonOverlappingHits(hits: TextHit[]): TextHit[] {
+  const kept: TextHit[] = [];
+  let end = -1;
+  for (const hit of hits) {
+    if (hit.from < end) continue;
+    kept.push(hit);
+    end = hit.to;
+  }
+  return kept;
+}
+
 function foldInto(
   text: string,
   hay: { value: string },
@@ -37,12 +48,19 @@ function foldInto(
 ) {
   for (let i = 0; i < text.length; ) {
     const cp = text.codePointAt(i) ?? 0;
-    const ch = String.fromCodePoint(cp);
-    const width = ch.length;
+    const width = cp > 0xffff ? 2 : 1;
+    const ch = text.slice(i, i + width);
     const lower = ch.toLocaleLowerCase("en-US");
-    for (let j = 0; j < lower.length; j += 1) {
-      hay.value += lower[j];
-      push(i);
+    if (lower.length === width) {
+      for (let j = 0; j < width; j += 1) {
+        hay.value += lower[j];
+        push(i + j);
+      }
+    } else {
+      for (let j = 0; j < lower.length; j += 1) {
+        hay.value += lower[j];
+        push(j === lower.length - 1 ? i + width - 1 : i);
+      }
     }
     i += width;
   }
@@ -138,16 +156,16 @@ function indexHtml(html: string): { root: HTMLElement; hay: string; refs: CharRe
   return { root, hay: hay.value, refs };
 }
 
-function hitSpans(hay: string, query: string): { from: number; to: number }[] {
+function hitSpans(hay: string, query: string, overlap: boolean): { from: number; to: number }[] {
   const needle = query.trim().toLocaleLowerCase("en-US");
   if (!needle) return [];
   const spans: { from: number; to: number }[] = [];
   let start = 0;
   while (start <= hay.length - needle.length) {
-    const at = hay.indexOf(needle, start);
+    const at = hay.valueOf().indexOf(needle, start);
     if (at < 0) break;
     spans.push({ from: at, to: at + needle.length });
-    start = at + Math.max(1, needle.length);
+    start = at + (overlap ? 1 : Math.max(1, needle.length));
   }
   return spans;
 }
@@ -155,7 +173,7 @@ function hitSpans(hay: string, query: string): { from: number; to: number }[] {
 export function countHtmlHits(html: string, query: string): number {
   const indexed = indexHtml(html);
   if (!indexed) return 0;
-  return hitSpans(indexed.hay, query).length;
+  return hitSpans(indexed.hay, query, true).length;
 }
 
 function applySpan(refs: CharRef[], from: number, to: number, replacement: string) {
@@ -192,7 +210,7 @@ function applySpan(refs: CharRef[], from: number, to: number, replacement: strin
 export function replaceHtmlHits(html: string, query: string, replacement: string): string {
   const indexed = indexHtml(html);
   if (!indexed) return html;
-  const spans = hitSpans(indexed.hay, query);
+  const spans = hitSpans(indexed.hay, query, false);
   for (let i = spans.length - 1; i >= 0; i -= 1) {
     const span = spans[i];
     applySpan(indexed.refs, span.from, span.to, replacement);
