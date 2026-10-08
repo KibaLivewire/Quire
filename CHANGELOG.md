@@ -1,3 +1,13 @@
+# Quire 1.8.10 — The window opens
+
+Released 7 October 2026.
+
+- **The desk opens again.** The 1.8.9 window policy blocked the page's own startup script, so the installed app stayed blank. That script is allowed. Remote scripts still are not.
+
+Windows installer: Quire-Setup-1.8.10.exe
+
+---
+
 # Quire 1.8.9 — Keep the last keystroke
 
 Released 7 October 2026.

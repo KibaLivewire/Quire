@@ -26,7 +26,7 @@ function installPackagedCsp() {
   const { session } = require("electron");
   const csp = [
     "default-src 'self'",
-    "script-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com",
     "img-src 'self' data: blob:",
@@ -37,7 +37,9 @@ function installPackagedCsp() {
     "form-action 'none'",
     "frame-src 'none'",
   ].join("; ");
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+  session.defaultSession.webRequest.onHeadersReceived(
+    { urls: ["http://127.0.0.1/*", "http://localhost/*"] },
+    (details, callback) => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
