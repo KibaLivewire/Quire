@@ -15,9 +15,23 @@ export function isLocked(item?: { lockHash?: string | null } | null) {
   return Boolean(item?.lockHash);
 }
 
+/** Walk the whole digest. A shared prefix must not finish the check early. */
+export function sameDigest(a: string, b: string) {
+  const left = String(a);
+  const right = String(b);
+  const n = Math.max(left.length, right.length, 64);
+  let diff = left.length === right.length ? 0 : 1;
+  for (let i = 0; i < n; i += 1) {
+    const x = i < left.length ? left.charCodeAt(i) : 0;
+    const y = i < right.length ? right.charCodeAt(i) : 0;
+    diff |= x ^ y;
+  }
+  return diff === 0;
+}
+
 export async function pinMatches(pin: string, salt: string, hash: string) {
   const next = await hashPin(pin, salt);
-  return next === hash;
+  return sameDigest(next, hash);
 }
 
 export function lockKey(kind: "note" | "folder", id: string) {

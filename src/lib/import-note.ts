@@ -1,5 +1,5 @@
-import { unzip } from "./zip";
-import { sanitizeHtml } from "./sanitize-html";
+import { unzip } from "./zip.ts";
+import { sanitizeHtml } from "./sanitize-html.ts";
 
 export const OPEN_ACCEPT = ".txt,.rtf,.doc,.docx,.html,.htm,.md,text/plain,application/rtf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -21,6 +21,12 @@ function paragraphs(text: string) {
     .join("");
 }
 
+function characterFromCode(num: number): string {
+  if (!Number.isInteger(num) || num <= 0 || num > 0x10ffff) return "";
+  if (num >= 0xd800 && num <= 0xdfff) return "";
+  return String.fromCodePoint(num);
+}
+
 function decodeXml(value: string) {
   const amp = String.fromCharCode(38);
   return value
@@ -28,8 +34,8 @@ function decodeXml(value: string) {
     .replaceAll(`${amp}gt;`, ">")
     .replaceAll(`${amp}quot;`, '"')
     .replaceAll(`${amp}apos;`, "'")
-    .replace(new RegExp(`${amp}#(\\d+);`, "g"), (_, num: string) => String.fromCharCode(Number(num)))
-    .replace(new RegExp(`${amp}#x([0-9a-fA-F]+);`, "g"), (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(new RegExp(`${amp}#(\\d+);`, "g"), (_, num: string) => characterFromCode(Number(num)))
+    .replace(new RegExp(`${amp}#x([0-9a-fA-F]+);`, "g"), (_, hex: string) => characterFromCode(parseInt(hex, 16)))
     .replaceAll(`${amp}amp;`, amp);
 }
 
@@ -94,7 +100,8 @@ function rtfToText(rtf: string) {
     if (uni) {
       let n = Number(uni[1]);
       if (n < 0) n += 65536;
-      out += String.fromCharCode(n & 0xffff);
+      n &= 0xffff;
+      if (n !== 0) out += String.fromCharCode(n);
       i += uni[0].length;
       let skipAnsi = uc;
       while (skipAnsi > 0 && i < rtf.length) {

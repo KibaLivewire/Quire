@@ -3,6 +3,7 @@ const { spawn } = require("node:child_process");
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const { oneExternalUrl } = require("./open-url.cjs");
 
 const DEV_URL = process.env.QUIRE_URL || "http://127.0.0.1:8080/";
 const PROD_PORT = Number(process.env.QUIRE_PORT) || 4173;
@@ -337,11 +338,8 @@ function createWindow(url) {
   win.once("ready-to-show", () => win.show());
   win.loadURL(url);
   win.webContents.setWindowOpenHandler(({ url: next }) => {
-    // Match quire:open-external - http(s) only; deny file:/javascript:/etc.
-    const href = String(next || "");
-    if (/^(https?:\/\/|mailto:)/i.test(href)) {
-      void shell.openExternal(href);
-    }
+    const href = oneExternalUrl(next);
+    if (href) void shell.openExternal(href);
     return { action: "deny" };
   });
 
@@ -459,8 +457,8 @@ async function lookupLatest() {
 function wireIpc() {
   ipcMain.handle("quire:version", () => app.getVersion());
   ipcMain.handle("quire:open-external", async (_event, url) => {
-    const href = String(url || "");
-    if (!/^https?:\/\//i.test(href) && !/^mailto:/i.test(href)) return;
+    const href = oneExternalUrl(url);
+    if (!href) return;
     await shell.openExternal(href);
   });
   ipcMain.handle("quire:check-updates", async () => lookupLatest());
@@ -528,7 +526,10 @@ async function maybeNotifyUpdate() {
       defaultId: 0,
       cancelId: 1,
     });
-    if (result.response === 0) await shell.openExternal(info.url || RELEASE_PAGE);
+    if (result.response === 0) {
+      const page = oneExternalUrl(info.url || RELEASE_PAGE);
+      if (page) await shell.openExternal(page);
+    }
   } catch {
     /* offline is fine */
   }

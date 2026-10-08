@@ -51,6 +51,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { FONT_SIZES, HIGHLIGHTS, INK_COLORS } from "@/lib/fonts";
 import { BORDER_META } from "@/lib/borders";
 import { collectImageFiles, IMAGE_ACCEPT, insertImages, selectedImageSrc } from "@/lib/image";
+import { isStoredLink } from "@/lib/open-url";
 import { isNativeApp, pickNativeImages } from "@/lib/native";
 import { useNotebookStore } from "@/lib/store";
 import type { Note } from "@/lib/types";
@@ -252,7 +253,7 @@ export function EditorToolbar({
   function applyLink(href: string) {
     const url = href.trim();
     if (!url) return;
-    if (!/^(https?:\/\/|mailto:)/i.test(url) && !(url.startsWith("#") && !url.startsWith("#//"))) {
+    if (!isStoredLink(url)) {
       toast.error("Use a web address or an email link.");
       return;
     }

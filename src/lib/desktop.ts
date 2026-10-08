@@ -1,6 +1,7 @@
 import { version as PACKAGE_VERSION } from "../../package.json";
 import type { Prefs } from "./types";
 import { isNativeApp, openNativeUrl } from "./native";
+import { isHttpUrl as parseHttpUrl, isOpenableUrl as parseOpenableUrl } from "./open-url";
 
 type QuireBridge = {
   version?: () => Promise<string>;
@@ -35,22 +36,14 @@ export function hydrateAppVersion(): void {
   });
 }
 
+export { isStoredLink } from "./open-url";
+
 export function isHttpUrl(value: string): boolean {
-  const href = value.trim();
-  if (!href || href.startsWith("#")) return false;
-  if (!/^https?:\/\//i.test(href)) return false;
-  try {
-    const url = new URL(href);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
+  return parseHttpUrl(value);
 }
 
 export function isOpenableUrl(value: string): boolean {
-  const href = value.trim();
-  if (/^mailto:[^\s]+/i.test(href)) return true;
-  return isHttpUrl(href);
+  return parseOpenableUrl(value);
 }
 
 export async function openExternal(href: string): Promise<void> {

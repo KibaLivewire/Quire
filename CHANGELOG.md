@@ -1,3 +1,20 @@
+# Quire 1.8.13 — The same page, checked twice
+
+Released 8 October 2026.
+
+- **A stale sheet number no longer grows the notebook.** Saving only replaces a sheet that is still there, so a removed sheet cannot come back as a blank extra page.
+- **Find agrees across a line break.** The open sheet keeps a break the same way the other sheets do, so the letters on either side are not one word. Overlapping matches are still counted. Replace All still steps through without eating the same letters twice.
+- **A zip is read from its directory, not from the first lookalike header.** A `PK` signature inside a file no longer cuts the file short. The 40 MB cap counts decoded bytes, the 80-file cap stays, and a path that climbs out of the archive is still refused.
+- **Word import keeps characters past the old 16-bit line.** An emoji stored as a numeric character stays. A null, a surrogate, or a code that is not a character is dropped. Ordinary paragraphs are unchanged.
+- **PDF Latin text asks for WinAnsi.** Accented letters are no longer stored as WinAnsi bytes on a font left in Standard encoding. Letters outside that set are still drawn as a picture.
+- **An imported style cannot cover the desk.** Fixed, absolute, and sticky placement, and viewport sizes, are dropped from page styles. Colour, type, a relative picture offset, and a filter or turn stay. An add-on can still restyle the desk.
+- **A link is one web address or one email.** A second address after a line break is not opened, on the page or by the Windows shell. `javascript:` and `file:` stay refused.
+- **A passcode check walks the whole digest.** The passcode is still a screen gate, not encryption. Pages and backups stay plaintext. Wrong guesses still wait, and the wait still grows.
+
+Windows installer: Quire-Setup-1.8.13.exe
+
+---
+
 # Quire 1.8.12 — A phone can reach the desk
 
 Released 8 October 2026.

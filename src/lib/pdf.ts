@@ -364,7 +364,7 @@ export async function buildPdf(
 
   const objs: (string | Uint8Array)[] = ["", "<< /Type /Catalog /Pages 2 0 R >>", ""];
   const fontId = 3;
-  objs.push("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>");
+  objs.push("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>");
 
   const srcToId = new Map<string, number>();
   for (const page of pages) {

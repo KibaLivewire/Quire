@@ -94,7 +94,8 @@ export function RichEditor({
         const link = target?.closest("a[href]") as HTMLAnchorElement | null;
         if (link?.href && (event.metaKey || event.ctrlKey || event.altKey)) {
           event.preventDefault();
-          if (isOpenableUrl(link.getAttribute("href") || link.href)) void openExternal(link.href);
+          const raw = link.getAttribute("href") || link.href || "";
+          if (isOpenableUrl(raw)) void openExternal(raw);
           return true;
         }
         return false;

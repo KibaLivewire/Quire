@@ -1,8 +1,7 @@
+import { isStoredLink } from "./open-url.ts";
+
 function isSafeLink(value: string): boolean {
-  const href = value.trim();
-  if (!href) return false;
-  if (href.startsWith("#") && !href.startsWith("#//") && !/^#javascript:/i.test(href)) return true;
-  return /^(https?:|mailto:)/i.test(href);
+  return isStoredLink(value);
 }
 
 function isSafeSrc(value: string): boolean {
@@ -74,13 +73,37 @@ export function sanitizeHtml(html: string): string {
         continue;
       }
       if (name === "style") {
-        const cleaned = sanitizePluginCss(`x{${value}}`).replace(/^x\{/, "").replace(/\}$/, "");
+        const cleaned = sanitizeInlineStyle(value);
         if (cleaned.trim()) el.setAttribute(attr.name, cleaned);
         else el.removeAttribute(attr.name);
       }
     }
   });
   return root.innerHTML;
+}
+
+const VIEWPORT = /(?:^|[\s,(])-?\d*\.?\d+(?:vw|vh|vmin|vmax|vb|vi)\b/i;
+
+/** Page styles keep colour, type, a relative picture offset, a filter, and a turn. They cannot cover the desk. */
+export function sanitizeInlineStyle(value: string): string {
+  const cleaned = sanitizePluginCss(`x{${value}}`).replace(/^x\{/, "").replace(/\}$/, "");
+  const kept: string[] = [];
+  for (const part of cleaned.split(";")) {
+    const piece = part.trim();
+    if (!piece) continue;
+    const idx = piece.indexOf(":");
+    if (idx <= 0) continue;
+    const propRaw = piece.slice(0, idx).trim();
+    const valRaw = piece.slice(idx + 1).trim();
+    const prop = propRaw.toLowerCase();
+    const val = valRaw.toLowerCase().replace(/!important/g, "").trim();
+    if (!prop || !val) continue;
+    if (/url\s*\(|expression|javascript|@import/i.test(`${propRaw}:${valRaw}`)) continue;
+    if (prop === "position" && /^(fixed|absolute|sticky)$/i.test(val)) continue;
+    if (VIEWPORT.test(valRaw)) continue;
+    kept.push(`${propRaw}:${valRaw}`);
+  }
+  return kept.join("; ");
 }
 
 /** Add-on CSS can restyle the desk. It cannot pull a remote sheet or image. */

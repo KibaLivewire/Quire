@@ -6,6 +6,7 @@ import { alignPageMeta, applyRecipeToMeta, defaultPageMeta, softCapRibbons, star
 import { addToDictionary, normalizeWord } from "./dictionary";
 import { folderGate, hashPin, newSalt, pinMatches } from "./lock";
 import { notePages } from "./pages";
+import { replaceExistingPage } from "./page-write";
 import { descendantIds, isAlive, isDescendant } from "./folders";
 import { WELCOME_VERSION } from "./welcome";
 import { rememberBoot } from "./boot-peek";
@@ -593,10 +594,8 @@ export const useNotebookStore = create<NotebookState>()(
         set((state) => ({
           notes: state.notes.map((item) => {
             if (item.id !== id) return item;
-            const pages = [...notePages(item)];
-            if (pageIndex < 0 || pageIndex > pages.length) return item;
-            if (pageIndex === pages.length) pages.push(html);
-            else pages[pageIndex] = html;
+            const pages = replaceExistingPage(notePages(item), pageIndex, html);
+            if (!pages) return item;
             return withJoinedContent(item, pages);
           }),
         }));

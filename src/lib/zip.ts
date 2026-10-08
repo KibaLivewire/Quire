@@ -96,8 +96,8 @@ export function zipStore(files: { name: string; data: Uint8Array }[]) {
   return new Blob([concat([...locals, central, end])], { type: "application/zip" });
 }
 
-async function inflateRaw(packed: Uint8Array, cap: number): Promise<string> {
-  if (typeof DecompressionStream !== "function") return "";
+async function inflateRaw(packed: Uint8Array, cap: number): Promise<Uint8Array> {
+  if (typeof DecompressionStream !== "function") return new Uint8Array();
   const stream = new Blob([packed]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
@@ -125,10 +125,96 @@ async function inflateRaw(packed: Uint8Array, cap: number): Promise<string> {
     out.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return new TextDecoder().decode(out);
+  return out;
 }
+
 const MAX_ZIP_BYTES = 40_000_000;
 const MAX_ZIP_FILES = 80;
+
+type ZipEntry = { name: string; method: number; compSize: number; dataStart: number };
+
+function unsafeZipName(name: string) {
+  return !name || name.includes("\0") || name.includes("..") || name.startsWith("/") || name.startsWith("\\") || name.includes("\\");
+}
+
+function findEocd(view: DataView) {
+  const len = view.byteLength;
+  if (len < 22) return -1;
+  const start = Math.max(0, len - 22 - 65535);
+  for (let i = len - 22; i >= start; i -= 1) {
+    if (view.getUint32(i, true) !== 0x06054b50) continue;
+    const comment = view.getUint16(i + 20, true);
+    if (i + 22 + comment === len) return i;
+  }
+  return -1;
+}
+
+function readCentral(view: DataView, bytes: Uint8Array): ZipEntry[] | null {
+  const eocd = findEocd(view);
+  if (eocd < 0) return null;
+  const count = view.getUint16(eocd + 10, true);
+  const size = view.getUint32(eocd + 12, true);
+  const offset = view.getUint32(eocd + 16, true);
+  if (count > MAX_ZIP_FILES) throw new Error("That zip has too many files.");
+  if (size === 0xffffffff || offset === 0xffffffff) throw new Error("That zip could not be read.");
+  if (offset + size > bytes.length) throw new Error("That zip could not be read.");
+  const decoder = new TextDecoder();
+  const entries: ZipEntry[] = [];
+  let p = offset;
+  const end = offset + size;
+  while (entries.length < count) {
+    if (p + 46 > end || view.getUint32(p, true) !== 0x02014b50) throw new Error("That zip could not be read.");
+    const flags = view.getUint16(p + 8, true);
+    const method = view.getUint16(p + 10, true);
+    const compSize = view.getUint32(p + 20, true);
+    const nameLen = view.getUint16(p + 28, true);
+    const extraLen = view.getUint16(p + 30, true);
+    const commentLen = view.getUint16(p + 32, true);
+    const localOffset = view.getUint32(p + 42, true);
+    if (p + 46 + nameLen > bytes.length) throw new Error("That zip could not be read.");
+    const name = decoder.decode(bytes.subarray(p + 46, p + 46 + nameLen));
+    if (flags & 0x1) throw new Error("That zip could not be read.");
+    if (localOffset + 30 > bytes.length || view.getUint32(localOffset, true) !== 0x04034b50) {
+      throw new Error("That zip could not be read.");
+    }
+    const localName = view.getUint16(localOffset + 26, true);
+    const localExtra = view.getUint16(localOffset + 28, true);
+    const dataStart = localOffset + 30 + localName + localExtra;
+    if (compSize > MAX_ZIP_BYTES || dataStart + compSize > bytes.length) throw new Error("That zip is too large to open.");
+    entries.push({ name, method, compSize, dataStart });
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+function readLocal(view: DataView, bytes: Uint8Array): ZipEntry[] {
+  const decoder = new TextDecoder();
+  const entries: ZipEntry[] = [];
+  let i = 0;
+  while (i + 30 <= bytes.length && view.getUint32(i, true) === 0x04034b50) {
+    if (entries.length >= MAX_ZIP_FILES) throw new Error("That zip has too many files.");
+    const flags = view.getUint16(i + 6, true);
+    const method = view.getUint16(i + 8, true);
+    const compSize = view.getUint32(i + 18, true);
+    const nameLen = view.getUint16(i + 26, true);
+    const extraLen = view.getUint16(i + 28, true);
+    if (i + 30 + nameLen > bytes.length) throw new Error("That zip could not be read.");
+    const name = decoder.decode(bytes.subarray(i + 30, i + 30 + nameLen));
+    const dataStart = i + 30 + nameLen + extraLen;
+    if (flags & 0x1) throw new Error("That zip could not be read.");
+    if (flags & 0x08 && !compSize) throw new Error("That zip could not be read.");
+    if (compSize > MAX_ZIP_BYTES || dataStart + compSize > bytes.length) throw new Error("That zip is too large to open.");
+    let descriptor = 0;
+    if (flags & 0x08) {
+      const after = dataStart + compSize;
+      const sig = after + 4 <= bytes.length ? view.getUint32(after, true) : 0;
+      descriptor = sig === 0x08074b50 ? 16 : 12;
+    }
+    entries.push({ name, method, compSize, dataStart });
+    i = dataStart + compSize + descriptor;
+  }
+  return entries;
+}
 
 export async function unzip(buffer: ArrayBuffer) {
   if (buffer.byteLength > MAX_ZIP_BYTES) {
@@ -136,64 +222,20 @@ export async function unzip(buffer: ArrayBuffer) {
   }
   const bytes = new Uint8Array(buffer);
   const view = new DataView(buffer);
+  const entries = readCentral(view, bytes) ?? readLocal(view, bytes);
   const files = new Map<string, string>();
   const decoder = new TextDecoder();
-  let i = 0;
   let total = 0;
-  while (i + 30 <= bytes.length && view.getUint32(i, true) === 0x04034b50) {
+  for (const entry of entries) {
+    if (unsafeZipName(entry.name) || entry.name.endsWith("/")) continue;
     if (files.size >= MAX_ZIP_FILES) throw new Error("That zip has too many files.");
-    const flags = view.getUint16(i + 6, true);
-    const method = view.getUint16(i + 8, true);
-    let compact = view.getUint32(i + 18, true);
-    const nameLen = view.getUint16(i + 26, true);
-    const extraLen = view.getUint16(i + 28, true);
-    const name = decoder.decode(bytes.subarray(i + 30, i + 30 + nameLen));
-    const dataStart = i + 30 + nameLen + extraLen;
-    let descriptor = 0;
-    if (flags & 0x08) {
-      if (!compact) {
-        let scan = dataStart;
-        while (scan + 4 <= bytes.length) {
-          const sig = view.getUint32(scan, true);
-          if (sig === 0x08074b50 || sig === 0x04034b50 || sig === 0x02014b50) break;
-          scan += 1;
-        }
-        const sig = scan + 4 <= bytes.length ? view.getUint32(scan, true) : 0;
-        if (sig === 0x08074b50 && scan + 16 <= bytes.length) {
-          compact = Math.max(0, scan - dataStart);
-          descriptor = 16;
-        } else if (sig === 0x04034b50 || sig === 0x02014b50) {
-          compact = Math.max(0, scan - dataStart - 12);
-          descriptor = 12;
-        } else {
-          const rest = Math.max(0, bytes.length - dataStart);
-          compact = rest >= 12 ? rest - 12 : rest;
-          descriptor = rest >= 12 ? 12 : 0;
-        }
-      } else {
-        const after = dataStart + compact;
-        const sig = after + 4 <= bytes.length ? view.getUint32(after, true) : 0;
-        descriptor = sig === 0x08074b50 ? 16 : 12;
-      }
-    }
-    if (compact > MAX_ZIP_BYTES || dataStart + compact > bytes.length) {
-      throw new Error("That zip is too large to open.");
-    }
-    const packed = bytes.subarray(dataStart, dataStart + compact);
-    let text = "";
-    if (method === 0) {
-      text = decoder.decode(packed);
-    } else if (method === 8) {
-      text = await inflateRaw(packed, MAX_ZIP_BYTES - total);
-    }
-    total += text.length;
+    const packed = bytes.subarray(entry.dataStart, entry.dataStart + entry.compSize);
+    let raw = new Uint8Array();
+    if (entry.method === 0) raw = packed;
+    else if (entry.method === 8) raw = await inflateRaw(packed, MAX_ZIP_BYTES - total);
+    total += raw.byteLength;
     if (total > MAX_ZIP_BYTES) throw new Error("That zip is too large to open.");
-    if (name.includes("..") || name.startsWith("/") || name.includes("\\")) {
-      i = dataStart + compact + descriptor;
-      continue;
-    }
-    files.set(name, text);
-    i = dataStart + compact + descriptor;
+    files.set(entry.name, decoder.decode(raw));
   }
   return files;
 }

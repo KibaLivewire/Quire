@@ -1,4 +1,4 @@
-import { sanitizeHtml } from "./sanitize-html";
+import { sanitizeHtml } from "./sanitize-html.ts";
 
 type OpenFind = (replace?: boolean) => void;
 let opener: OpenFind | null = null;
@@ -72,7 +72,7 @@ export function findHits(
     nodesBetween: (
       from: number,
       to: number,
-      fn: (node: { isText?: boolean; text?: string; isBlock?: boolean; isLeaf?: boolean; isTextblock?: boolean }, pos: number) => void,
+      fn: (node: { isText?: boolean; text?: string; isBlock?: boolean; isLeaf?: boolean; isTextblock?: boolean; type?: { name?: string } }, pos: number) => void,
     ) => void;
   },
   query: string,
@@ -85,10 +85,15 @@ export function findHits(
   doc.nodesBetween(0, doc.content.size, (node, pos) => {
     if (node.isBlock && (node.isLeaf || node.isTextblock)) {
       if (firstBlock) firstBlock = false;
-      else {
+      else if (!hay.value.endsWith("\n")) {
         hay.value += "\n";
         map.push(-1);
       }
+    }
+    if (node.type?.name === "hardBreak") {
+      hay.value += "\n";
+      map.push(-1);
+      return;
     }
     if (!node.isText || !node.text) return;
     foldInto(node.text, hay, (offset) => {
