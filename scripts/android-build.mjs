@@ -19,9 +19,13 @@ function run(cmd, args, env) {
   });
 }
 
+const ANDROID_VERSION_NAME = "1.0";
+const ANDROID_VERSION_CODE = 1;
+
 await run(process.execPath, [wrapper, "vite", "build"], {
   ...process.env,
   QUIRE_ANDROID: "1",
+  VITE_QUIRE_VERSION: ANDROID_VERSION_NAME,
 }).catch((error) => {
   const html = join(root, ".output", "public", "index.html");
   if (!existsSync(html)) throw error;
@@ -39,14 +43,10 @@ cpSync(publicDir, dest, { recursive: true });
 await run("npx", ["cap", "sync", "android"], process.env);
 
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-const [major, minor, patch] = String(pkg.version || "0.0.0")
-  .split(".")
-  .map((part) => Number.parseInt(part, 10) || 0);
-const versionCode = major * 10000 + minor * 100 + patch;
 const gradlePath = join(root, "android", "app", "build.gradle");
 const gradle = readFileSync(gradlePath, "utf8")
-  .replace(/versionCode\s+\d+/, `versionCode ${versionCode}`)
-  .replace(/versionName\s+"[^"]*"/, `versionName "${pkg.version}"`);
+  .replace(/versionCode\s+\d+/, `versionCode ${ANDROID_VERSION_CODE}`)
+  .replace(/versionName\s+"[^"]*"/, `versionName "${ANDROID_VERSION_NAME}"`);
 writeFileSync(gradlePath, gradle);
 
-console.log(`[android-build] synced into android/ as ${pkg.version} (${versionCode})`);
+console.log(`[android-build] synced into android/ as Play ${ANDROID_VERSION_NAME} (${ANDROID_VERSION_CODE}); desktop package is ${pkg.version}`);

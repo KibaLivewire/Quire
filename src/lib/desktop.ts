@@ -21,8 +21,10 @@ declare global {
   }
 }
 
-/** Prefer Electron's baked version when the bridge is ready; fall back to package.json. */
-let cachedVersion = PACKAGE_VERSION;
+/** Prefer Electron's baked version when the bridge is ready; fall back to package.json.
+ *  The Play build sets VITE_QUIRE_VERSION so the phone does not show the desktop number. */
+const storeVersion = import.meta.env?.VITE_QUIRE_VERSION;
+let cachedVersion = typeof storeVersion === "string" && storeVersion.trim() ? storeVersion.trim() : PACKAGE_VERSION;
 
 export function appVersion(): string {
   return cachedVersion;
