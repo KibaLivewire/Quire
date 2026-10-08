@@ -2,7 +2,7 @@
 /**
  * Static web build for the Android Capacitor shell.
  */
-import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -37,4 +37,16 @@ mkdirSync(dest, { recursive: true });
 cpSync(publicDir, dest, { recursive: true });
 
 await run("npx", ["cap", "sync", "android"], process.env);
-console.log("[android-build] synced into android/");
+
+const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const [major, minor, patch] = String(pkg.version || "0.0.0")
+  .split(".")
+  .map((part) => Number.parseInt(part, 10) || 0);
+const versionCode = major * 10000 + minor * 100 + patch;
+const gradlePath = join(root, "android", "app", "build.gradle");
+const gradle = readFileSync(gradlePath, "utf8")
+  .replace(/versionCode\s+\d+/, `versionCode ${versionCode}`)
+  .replace(/versionName\s+"[^"]*"/, `versionName "${pkg.version}"`);
+writeFileSync(gradlePath, gradle);
+
+console.log(`[android-build] synced into android/ as ${pkg.version} (${versionCode})`);

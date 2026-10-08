@@ -264,7 +264,7 @@ export function NotebookRail({
   }
 
   return (
-    <aside className={cn("flex h-full min-h-0 flex-col bg-leather text-cream safe-pad", className)}>
+    <aside className={cn("flex h-full min-h-0 flex-col bg-leather text-cream", className)}>
       <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
         <QuireMark className="text-cream" />
         <div className="min-w-0">

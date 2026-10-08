@@ -277,7 +277,6 @@ export function EditorPane({
           size="icon-sm"
           aria-label={focusMode ? "Exit focus" : "Focus"}
           onClick={() => setFocusMode(!focusMode)}
-          className="hidden md:inline-flex"
         >
           {focusMode ? <Minimize2 /> : <Maximize2 />}
         </Button>

@@ -34,9 +34,20 @@ export function AppShell() {
     const onResize = () => applyDevice();
     window.addEventListener("resize", onResize);
     window.addEventListener("orientationchange", onResize);
+    const viewport = window.visualViewport;
+    const onViewport = () => {
+      const view = window.visualViewport;
+      const inset = view ? Math.max(0, window.innerHeight - view.height - view.offsetTop) : 0;
+      document.documentElement.style.setProperty("--keyboard-inset", `${Math.round(inset)}px`);
+    };
+    onViewport();
+    viewport?.addEventListener("resize", onViewport);
+    viewport?.addEventListener("scroll", onViewport);
     return () => {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("orientationchange", onResize);
+      viewport?.removeEventListener("resize", onViewport);
+      viewport?.removeEventListener("scroll", onViewport);
     };
   }, []);
 
@@ -204,7 +215,7 @@ export function AppShell() {
   return (
     <TooltipProvider>
       <div className="quire-shell flex h-dvh flex-col overflow-hidden bg-paper text-ink">
-        <div className={cn("hidden md:block", focusMode && "md:hidden")}>
+        <div className={cn("max-md:overflow-x-auto", focusMode && "hidden")}>
           <MenuBar onOpenSettings={() => setSettingsOpen(true)} />
         </div>
         <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -255,6 +266,7 @@ export function AppShell() {
         <SheetContent side="left">
           <SheetTitle className="sr-only">Notebooks</SheetTitle>
           <NotebookRail
+            className="safe-pad"
             onSelect={() => setNotebooksOpen(false)}
             onOpenSettings={() => {
               setNotebooksOpen(false);

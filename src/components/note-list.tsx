@@ -133,7 +133,7 @@ export function NoteList({
   const listGate = folderGate(notebooks, activeNotebookId, unlockedIds);
 
   return (
-    <section className={cn("flex h-full min-h-0 flex-col border-r border-rule bg-paper-raised safe-pad", className)}>
+    <section className={cn("flex h-full min-h-0 flex-col border-r border-rule bg-paper-raised", className)}>
       <header className="flex items-center gap-2 px-3 pt-4 pb-3">
         {onOpenNotebooks ? (
           <Button variant="ghost" size="icon" className="md:hidden" aria-label="Folders" onClick={onOpenNotebooks}>

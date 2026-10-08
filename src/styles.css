@@ -267,6 +267,8 @@ html[data-theme="rain"] {
 }
 
 .quire-shell {
+  height: calc(100dvh - var(--keyboard-inset, 0px));
+  max-height: calc(100dvh - var(--keyboard-inset, 0px));
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }
@@ -1523,6 +1525,21 @@ html[data-focus-mode="true"][data-ink-only="true"] .paper-sheet {
   .recipe-chooser-grid > :nth-child(4) {
     grid-column: auto;
   }
+}
+
+html[data-device="phone"] .quire-toolbar-row button {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
+
+html[data-device="phone"] .quire-shortcut {
+  display: none;
+}
+
+html[data-device="phone"] input,
+html[data-device="phone"] select,
+html[data-device="phone"] textarea:not(.font-display) {
+  font-size: 1rem;
 }
 
 html[data-device="phone"] .quire-shell {

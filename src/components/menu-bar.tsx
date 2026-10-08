@@ -167,7 +167,7 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
   return (
     <>
-      <div className="flex h-9 shrink-0 items-center gap-0.5 border-b border-rule bg-paper-raised px-1.5">
+      <div className="quire-menu-bar flex h-11 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-rule bg-paper-raised px-1.5 md:h-9">
         <input
           ref={fileRef}
           type="file"
@@ -488,7 +488,7 @@ function Menu({ label, children }: { label: string; children: React.ReactNode })
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-sm text-ink">
+        <Button type="button" variant="ghost" size="sm" className="h-10 shrink-0 px-3 text-sm text-ink md:h-7 md:px-2">
           {label}
         </Button>
       </DropdownMenuTrigger>
@@ -500,5 +500,5 @@ function Menu({ label, children }: { label: string; children: React.ReactNode })
 }
 
 function Shortcut({ children }: { children: React.ReactNode }) {
-  return <span className="ml-auto pl-6 text-[11px] text-ink-subtle">{children}</span>;
+  return <span className="quire-shortcut ml-auto pl-6 text-[11px] text-ink-subtle">{children}</span>;
 }

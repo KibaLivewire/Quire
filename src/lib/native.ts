@@ -21,6 +21,11 @@ export function useIsPhone() {
   return phone;
 }
 
+function sharePath(filename: string) {
+  const base = (filename.split(/[/\\]/).pop() || "quire-export").replace(/[^\w.\- ()[\]]+/g, "_").slice(0, 120);
+  return `quire/${base || "quire-export"}`;
+}
+
 function blobToBase64(blob: Blob) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -47,12 +52,13 @@ export async function saveFile(filename: string, blob: Blob) {
       import("@capacitor/share"),
     ]);
     const data = await blobToBase64(blob);
+    const path = sharePath(filename);
     await Filesystem.writeFile({
-      path: filename,
+      path,
       data,
       directory: Directory.Cache,
     });
-    const { uri } = await Filesystem.getUri({ path: filename, directory: Directory.Cache });
+    const { uri } = await Filesystem.getUri({ path, directory: Directory.Cache });
     await Share.share({ title: filename, files: [uri] });
     return;
   }

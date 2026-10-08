@@ -1,3 +1,19 @@
+# Quire 1.8.12 — A phone can reach the desk
+
+Released 8 October 2026.
+
+- **The File menu is on the phone.** Open, backup, transfer, and trash are no longer desktop-only. Keyboard shortcuts stay off the phone menus.
+- **Focus is on the page header** on a small screen, not only on a wide one.
+- **The keyboard shortens the desk** instead of covering the last lines. Android resizes the window when the keyboard opens.
+- **Toolbar buttons are large enough to tap.** Search fields use a text size that does not jump the page when focused.
+- **Export and share write into the folder Android is allowed to hand out.** A shared file is no longer stored where the share sheet cannot see it.
+- **The Play listing uses the real version.** This build is versionName 1.8.12, versionCode 10812. The broad photo-library permission is not requested. The camera is still offered when you insert a picture, and a phone without a camera can still install.
+- **Writing, the passcode, and backups are unchanged.** The passcode is still a screen gate. Backups stay plaintext.
+
+Windows installer: Quire-Setup-1.8.12.exe
+
+---
+
 # Quire 1.8.11 — The same answer everywhere
 
 Released 7 October 2026.
