@@ -42,7 +42,7 @@ export async function readBackupFile(file: File): Promise<BackupPayload> {
     return parseBackup(await file.text());
   }
   const files = await unzip(await file.arrayBuffer());
-  const json = files.get("quire.json") || [...files.values()][0];
+  const json = files.get("quire.json");
   if (!json) throw new Error("That zip has no Quire backup inside.");
   return parseBackup(json);
 }
@@ -52,5 +52,7 @@ function parseBackup(text: string): BackupPayload {
   if (!data || data.app !== "quire" || !Array.isArray(data.notebooks) || !Array.isArray(data.notes)) {
     throw new Error("That file is not a Quire backup.");
   }
+  data.notebooks = data.notebooks.filter((item) => item && typeof item === "object" && typeof (item as { id?: unknown }).id === "string");
+  data.notes = data.notes.filter((item) => item && typeof item === "object" && typeof (item as { id?: unknown }).id === "string");
   return data;
 }

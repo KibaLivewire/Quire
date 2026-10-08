@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { type LockGate, pinLooksValid } from "@/lib/lock";
+import { type LockGate, clearLockFailures, lockWaitMs, pinLooksValid, recordLockFailure } from "@/lib/lock";
 import { useNotebookStore } from "@/lib/store";
 
 export type LockMode = "set" | "unlock" | "clear";
@@ -43,7 +43,7 @@ export function LockOverlay({ gate }: { gate: LockGate }) {
       <Lock className="size-8 text-ink-muted" aria-hidden />
       <p className="font-display text-xl text-ink">{gate.kind === "folder" ? "This folder is locked" : "This page is locked"}</p>
       <p className="max-w-sm text-pretty text-sm text-ink-muted">
-        {gate.name} stays on this device. Enter the passcode you chose. Quire cannot recover it.
+        {gate.name} stays on this device. The passcode hides this page in Quire. It does not encrypt the file.
       </p>
       <Button
         onClick={() =>
@@ -84,6 +84,11 @@ export function LockDialogHost() {
       toast.error("Use at least 4 characters.");
       return;
     }
+    const wait = lockWaitMs(request.kind, request.id);
+    if (wait > 0) {
+      toast.error(`Wait ${Math.ceil(wait / 1000)} seconds, then try again.`);
+      return;
+    }
     if (request.mode === "set" && pin.trim() !== confirm.trim()) {
       toast.error("Those passcodes do not match.");
       return;
@@ -97,9 +102,11 @@ export function LockDialogHost() {
             ? await clearLock(request.kind, request.id, pin)
             : await unlock(request.kind, request.id, pin);
       if (!ok) {
+        recordLockFailure(request.kind, request.id);
         toast.error(request.mode === "set" ? "Could not lock that." : "That passcode does not match.");
         return;
       }
+      clearLockFailures(request.kind, request.id);
       toast(
         request.mode === "set"
           ? "Locked on this device"
@@ -124,12 +131,12 @@ export function LockDialogHost() {
 
   return (
     <Dialog open={Boolean(request)} onOpenChange={(open) => !open && setRequest(null)}>
-      <DialogContent className="max-w-sm" data-close-on-back>
+      <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             {request?.mode === "set"
-              ? `Choose a passcode for “${request.title}”. It never leaves this device, and Quire cannot recover it.`
+              ? `Choose a passcode for “${request.title}”. It hides the page in Quire on this device. It does not encrypt the notebook, and Quire cannot recover it.`
               : `Enter the passcode for “${request?.title ?? ""}”.`}
           </DialogDescription>
         </DialogHeader>
@@ -164,7 +171,7 @@ export function LockDialogHost() {
             </div>
           ) : null}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => setRequest(null)}>
+            <Button type="button" variant="ghost" data-close-on-back onClick={() => setRequest(null)}>
               Cancel
             </Button>
             <Button type="submit" disabled={busy}>

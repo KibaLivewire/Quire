@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { DOMSerializer } from "@tiptap/pm/model";
+import { escapeHtml } from "./utils";
 import { sanitizeHtml } from "./sanitize-html";
 
 export type EditorCommand =
@@ -93,5 +94,5 @@ export async function pasteEditor(editor: Editor) {
     /* fall through to plain text */
   }
   const text = await navigator.clipboard.readText();
-  if (text) editor.chain().focus().insertContent(text).run();
+  if (text) editor.chain().focus().insertContent(escapeHtml(text).replace(/\n/g, "<br>")).run();
 }

@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: "Quire",
   webDir: "android-www",
   android: {
-    allowMixedContent: true,
+    allowMixedContent: false,
     backgroundColor: "#1a1714",
   },
   plugins: {

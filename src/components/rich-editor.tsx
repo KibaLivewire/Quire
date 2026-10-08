@@ -12,12 +12,12 @@ import { Button } from "@/components/ui/button";
 import { applyDevice, pageFitScale, readDevice } from "@/lib/device";
 import { editorExtensions } from "@/lib/editor-extensions";
 import { collectImageFiles, insertImages } from "@/lib/image";
-import { isHttpUrl, openExternal } from "@/lib/desktop";
+import { isHttpUrl, isOpenableUrl, openExternal } from "@/lib/desktop";
 import { copyEditorSelection, pasteEditor, registerEditorCommands, setActiveEditor } from "@/lib/editor-commands";
 import { isPageEmpty, notePages, splitOverflow } from "@/lib/pages";
 import { pageMetaAt, recipeBorder, recipeLabel } from "@/lib/recipes";
 import { openRecipeChooser } from "@/lib/recipe-chooser";
-import { cancelPendingEdits, flushPendingEdits } from "@/lib/pending-save";
+import { cancelPendingPageEdits, flushPendingEdits, flushPendingTitles } from "@/lib/pending-save";
 import { sanitizeHtml } from "@/lib/sanitize-html";
 import { useNotebookStore } from "@/lib/store";
 import type { Note } from "@/lib/types";
@@ -94,7 +94,7 @@ export function RichEditor({
         const link = target?.closest("a[href]") as HTMLAnchorElement | null;
         if (link?.href && (event.metaKey || event.ctrlKey || event.altKey)) {
           event.preventDefault();
-          void openExternal(link.href);
+          if (isOpenableUrl(link.getAttribute("href") || link.href)) void openExternal(link.href);
           return true;
         }
         return false;
@@ -200,7 +200,7 @@ export function RichEditor({
         return;
       }
       const href = hit.getAttribute("href") || hit.getAttribute("data-href") || "";
-      if (!isHttpUrl(href)) {
+      if (!isOpenableUrl(href)) {
         setLinkChip(null);
         return;
       }
@@ -235,20 +235,23 @@ export function RichEditor({
       splittingRef.current = true;
       const moved = splitOverflow(editor, maxHeight);
       if (moved) {
-        cancelPendingEdits();
+        flushPendingTitles();
+        cancelPendingPageEdits();
         const current = [...pagesRef.current];
         current[safeIndex] = editor.getHTML();
         const nextIndex = safeIndex + 1;
         const keptIndex = safeIndex;
         if (current[nextIndex]) {
           current[nextIndex] = `${moved.html}${current[nextIndex]}`;
-          setNotePages(note.id, current, { prependAt: nextIndex, shift: moved.size });
+          setNotePages(note.id, current, { prependAt: nextIndex });
         } else {
           current.splice(nextIndex, 0, moved.html);
           setNotePages(note.id, current, { insertAt: nextIndex });
         }
         const kept = editor.getHTML();
-        splittingRef.current = false;
+        window.setTimeout(() => {
+          splittingRef.current = false;
+        }, 280);
         onChangeRef.current(kept, keptIndex);
         if (editor.view.hasFocus()) onPageIndexChange(nextIndex);
         setOversized(false);
@@ -340,6 +343,10 @@ export function RichEditor({
               onTitleChange(e.target.value);
               e.currentTarget.style.height = "auto";
               e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+            }}
+            onBlur={(e) => {
+              const next = e.currentTarget.value.trim();
+              if (!next) onTitleChange("Untitled");
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {

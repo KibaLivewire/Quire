@@ -283,7 +283,7 @@ export function PrintPreview() {
       </div>
 
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
-        <AlertDialogContent className="z-[90]" data-close-on-back>
+        <AlertDialogContent className="z-[90]">
           <AlertDialogHeader>
             <AlertDialogTitle>Print this page anyway?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -291,7 +291,7 @@ export function PrintPreview() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setConfirm(false)}>
+            <Button variant="ghost" data-close-on-back onClick={() => setConfirm(false)}>
               Cancel
             </Button>
             <Button onClick={() => void sendToPrinter()} disabled={busy}>

@@ -117,7 +117,7 @@ function expandSentence(sentence: string, voice: Voice) {
   return `${body} — ${extra}${end || "."}`;
 }
 
-async function polish(text: string, dictionary?: string[]) {
+async function polish(text: string, dictionary?: string[]): Promise<{ text: string } | { error: true }> {
   try {
     const issues = await checkGrammar(text, dictionary);
     let next = text;
@@ -126,9 +126,9 @@ async function polish(text: string, dictionary?: string[]) {
       if (!swap) continue;
       next = next.slice(0, issue.offset) + swap + next.slice(issue.offset + issue.length);
     }
-    return next;
+    return { text: next };
   } catch {
-    return text;
+    return { error: true };
   }
 }
 
@@ -181,8 +181,11 @@ export async function askQuill(prompt: string, selection: string, dictionary?: s
   }
 
   if (source && (asks(lower, /\b(polish|grammar|correct)\b/) || lower === "fix")) {
-    const replacement = await polish(source, dictionary);
-    return { reply: replacement === source ? "I wouldn't change the grammar here." : "Polished, with the original sense kept.", replacement };
+    const polished = await polish(source, dictionary);
+    if ("error" in polished) {
+      return { reply: "The grammar service is unreachable. Try again when this device is online." };
+    }
+    return { reply: polished.text === source ? "I wouldn't change the grammar here." : "Polished, with the original sense kept.", replacement: polished.text === source ? undefined : polished.text };
   }
 
   if (asks(lower, /\b(synonym|thesaurus)\b|better word|another word/)) {

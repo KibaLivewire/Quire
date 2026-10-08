@@ -96,13 +96,21 @@ export function zipStore(files: { name: string; data: Uint8Array }[]) {
   return new Blob([concat([...locals, central, end])], { type: "application/zip" });
 }
 
+const MAX_ZIP_BYTES = 40_000_000;
+const MAX_ZIP_FILES = 80;
+
 export async function unzip(buffer: ArrayBuffer) {
+  if (buffer.byteLength > MAX_ZIP_BYTES) {
+    throw new Error("That zip is too large to open.");
+  }
   const bytes = new Uint8Array(buffer);
   const view = new DataView(buffer);
   const files = new Map<string, string>();
   const decoder = new TextDecoder();
   let i = 0;
+  let total = 0;
   while (i + 30 <= bytes.length && view.getUint32(i, true) === 0x04034b50) {
+    if (files.size >= MAX_ZIP_FILES) throw new Error("That zip has too many files.");
     const flags = view.getUint16(i + 6, true);
     const method = view.getUint16(i + 8, true);
     let compact = view.getUint32(i + 18, true);
@@ -137,6 +145,9 @@ export async function unzip(buffer: ArrayBuffer) {
         descriptor = sig === 0x08074b50 ? 16 : 12;
       }
     }
+    if (compact > MAX_ZIP_BYTES || dataStart + compact > bytes.length) {
+      throw new Error("That zip is too large to open.");
+    }
     const packed = bytes.subarray(dataStart, dataStart + compact);
     let text = "";
     if (method === 0) {
@@ -144,6 +155,12 @@ export async function unzip(buffer: ArrayBuffer) {
     } else if (method === 8 && typeof DecompressionStream === "function") {
       const stream = new Blob([packed]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
       text = await new Response(stream).text();
+    }
+    total += text.length;
+    if (total > MAX_ZIP_BYTES) throw new Error("That zip is too large to open.");
+    if (name.includes("..") || name.startsWith("/") || name.includes("\\")) {
+      i = dataStart + compact + descriptor;
+      continue;
     }
     files.set(name, text);
     i = dataStart + compact + descriptor;

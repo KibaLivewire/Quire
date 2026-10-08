@@ -185,8 +185,8 @@ export function FindBar({ noteId, pageIndex }: { noteId: string; pageIndex: numb
         <Input
           autoFocus
           value={query}
-          placeholder="Find on this page"
-          aria-label="Find on this page"
+          placeholder="Find in this writing"
+          aria-label="Find in this writing"
           className="h-8"
           onChange={(event) => onSearch(event.target.value)}
           onKeyDown={(event) => {

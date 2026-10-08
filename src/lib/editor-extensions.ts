@@ -9,6 +9,12 @@ import { TextStyleKit } from "@tiptap/extension-text-style";
 import type { DOMOutputSpec } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import { PageBookmark, PageNote } from "./page-marks";
+import { isOpenableUrl } from "./desktop";
+
+function safeColor(value: string | null | undefined) {
+  const next = String(value || "").trim();
+  return /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(next) ? next : null;
+}
 
 const QuireHighlight = Highlight.extend({
   addAttributes() {
@@ -16,12 +22,13 @@ const QuireHighlight = Highlight.extend({
       color: {
         default: null,
         parseHTML: (element: HTMLElement) =>
-          element.getAttribute("data-color") || element.style.backgroundColor || null,
+          safeColor(element.getAttribute("data-color") || element.style.backgroundColor),
         renderHTML: (attributes: { color?: string | null }) => {
-          if (!attributes.color) return {};
+          const color = safeColor(attributes.color);
+          if (!color) return {};
           return {
-            "data-color": attributes.color,
-            style: `background-color: ${attributes.color}; color: var(--color-highlight-ink)`,
+            "data-color": color,
+            style: `background-color: ${color}; color: var(--color-highlight-ink)`,
           };
         },
       },
@@ -43,10 +50,12 @@ const QuireImage = Image.extend({
       ...this.parent?.(),
       href: {
         default: null,
-        parseHTML: (element: HTMLElement) =>
-          element.getAttribute("data-href") || element.closest("a")?.getAttribute("href"),
+        parseHTML: (element: HTMLElement) => {
+          const href = element.getAttribute("data-href") || element.closest("a")?.getAttribute("href");
+          return href && isOpenableUrl(href) ? href : null;
+        },
         renderHTML: (attributes: { href?: string | null }) =>
-          attributes.href ? { "data-href": attributes.href } : {},
+          attributes.href && isOpenableUrl(attributes.href) ? { "data-href": attributes.href } : {},
       },
       fit: {
         default: null,
@@ -124,7 +133,7 @@ const QuireImage = Image.extend({
     const inner: DOMOutputSpec = mark
       ? ["span", { class: "quire-figure" }, img, ["span", { class: "quire-watermark" }, mark]]
       : img;
-    if (href) {
+    if (href && isOpenableUrl(href)) {
       return ["a", { href, target: "_blank", rel: "noopener noreferrer", class: "quire-image-link" }, inner];
     }
     return inner;

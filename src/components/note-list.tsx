@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { FileText, Filter, Folder, Lock, Menu, Pin, Plus, Search } from "lucide-react";
+import { toast } from "sonner";
 import { ColorSwatches } from "@/components/color-swatches";
 import { Button } from "@/components/ui/button";
 import {
@@ -95,7 +96,7 @@ export function NoteList({
       if (!inSizeRange(bytes, size)) return false;
       if (!q) return true;
       const gated = Boolean(noteGate(notebooks, note, unlockedIds));
-      if (gated) return note.title.toLowerCase().includes(q);
+      if (gated) return false;
       return (
         note.title.toLowerCase().includes(q) ||
         plainText(note.content).toLowerCase().includes(q)
@@ -167,7 +168,13 @@ export function NoteList({
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => {
-                createNotebook("Untitled folder", activeNotebookId);
+                if (listGate) {
+                  toast.error("Unlock this folder first.");
+                  return;
+                }
+                if (!createNotebook("Untitled folder", activeNotebookId)) {
+                  toast.error("Unlock this folder first.");
+                }
               }}
             >
               New folder inside

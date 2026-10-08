@@ -20,6 +20,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { isUserCancel } from "@/lib/native";
 import { buildBackup, readBackupFile, saveBackup } from "@/lib/backup";
 import { appVersion, checkForUpdates, isNewerVersion } from "@/lib/desktop";
 import { flushPendingEdits } from "@/lib/pending-save";
@@ -239,8 +240,11 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               flushPendingEdits();
               const state = useNotebookStore.getState();
               void saveBackup(buildBackup(state.notebooks, state.notes, state.prefs)).then(
-                () => toast("Backup saved"),
-                () => toast.error("Could not save the backup."),
+                () => toast("Backup saved. The zip is plain text, including locked pages."),
+                (error) => {
+                  if (isUserCancel(error)) return;
+                  toast.error("Could not save the backup.");
+                },
               );
             }}
           >
@@ -251,8 +255,11 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               flushPendingEdits();
               const state = useNotebookStore.getState();
               void saveBackup(buildBackup(state.notebooks, state.notes, state.prefs)).then(
-                () => toast("Copy saved. Restore it on the other device with File → Restore desk. Nothing is sent through the internet."),
-                () => toast.error("Could not save a copy for transfer."),
+                () => toast("Copy saved. Restore it on the other device with File → Restore desk. Nothing is sent through the internet. The zip is plain text."),
+                (error) => {
+                  if (isUserCancel(error)) return;
+                  toast.error("Could not save a copy for transfer.");
+                },
               );
             }}
           >
@@ -334,7 +341,7 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => openFindBar(false)}>
-            Find on this page… <Shortcut>Ctrl+F</Shortcut>
+            Find in this note… <Shortcut>Ctrl+F</Shortcut>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => openFindBar(true)}>
             Replace… <Shortcut>Ctrl+H</Shortcut>

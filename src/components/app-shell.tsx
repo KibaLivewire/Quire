@@ -45,6 +45,7 @@ export function AppShell() {
   const prefs = useNotebookStore((s) => s.prefs);
   const setPrefs = useNotebookStore((s) => s.setPrefs);
   const hasHydrated = useNotebookStore((s) => s.hasHydrated);
+  const hydrateFailed = useNotebookStore((s) => s.hydrateFailed);
   const [notebooksOpen, setNotebooksOpen] = useState(false);
   const [mobileList, setMobileList] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -126,6 +127,7 @@ export function AppShell() {
     window.addEventListener("beforeunload", onQuit);
     window.addEventListener("pagehide", onQuit);
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("quire-flush-now", onQuit);
     const stopFlushListener = onDesktopFlushRequest(async () => {
       const ok = await flushPersist();
       notifyDesktopFlushDone(ok);
@@ -135,6 +137,7 @@ export function AppShell() {
       window.removeEventListener("beforeunload", onQuit);
       window.removeEventListener("pagehide", onQuit);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("quire-flush-now", onQuit);
       stopFlushListener();
     };
   }, []);
@@ -216,11 +219,22 @@ export function AppShell() {
           onOpenNote={() => setMobileList(false)}
           onOpenNotebooks={() => setNotebooksOpen(true)}
         />
+        {hydrateFailed ? (
+          <div className="flex min-w-0 flex-1 flex-col items-center justify-center px-6 text-center">
+            <h2 className="font-display text-2xl font-semibold tracking-tight text-ink">The desk could not be read</h2>
+            <p className="mt-2 max-w-sm text-pretty text-ink-muted">
+              Close Quire and open it again. Do not keep typing — that would not be saved over the notebook already on this device.
+            </p>
+          </div>
+        ) : hasHydrated ? (
         <EditorPane
           className={cn("min-w-0 flex-1", mobileList && "hidden md:flex")}
           onBack={() => setMobileList(true)}
           onOpenSettings={() => setSettingsOpen(true)}
         />
+        ) : (
+          <div className={cn("min-w-0 flex-1 bg-paper", mobileList && "hidden md:flex")} />
+        )}
         <QuillPanel />
         </div>
       </div>

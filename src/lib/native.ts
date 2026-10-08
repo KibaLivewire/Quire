@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { flushPendingEdits } from "./pending-save";
 
 export function isNativeApp() {
   try {
@@ -32,6 +33,13 @@ function blobToBase64(blob: Blob) {
   });
 }
 
+export function isUserCancel(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const name = "name" in error ? String((error as { name?: string }).name) : "";
+  const message = "message" in error ? String((error as { message?: string }).message) : "";
+  return name === "AbortError" || /the user aborted|aborted a request|cancel/i.test(message);
+}
+
 export async function saveFile(filename: string, blob: Blob) {
   if (isNativeApp()) {
     const [{ Filesystem, Directory }, { Share }] = await Promise.all([
@@ -54,13 +62,18 @@ export async function saveFile(filename: string, blob: Blob) {
     }
   ).showSaveFilePicker;
   if (typeof picker === "function") {
-    const handle = await picker({
-      suggestedName: filename,
-      types: [{ description: filename, accept: { [blob.type || "application/octet-stream"]: ["." + filename.split(".").pop()] } }],
-    });
-    const writable = await handle.createWritable();
-    await writable.write(blob);
-    await writable.close();
+    try {
+      const handle = await picker({
+        suggestedName: filename,
+        types: [{ description: filename, accept: { [blob.type || "application/octet-stream"]: ["." + filename.split(".").pop()] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+    } catch (error) {
+      if (isUserCancel(error)) return;
+      throw error;
+    }
     return;
   }
   const url = URL.createObjectURL(blob);
@@ -110,17 +123,26 @@ export async function initNativeShell() {
   await StatusBar.setStyle({ style: Style.Dark });
   await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
   App.addListener("backButton", ({ canGoBack }) => {
-    const close = document.querySelector<HTMLElement>("[data-close-on-back]");
-    if (close) {
-      close.click();
+    const visible = (el: HTMLElement | null) => {
+      if (!el) return false;
+      const style = getComputedStyle(el);
+      return style.display !== "none" && style.visibility !== "hidden" && el.getClientRects().length > 0;
+    };
+    const close = document.querySelector<HTMLElement>("button[data-close-on-back]");
+    if (visible(close)) {
+      close?.click();
       return;
     }
     const back = document.querySelector<HTMLElement>("[data-mobile-back]");
-    if (back) {
-      back.click();
+    if (visible(back)) {
+      back?.click();
       return;
     }
-    if (canGoBack) window.history.back();
-    else App.exitApp();
+    flushPendingEdits();
+    window.dispatchEvent(new Event("quire-flush-now"));
+    window.setTimeout(() => {
+      if (canGoBack) window.history.back();
+      else App.exitApp();
+    }, 350);
   });
 }

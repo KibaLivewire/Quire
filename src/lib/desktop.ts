@@ -36,17 +36,26 @@ export function hydrateAppVersion(): void {
 }
 
 export function isHttpUrl(value: string): boolean {
+  const href = value.trim();
+  if (!href || href.startsWith("#")) return false;
+  if (!/^https?:\/\//i.test(href)) return false;
   try {
-    const url = new URL(value, "https://quire.local");
+    const url = new URL(href);
     return url.protocol === "http:" || url.protocol === "https:";
   } catch {
     return false;
   }
 }
 
+export function isOpenableUrl(value: string): boolean {
+  const href = value.trim();
+  if (/^mailto:[^\s]+/i.test(href)) return true;
+  return isHttpUrl(href);
+}
+
 export async function openExternal(href: string): Promise<void> {
   const url = href.trim();
-  if (!url || !isHttpUrl(url)) return;
+  if (!url || !isOpenableUrl(url)) return;
   if (typeof window !== "undefined" && window.quire?.openExternal) {
     await window.quire.openExternal(url);
     return;
@@ -58,16 +67,29 @@ export async function openExternal(href: string): Promise<void> {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
+function parseVersionParts(tag: string) {
+  const raw = String(tag || "")
+    .trim()
+    .replace(/^v/i, "");
+  const match = raw.match(/^(\d+(?:\.\d+)*)(.*)$/);
+  const core = match?.[1] || "0";
+  const suffix = (match?.[2] || "").replace(/^[-.+]/, "");
+  const nums = core.split(".").map((n) => Number.parseInt(n, 10) || 0);
+  return { nums, suffix };
+}
+
 export function isNewerVersion(latest: string | null | undefined, current: string) {
   if (!latest) return false;
-  const a = latest.trim().replace(/^v/i, "").split(".").map((n) => Number(n) || 0);
-  const b = current.trim().replace(/^v/i, "").split(".").map((n) => Number(n) || 0);
-  const len = Math.max(a.length, b.length);
+  const a = parseVersionParts(latest);
+  const b = parseVersionParts(current);
+  const len = Math.max(a.nums.length, b.nums.length);
   for (let i = 0; i < len; i += 1) {
-    if ((a[i] || 0) > (b[i] || 0)) return true;
-    if ((a[i] || 0) < (b[i] || 0)) return false;
+    if ((a.nums[i] || 0) > (b.nums[i] || 0)) return true;
+    if ((a.nums[i] || 0) < (b.nums[i] || 0)) return false;
   }
-  return false;
+  if (!a.suffix && b.suffix) return true;
+  if (a.suffix && !b.suffix) return false;
+  return a.suffix.localeCompare(b.suffix) > 0;
 }
 
 export async function checkForUpdates() {

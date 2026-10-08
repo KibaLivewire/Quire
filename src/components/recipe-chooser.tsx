@@ -95,7 +95,11 @@ export function RecipeChooserHost() {
   function apply(recipe: PageRecipeId) {
     if (!request) return;
     if (request.mode === "create") {
-      createNote(request.notebookId, recipe);
+      const id = createNote(request.notebookId, recipe);
+      if (!id) {
+        toast.error("Unlock this folder first.");
+        return;
+      }
       toast(`Started as ${RECIPE_META.find((item) => item.id === recipe)?.label ?? "page"}`);
       close();
       return;

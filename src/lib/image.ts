@@ -3,6 +3,8 @@ import type { Editor } from "@tiptap/react";
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.84;
 const PASSTHROUGH_BYTES = 220_000;
+const PHOTO_MAX_BYTES = 25_000_000;
+const STILL_MAX_BYTES = 25_000_000;
 const GIF_MAX_BYTES = 8_000_000;
 const ALLOWED = /image\/(jpeg|jpg|png|gif|webp)/i;
 const ALLOWED_EXT = /\.(jpe?g|png|gif|webp)$/i;
@@ -28,12 +30,18 @@ export async function fileToDataUrl(file: File): Promise<string> {
   if (!isAllowedImage(file)) {
     throw new Error("Use a JPEG, PNG, GIF, or WebP image.");
   }
+  if (file.size > PHOTO_MAX_BYTES) {
+    throw new Error("That picture is too large. Use one under 25 MB.");
+  }
   const type = file.type || guessType(file.name);
   if (/gif/i.test(type)) {
     if (file.size > GIF_MAX_BYTES) {
       throw new Error("That GIF is too large to keep in motion. Use one under 8 MB.");
     }
     return readAsDataUrl(file);
+  }
+  if (file.size > STILL_MAX_BYTES) {
+    throw new Error("That picture is too large. Use one under 25 MB.");
   }
   if (file.size <= PASSTHROUGH_BYTES) return readAsDataUrl(file);
 

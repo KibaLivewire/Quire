@@ -1,3 +1,23 @@
+# Quire 1.8.9 — Keep the last keystroke
+
+Released 7 October 2026.
+
+- **A stalled Windows server no longer reloads the desk under your hands.** Health checks ignore sleep and a single bad answer. Five misses are required before the local server is restarted, and the page is written first. A server that exits on its own does the same. Only an HTTP 200 counts as “up.” A busy port is named only when something is already listening.
+- **Delete, duplicate, a new folder, and restore write the page on screen first.** The last half-second is not left in the debounce. A sheet split still cancels the page timer, not the title.
+- **A failed desk read is not saved as a new Welcome.** Quire stays on the “could not be read” screen instead of writing a seed over the notebook already on this device.
+- **The passcode is still a screen gate, not encryption.** Pages and backups stay plaintext. A wrong guess now waits, and the wait grows. The overlay says the file is not encrypted.
+- **Imported HTML is tighter.** Scriptable SVG data URLs, `srcset`, form actions, `javascript:` image links, highlight colors, and `url()` / `expression()` in styles and add-on CSS are dropped. The Windows window has a content policy. Android no longer allows mixed content, and Android backup of the app data is off.
+- **Paste from the Edit menu is text.** A copied `<img onerror>` is not parsed as markup.
+- **Open keeps Word paragraphs and skips RTF font tables.** A `.txt` is text even if it mentions `<html`. A zip over 40 MB, or a path that climbs out of the archive, is refused. A backup with a null page is skipped. Restoring a desk does not roll a newer Desk revision back unless the backup is newer.
+- **An empty table, rule, or checklist is not a blank sheet.** The second copy of “Name copy” is “Name copy 2.” Move to shows the folder path. New page and new folder wait if that folder is locked. Find reports overlapping matches. Hardware Back on Android can leave the app, and it writes first.
+- **Grammar and Quill give up after 8 seconds** instead of waiting forever.
+- **Pictures over 25 MB are refused. A GIF over 8 MB is refused** instead of frozen.
+- **PDF can still turn letters outside Latin-1 into a question mark. Word export still leaves pictures out.** Those were left as they are.
+
+Windows installer: Quire-Setup-1.8.9.exe
+
+---
+
 # Quire 1.8.8 — Safer opens
 
 Released 25 September 2026.

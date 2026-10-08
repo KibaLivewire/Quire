@@ -41,11 +41,28 @@ export function childFolders(notebooks: Notebook[], parentId: string | null): No
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function descendantIds(notebooks: Notebook[], id: string, seen = new Set<string>()): string[] {
-  if (seen.has(id)) return [];
-  seen.add(id);
-  const kids = notebooks.filter((nb) => nb.parentId === id && nb.id !== id);
-  return [id, ...kids.flatMap((kid) => descendantIds(notebooks, kid.id, seen))];
+export function descendantIds(notebooks: Notebook[], id: string): string[] {
+  const kidsByParent = new Map<string, string[]>();
+  for (const nb of notebooks) {
+    const parent = nb.parentId;
+    if (!parent || parent === nb.id) continue;
+    const list = kidsByParent.get(parent);
+    if (list) list.push(nb.id);
+    else kidsByParent.set(parent, [nb.id]);
+  }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const stack = [id];
+  while (stack.length) {
+    const current = stack.pop();
+    if (!current || seen.has(current)) continue;
+    seen.add(current);
+    out.push(current);
+    const kids = kidsByParent.get(current);
+    if (!kids) continue;
+    for (let i = kids.length - 1; i >= 0; i -= 1) stack.push(kids[i]!);
+  }
+  return out;
 }
 
 export function isDescendant(notebooks: Notebook[], ancestorId: string, maybeId: string): boolean {
@@ -95,11 +112,12 @@ export type SortKey = "updated" | "created" | "size" | "name";
 
 export function inDateRange(ts: number, filter: DateFilter): boolean {
   if (filter === "any") return true;
-  const age = Date.now() - ts;
-  if (filter === "day") return age <= 86_400_000;
-  if (filter === "week") return age <= 7 * 86_400_000;
-  if (filter === "month") return age <= 30 * 86_400_000;
-  return age <= 365 * 86_400_000;
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (filter === "week") start.setDate(start.getDate() - 6);
+  else if (filter === "month") start.setMonth(start.getMonth() - 1);
+  else if (filter === "year") start.setFullYear(start.getFullYear() - 1);
+  return ts >= start.getTime();
 }
 
 export function inSizeRange(bytes: number, filter: SizeFilter): boolean {

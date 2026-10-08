@@ -2,9 +2,34 @@ import { buildPdf } from "./pdf";
 import { zipStore } from "./zip";
 import { escapeHtml, plainText } from "./utils";
 import { saveFile } from "./native";
+import { sanitizeHtml } from "./sanitize-html";
 
 function safeName(title: string) {
-  return title.replace(/[^\w\s-]+/g, "").trim() || "untitled";
+  const cleaned = title.replace(/[<>:"/\\|?*\u0000-\u001f]+/g, "").replace(/\.+$/g, "").trim();
+  return cleaned.slice(0, 80) || "untitled";
+}
+
+function htmlToPlainDocument(html: string) {
+  const amp = String.fromCharCode(38);
+  const withBreaks = html
+    .replace(/<div[^>]*data-quire-sheet[^>]*>/gi, "\n\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|h1|h2|h3|h4|li|tr|blockquote|pre)>/gi, "\n");
+  return withBreaks
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<img[^>]*>/gi, " ")
+    .replace(/<[^>]+>/g, "")
+    .replace(new RegExp(`${amp}nbsp;`, "gi"), " ")
+    .replace(new RegExp(`${amp}lt;`, "gi"), "<")
+    .replace(new RegExp(`${amp}gt;`, "gi"), ">")
+    .replace(new RegExp(`${amp}quot;`, "gi"), '"')
+    .replace(new RegExp(`${amp}#39;`, "gi"), "'")
+    .replace(new RegExp(`${amp}amp;`, "gi"), amp)
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function downloadBlob(filename: string, blob: Blob) {
@@ -28,14 +53,14 @@ export function exportHtml(title: string, content: string) {
 </head>
 <body>
 <h1>${escapeHtml(title)}</h1>
-${content}
+${sanitizeHtml(content)}
 </body>
 </html>`;
   download(`${safeName(title)}.html`, html, "text/html");
 }
 
 export function exportText(title: string, content: string) {
-  download(`${safeName(title)}.txt`, `${title}\n\n${plainText(content)}\n`, "text/plain");
+  download(`${safeName(title)}.txt`, `${title}\n\n${htmlToPlainDocument(content)}\n`, "text/plain");
 }
 
 export function exportMarkdown(title: string, content: string) {

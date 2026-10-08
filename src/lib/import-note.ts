@@ -37,10 +37,39 @@ function rtfToText(rtf: string) {
   let uc = 1;
   let i = 0;
   let out = "";
+  let skip = 0;
+  const skipDest =
+    /^(?:\\\*|\\(?:fonttbl|colortbl|stylesheet|info|pict|header|footer|object|datastore|themedata|colorschememapping|generator|title|author|operator|creatim|revtim|company|comment|doccomm|keywords|subject|category|manager|hlinkbase|filetbl|listtable|listoverridetable|revtbl|rsidtbl|latentstyles|xmlnstbl|mmathPr|userprops)\b)/;
+
+  function skipControl() {
+    if (rtf.startsWith("\\'", i)) {
+      i += 4;
+      return;
+    }
+    const word = /^\\(?:[a-zA-Z]+-?\d*|[\\{}]) ?/.exec(rtf.slice(i));
+    if (word) {
+      i += word[0].length;
+      return;
+    }
+    i += 1;
+  }
+
   while (i < rtf.length) {
     const ch = rtf[i];
-    if (ch === "{" || ch === "}") {
+    if (ch === "{") {
+      const rest = rtf.slice(i + 1);
+      if (skip > 0 || skipDest.test(rest)) skip += 1;
       i += 1;
+      continue;
+    }
+    if (ch === "}") {
+      if (skip > 0) skip -= 1;
+      i += 1;
+      continue;
+    }
+    if (skip > 0) {
+      if (ch === "\\") skipControl();
+      else i += 1;
       continue;
     }
     if (ch !== "\\") {
@@ -67,24 +96,23 @@ function rtfToText(rtf: string) {
       if (n < 0) n += 65536;
       out += String.fromCharCode(n & 0xffff);
       i += uni[0].length;
-      let skip = uc;
-      while (skip > 0 && i < rtf.length) {
+      let skipAnsi = uc;
+      while (skipAnsi > 0 && i < rtf.length) {
         if (rtf.startsWith("\\'", i)) {
           i += 4;
-          skip -= 1;
+          skipAnsi -= 1;
           continue;
         }
         if (rtf[i] === "\\") break;
         i += 1;
-        skip -= 1;
+        skipAnsi -= 1;
       }
       continue;
     }
     const word = /^\\([a-zA-Z]+)(-?\d+)? ?/.exec(rtf.slice(i));
     if (word) {
       if (word[1] === "uc") uc = Math.max(0, Number(word[2] || 0));
-      if (word[1] === "par" || word[1] === "pard") out += "\n";
-      if (word[1] === "line") out += "\n";
+      if (word[1] === "par" || word[1] === "pard" || word[1] === "line") out += "\n";
       if (word[1] === "tab") out += "\t";
       i += word[0].length;
       continue;
@@ -95,15 +123,16 @@ function rtfToText(rtf: string) {
 }
 
 function docxXmlToHtml(xml: string) {
-  return xml
-    .replace(/<w:p[ >][\s\S]*?<\/w:p>/g, (block) => {
-      const text = Array.from(block.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g))
-        .map((match) => decodeXml(match[1]))
-        .join("");
-      return text.trim() ? `<p>${escapeText(text)}</p>` : "";
-    })
-    .replace(/<[^>]+>/g, "")
-    .trim();
+  const parts: string[] = [];
+  const blocks = xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g);
+  for (const match of blocks) {
+    const block = match[0];
+    const text = Array.from(block.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g))
+      .map((hit) => decodeXml(hit[1] ?? ""))
+      .join("");
+    if (text.trim()) parts.push(`<p>${escapeText(text)}</p>`);
+  }
+  return parts.join("");
 }
 
 export async function importDocument(file: File): Promise<{ title: string; html: string }> {
@@ -133,7 +162,7 @@ export async function importDocument(file: File): Promise<{ title: string; html:
     return { title, html: paragraphs(rtfToText(text)) };
   }
 
-  if (name.endsWith(".html") || name.endsWith(".htm") || /<html/i.test(text)) {
+  if (name.endsWith(".html") || name.endsWith(".htm")) {
     const body = text.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? text;
     return { title, html: sanitizeHtml(body) };
   }

@@ -45,12 +45,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Slider } from "@/components/ui/slider";
 import { exportDoc, exportDocx, exportHtml, exportMarkdown, exportPdf, exportRtf, exportText } from "@/lib/export-note";
+import { folderPath } from "@/lib/folders";
 import { isLocked, noteGate } from "@/lib/lock";
 import { notePages } from "@/lib/pages";
 import { openPrintPreview } from "@/lib/print";
 import { openRecipeChooser } from "@/lib/recipe-chooser";
 import { useNotebookStore, flushNotebookPersist } from "@/lib/store";
-import { registerPendingCancel, registerPendingFlush, flushPendingEdits } from "@/lib/pending-save";
+import { registerPendingCancel, registerPendingFlush, registerPendingPageCancel, registerPendingTitleFlush, flushPendingEdits } from "@/lib/pending-save";
 import { registerPageJump } from "@/lib/find";
 import { cn, debounce, plainText, wordCount } from "@/lib/utils";
 
@@ -180,10 +181,18 @@ export function EditorPane({
     savePage.flush();
   }), [save, savePage]);
 
+  useEffect(() => registerPendingTitleFlush(() => {
+    save.flush();
+  }), [save]);
+
   useEffect(() => registerPendingCancel(() => {
     save.cancel();
     savePage.cancel();
   }), [save, savePage]);
+
+  useEffect(() => registerPendingPageCancel(() => {
+    savePage.cancel();
+  }), [savePage]);
 
   const allHtml = note ? notePages(note).join("\n") : "";
   const words = wordCount(allHtml);
@@ -275,7 +284,7 @@ export function EditorPane({
               <FileText className="size-4" />
               Change recipe…
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => togglePin(note.id)}>
+            <DropdownMenuItem disabled={Boolean(gate)} onSelect={() => unlessLocked(() => togglePin(note.id))}>
               <Pin className="size-4" />
               {note.pinned ? "Unpin" : "Pin"}
             </DropdownMenuItem>
@@ -324,7 +333,7 @@ export function EditorPane({
                     disabled={nb.id === note.notebookId || Boolean(gate)}
                     onSelect={() => unlessLocked(() => moveNote(note.id, nb.id))}
                   >
-                    {nb.name}
+                    {folderPath(notebooks, nb.id).map((folder) => folder.name).join(" / ") || nb.name}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuSubContent>
@@ -389,7 +398,7 @@ export function EditorPane({
         onTitleChange={(next) => {
           setTitle(next);
           setSaveState("saving");
-          save(note.id, { title: next.trim() || "Untitled" }, ++saveGen.current);
+          save(note.id, { title: next }, ++saveGen.current);
         }}
         onChange={(next, index) => {
           const nextCount = wordCount(next);

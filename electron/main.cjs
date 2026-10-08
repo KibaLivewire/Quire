@@ -19,6 +19,33 @@ let quitting = false;
 let serverRestarts = 0;
 let healthTimer = null;
 let healthGen = 0;
+const healthState = { misses: 0, lastTick: 0 };
+let powerHooks = null;
+
+function installPackagedCsp() {
+  const { session } = require("electron");
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "img-src 'self' data: blob:",
+    "media-src 'self' blob:",
+    "connect-src 'self' https://api.languagetool.org https://api.datamuse.com https://en.wiktionary.org https://api.github.com",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-src 'none'",
+  ].join("; ");
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [csp],
+      },
+    });
+  });
+}
 
 function prefsPath() {
   return path.join(app.getPath("userData"), "quire-prefs.json");
@@ -29,6 +56,20 @@ function serverDownMessage() {
     return `Quire could not start. Port ${PROD_PORT} is already in use.`;
   }
   return "Quire's local server stopped.";
+}
+
+function portBusy(url) {
+  return new Promise((resolve) => {
+    const req = http.get(url, (res) => {
+      res.resume();
+      resolve(true);
+    });
+    req.setTimeout(700, () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.on("error", () => resolve(false));
+  });
 }
 
 function waitForUrl(url, timeoutMs) {
@@ -54,6 +95,14 @@ function waitForUrl(url, timeoutMs) {
       const req = http.get(url, (res) => {
         res.resume();
         if (settled) return;
+        if (res.statusCode !== 200) {
+          waiting = true;
+          setTimeout(() => {
+            waiting = false;
+            attempt();
+          }, 250);
+          return;
+        }
         settled = true;
         resolve();
       });
@@ -78,6 +127,32 @@ function waitForUrl(url, timeoutMs) {
       });
     };
     attempt();
+  });
+}
+
+function flushRenderer(win, ms = 8000) {
+  return new Promise((resolve) => {
+    const wc = win && win.webContents;
+    if (!wc || wc.isDestroyed()) {
+      resolve(false);
+      return;
+    }
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      ipcMain.removeListener("quire:flush-done", onDone);
+      resolve(ok);
+    };
+    const timer = setTimeout(() => finish(false), ms);
+    const onDone = (_event, ok) => finish(ok !== false);
+    ipcMain.on("quire:flush-done", onDone);
+    try {
+      wc.send("quire:flush");
+    } catch {
+      finish(false);
+    }
   });
 }
 
@@ -108,9 +183,11 @@ function attachServer(child) {
     setTimeout(() => {
       if (quitting) return;
       startPackagedServer()
-        .then(() => {
+        .then(async () => {
           const win = BrowserWindow.getAllWindows()[0];
-          if (win && !win.isDestroyed()) void win.loadURL(PROD_URL);
+          if (!win || win.isDestroyed()) return;
+          await flushRenderer(win);
+          if (!win.isDestroyed()) void win.loadURL(PROD_URL);
         })
         .catch(() => {
           /* the next exit decides whether to try again */
@@ -128,9 +205,30 @@ function stopHealthWatch() {
 function startHealthWatch() {
   stopHealthWatch();
   const gen = healthGen;
-  let misses = 0;
+  healthState.misses = 0;
+  healthState.lastTick = Date.now();
+  if (!powerHooks) {
+    try {
+      const { powerMonitor } = require("electron");
+      const onResume = () => {
+        healthState.misses = 0;
+        healthState.lastTick = Date.now();
+      };
+      const onSuspend = () => {
+        healthState.misses = 0;
+      };
+      powerMonitor.on("resume", onResume);
+      powerMonitor.on("suspend", onSuspend);
+      powerHooks = { powerMonitor, onResume, onSuspend };
+    } catch {
+      /* older electron */
+    }
+  }
   const ping = () => {
     if (gen !== healthGen || quitting || !serverReady) return;
+    const now = Date.now();
+    if (now - healthState.lastTick > 40000) healthState.misses = 0;
+    healthState.lastTick = now;
     const child = serverChild;
     if (!child || child.exitCode !== null) return;
     let done = false;
@@ -138,16 +236,21 @@ function startHealthWatch() {
       res.resume();
       if (done || gen !== healthGen) return;
       done = true;
-      misses = 0;
+      if (res.statusCode !== 200) {
+        healthState.misses += 1;
+        healthTimer = setTimeout(ping, 1000);
+        return;
+      }
+      healthState.misses = 0;
       healthTimer = setTimeout(ping, 15000);
     });
-    req.setTimeout(15000, () => {
+    req.setTimeout(8000, () => {
       if (done || gen !== healthGen) return;
       done = true;
-      misses += 1;
+      healthState.misses += 1;
       req.destroy();
-      if (misses >= 3 && serverChild && serverChild.exitCode === null && !serverChild.killed) {
-        misses = 0;
+      if (healthState.misses >= 5 && serverChild && serverChild.exitCode === null && !serverChild.killed) {
+        healthState.misses = 0;
         serverChild.kill();
         return;
       }
@@ -156,9 +259,9 @@ function startHealthWatch() {
     req.on("error", () => {
       if (done || gen !== healthGen) return;
       done = true;
-      misses += 1;
-      if (misses >= 3 && serverChild && serverChild.exitCode === null && !serverChild.killed) {
-        misses = 0;
+      healthState.misses += 1;
+      if (healthState.misses >= 5 && serverChild && serverChild.exitCode === null && !serverChild.killed) {
+        healthState.misses = 0;
         serverChild.kill();
         return;
       }
@@ -169,7 +272,11 @@ function startHealthWatch() {
 }
 
 function startPackagedServer() {
-  const serverJs = path.join(process.resourcesPath, "output", "server", "index.mjs");
+  return portBusy(PROD_URL).then((busy) => {
+    if (busy) {
+      throw new Error(`Quire could not start. Port ${PROD_PORT} is already in use.`);
+    }
+    const serverJs = path.join(process.resourcesPath, "output", "server", "index.mjs");
   if (!fs.existsSync(serverJs)) {
     throw new Error("Quire server files are missing. Reinstall the app.");
   }
@@ -193,6 +300,7 @@ function startPackagedServer() {
     everReady = true;
     serverRestarts = 0;
     startHealthWatch();
+  });
   });
 }
 
@@ -224,7 +332,7 @@ function createWindow(url) {
   win.webContents.setWindowOpenHandler(({ url: next }) => {
     // Match quire:open-external - http(s) only; deny file:/javascript:/etc.
     const href = String(next || "");
-    if (/^https?:\/\//i.test(href)) {
+    if (/^(https?:\/\/|mailto:)/i.test(href)) {
       void shell.openExternal(href);
     }
     return { action: "deny" };
@@ -305,20 +413,27 @@ function createWindow(url) {
 }
 
 function parseVersion(tag) {
-  return String(tag || "")
+  const raw = String(tag || "")
     .trim()
     .replace(/^v/i, "");
+  const match = raw.match(/^(\d+(?:\.\d+)*)(.*)$/);
+  return {
+    nums: (match?.[1] || "0").split(".").map((n) => Number.parseInt(n, 10) || 0),
+    suffix: (match?.[2] || "").replace(/^[-.+]/, ""),
+  };
 }
 
 function isNewer(latest, current) {
-  const a = parseVersion(latest).split(".").map((n) => Number(n) || 0);
-  const b = parseVersion(current).split(".").map((n) => Number(n) || 0);
-  const len = Math.max(a.length, b.length);
+  const a = parseVersion(latest);
+  const b = parseVersion(current);
+  const len = Math.max(a.nums.length, b.nums.length);
   for (let i = 0; i < len; i += 1) {
-    if ((a[i] || 0) > (b[i] || 0)) return true;
-    if ((a[i] || 0) < (b[i] || 0)) return false;
+    if ((a.nums[i] || 0) > (b.nums[i] || 0)) return true;
+    if ((a.nums[i] || 0) < (b.nums[i] || 0)) return false;
   }
-  return false;
+  if (!a.suffix && b.suffix) return true;
+  if (a.suffix && !b.suffix) return false;
+  return a.suffix > b.suffix;
 }
 
 async function lookupLatest() {
@@ -331,14 +446,14 @@ async function lookupLatest() {
   }
   const data = await response.json();
   const latest = parseVersion(data.tag_name);
-  return { current, latest, url: data.html_url || RELEASE_PAGE };
+  return { current, latest: [latest.nums.join("."), latest.suffix].filter(Boolean).join("-"), url: data.html_url || RELEASE_PAGE };
 }
 
 function wireIpc() {
   ipcMain.handle("quire:version", () => app.getVersion());
   ipcMain.handle("quire:open-external", async (_event, url) => {
     const href = String(url || "");
-    if (!/^https?:\/\//i.test(href)) return;
+    if (!/^https?:\/\//i.test(href) && !/^mailto:/i.test(href)) return;
     await shell.openExternal(href);
   });
   ipcMain.handle("quire:check-updates", async () => lookupLatest());
@@ -414,6 +529,7 @@ async function maybeNotifyUpdate() {
 
 async function boot() {
   wireIpc();
+  if (app.isPackaged) installPackagedCsp();
   let url = DEV_URL;
   if (app.isPackaged) {
     try {

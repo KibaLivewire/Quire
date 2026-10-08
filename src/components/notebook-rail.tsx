@@ -33,7 +33,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { childFolders, descendantIds, itemColor } from "@/lib/folders";
 import { appVersion } from "@/lib/desktop";
-import { isLocked } from "@/lib/lock";
+import { toast } from "sonner";
+import { isLocked, lockKey } from "@/lib/lock";
 import { openLockDialog } from "@/components/lock-gate";
 import { useNotebookStore } from "@/lib/store";
 import type { Notebook } from "@/lib/types";
@@ -64,11 +65,22 @@ function FolderRow({
   const activeNotebookId = useNotebookStore((s) => s.activeNotebookId);
   const setActiveNotebook = useNotebookStore((s) => s.setActiveNotebook);
   const moveNotebook = useNotebookStore((s) => s.moveNotebook);
+  const unlockedIds = useNotebookStore((s) => s.unlockedIds);
   const kids = childFolders(notebooks, folder.id);
   const open = expanded.has(folder.id);
   const active = folder.id === activeNotebookId;
   const blocked = new Set(descendantIds(notebooks, folder.id));
   const moveTargets = notebooks.filter((nb) => !blocked.has(nb.id));
+  const folderLocked = isLocked(folder) && !unlockedIds.includes(lockKey("folder", folder.id));
+
+  function unlessUnlocked(run: () => void) {
+    if (!folderLocked) {
+      run();
+      return;
+    }
+    openLockDialog({ kind: "folder", id: folder.id, mode: "unlock", title: folder.name });
+    toast.error("Unlock this folder first.");
+  }
 
   return (
     <div>
@@ -127,8 +139,8 @@ function FolderRow({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuItem onSelect={() => onCreateInside(folder.id)}>New folder inside</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onRename(folder)}>Rename</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onColor(folder)}>Color</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => unlessUnlocked(() => onRename(folder))}>Rename</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => unlessUnlocked(() => onColor(folder))}>Color</DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() =>
                 openLockDialog({
@@ -158,15 +170,15 @@ function FolderRow({
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>Move into</DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                <DropdownMenuItem onSelect={() => moveNotebook(folder.id, null)}>Top level</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => unlessUnlocked(() => moveNotebook(folder.id, null))}>Top level</DropdownMenuItem>
                 {moveTargets.map((target) => (
-                  <DropdownMenuItem key={target.id} onSelect={() => moveNotebook(folder.id, target.id)}>
+                  <DropdownMenuItem key={target.id} onSelect={() => unlessUnlocked(() => moveNotebook(folder.id, target.id))}>
                     {target.name}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuItem variant="destructive" onSelect={() => onDelete(folder.id)}>
+            <DropdownMenuItem variant="destructive" onSelect={() => unlessUnlocked(() => onDelete(folder.id))}>
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>

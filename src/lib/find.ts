@@ -1,3 +1,5 @@
+import { sanitizeHtml } from "./sanitize-html";
+
 type OpenFind = (replace?: boolean) => void;
 let opener: OpenFind | null = null;
 
@@ -28,6 +30,24 @@ export function requestPageJump(index: number) {
 
 export type TextHit = { from: number; to: number };
 
+function foldInto(
+  text: string,
+  hay: { value: string },
+  push: (originalIndex: number) => void,
+) {
+  for (let i = 0; i < text.length; ) {
+    const cp = text.codePointAt(i) ?? 0;
+    const ch = String.fromCodePoint(cp);
+    const width = ch.length;
+    const lower = ch.toLocaleLowerCase("en-US");
+    for (let j = 0; j < lower.length; j += 1) {
+      hay.value += lower[j];
+      push(i);
+    }
+    i += width;
+  }
+}
+
 export function findHits(
   doc: {
     content: { size: number };
@@ -39,39 +59,37 @@ export function findHits(
   },
   query: string,
 ): TextHit[] {
-  const needle = query.trim().toLowerCase();
+  const needle = query.trim().toLocaleLowerCase("en-US");
   if (!needle) return [];
-  let hay = "";
+  const hay = { value: "" };
   const map: number[] = [];
   let firstBlock = true;
   doc.nodesBetween(0, doc.content.size, (node, pos) => {
     if (node.isBlock && (node.isLeaf || node.isTextblock)) {
       if (firstBlock) firstBlock = false;
       else {
-        hay += "\n";
+        hay.value += "\n";
         map.push(-1);
       }
     }
     if (!node.isText || !node.text) return;
-    const text = node.text.toLowerCase();
-    for (let i = 0; i < text.length; i += 1) {
-      hay += text[i];
-      map.push(pos + i);
-    }
+    foldInto(node.text, hay, (offset) => {
+      map.push(pos + offset);
+    });
   });
   const hits: TextHit[] = [];
   let start = 0;
-  while (start <= hay.length - needle.length) {
-    const at = hay.indexOf(needle, start);
+  while (start <= hay.value.length - needle.length) {
+    const at = hay.value.indexOf(needle, start);
     if (at < 0) break;
     const from = map[at];
-    const end = map[at + needle.length - 1];
-    if (from == null || from < 0 || end == null || end < 0) {
+    const endIndex = map[at + needle.length - 1];
+    if (from == null || from < 0 || endIndex == null || endIndex < 0) {
       start = at + 1;
       continue;
     }
-    hits.push({ from, to: end + 1 });
-    start = at + Math.max(1, needle.length);
+    hits.push({ from, to: endIndex + 1 });
+    start = at + 1;
   }
   return hits;
 }
@@ -80,20 +98,20 @@ type CharRef = { node: Text; offset: number } | null;
 
 function indexHtml(html: string): { root: HTMLElement; hay: string; refs: CharRef[] } | null {
   if (typeof document === "undefined") return null;
-  const root = document.createElement("div");
-  root.innerHTML = html;
+  const parsed = new DOMParser().parseFromString(`<div>${sanitizeHtml(html)}</div>`, "text/html");
+  const root = parsed.body.firstElementChild as HTMLElement | null;
+  if (!root) return null;
   const refs: CharRef[] = [];
-  let hay = "";
+  const hay = { value: "" };
   let firstBlock = true;
   const blocks = /^(P|DIV|H1|H2|H3|H4|LI|BLOCKQUOTE|PRE|TR|SECTION|UL|OL|TABLE)$/;
 
   function walk(node: Node) {
     if (node.nodeType === Node.TEXT_NODE) {
-      const text = (node.textContent || "").toLowerCase();
-      for (let i = 0; i < text.length; i += 1) {
-        hay += text[i];
-        refs.push({ node: node as Text, offset: i });
-      }
+      const text = node.textContent || "";
+      foldInto(text, hay, (offset) => {
+        refs.push({ node: node as Text, offset });
+      });
       return;
     }
     if (!(node instanceof HTMLElement)) {
@@ -102,14 +120,14 @@ function indexHtml(html: string): { root: HTMLElement; hay: string; refs: CharRe
     }
     if (node.tagName === "SCRIPT" || node.tagName === "STYLE") return;
     if (node.tagName === "BR") {
-      hay += "\n";
+      hay.value += "\n";
       refs.push(null);
       return;
     }
     if (blocks.test(node.tagName)) {
       if (firstBlock) firstBlock = false;
-      else if (!hay.endsWith("\n")) {
-        hay += "\n";
+      else if (!hay.value.endsWith("\n")) {
+        hay.value += "\n";
         refs.push(null);
       }
     }
@@ -117,11 +135,11 @@ function indexHtml(html: string): { root: HTMLElement; hay: string; refs: CharRe
   }
 
   root.childNodes.forEach(walk);
-  return { root, hay, refs };
+  return { root, hay: hay.value, refs };
 }
 
 function hitSpans(hay: string, query: string): { from: number; to: number }[] {
-  const needle = query.trim().toLowerCase();
+  const needle = query.trim().toLocaleLowerCase("en-US");
   if (!needle) return [];
   const spans: { from: number; to: number }[] = [];
   let start = 0;

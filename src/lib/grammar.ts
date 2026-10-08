@@ -105,21 +105,15 @@ export function sentenceAt(text: string, cursor: number) {
   const at = Math.max(0, Math.min(cursor, text.length));
   let start = 0;
   for (let i = at - 1; i >= 0; i -= 1) {
-    const ch = text[i];
-    if (ch === "\n" || ch === "." || ch === "!" || ch === "?") {
+    if (isSentenceEnd(text, i)) {
       start = i + 1;
       break;
     }
   }
   let end = text.length;
   for (let i = Math.max(at, start); i < text.length; i += 1) {
-    const ch = text[i];
-    if (ch === "\n") {
-      end = i;
-      break;
-    }
-    if (ch === "." || ch === "!" || ch === "?") {
-      end = i + 1;
+    if (text[i] === "\n" || (i > at - 1 && isSentenceEnd(text, i) && text[i] !== "\n")) {
+      end = text[i] === "\n" ? i : i + 1;
       break;
     }
   }
@@ -132,6 +126,17 @@ export function sentenceAt(text: string, cursor: number) {
   return { text: text.slice(start, end), start };
 }
 
+function isSentenceEnd(text: string, i: number) {
+  const ch = text[i];
+  if (ch === "\n") return true;
+  if (ch !== "." && ch !== "!" && ch !== "?") return false;
+  if (ch === "." && /(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|vs|etc|St|Mt|Lt|Ft)\.$/i.test(text.slice(Math.max(0, i - 8), i + 1))) {
+    return false;
+  }
+  if (ch === "." && /(?:i\.e|e\.g)\.$/i.test(text.slice(Math.max(0, i - 4), i + 1))) return false;
+  return true;
+}
+
 export async function checkGrammar(text: string, dictionary?: string[]): Promise<GrammarIssue[]> {
   const clipped = text.slice(0, 800);
   if (!clipped.trim()) return [];
@@ -140,11 +145,19 @@ export async function checkGrammar(text: string, dictionary?: string[]): Promise
     language: "en-US",
     enabledOnly: "false",
   });
-  const response = await fetch("https://api.languagetool.org/v2/check", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
+  const control = new AbortController();
+  const timer = setTimeout(() => control.abort(), 8000);
+  let response: Response;
+  try {
+    response = await fetch("https://api.languagetool.org/v2/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      signal: control.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
   if (!response.ok) throw new Error("Grammar service is unavailable.");
   const data = (await response.json()) as {
     matches?: { message?: string; offset?: number; length?: number; replacements?: { value?: string }[] }[];

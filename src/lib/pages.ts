@@ -10,7 +10,9 @@ export function notePages(note: Note): string[] {
 }
 
 export function isPageEmpty(html: string): boolean {
-  return plainText(html).length === 0 && !/<img\b/i.test(html);
+  if (/<img\b/i.test(html)) return false;
+  if (/<(table|hr|ul|ol)\b/i.test(html)) return false;
+  return plainText(html).length === 0;
 }
 
 function jsonToHtml(editor: Editor, json: JSONContent): string {

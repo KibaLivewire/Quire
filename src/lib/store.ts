@@ -4,7 +4,7 @@ import { createSeed, DEMO_FOLDER_IDS, DEMO_NOTE_IDS } from "./seed";
 import { NOTEBOOK_HUES, DEFAULT_PREFS, DEFAULT_SESSION, type Note, type Notebook, type NotebookHue, type PageMeta, type PageRecipeId, type Prefs, type RibbonBookmark, type Session } from "./types";
 import { alignPageMeta, applyRecipeToMeta, defaultPageMeta, softCapRibbons, starterHtmlForRecipe } from "./recipes";
 import { addToDictionary, normalizeWord } from "./dictionary";
-import { hashPin, newSalt, pinMatches } from "./lock";
+import { folderGate, hashPin, newSalt, pinMatches } from "./lock";
 import { notePages } from "./pages";
 import { descendantIds, isAlive, isDescendant } from "./folders";
 import { WELCOME_VERSION } from "./welcome";
@@ -39,6 +39,7 @@ export type NotebookState = {
   activeNoteId: string | null;
   initialized: boolean;
   hasHydrated: boolean;
+  hydrateFailed: boolean;
   focusMode: boolean;
   quillOpen: boolean;
   pageMapOpen: boolean;
@@ -134,18 +135,14 @@ function enqueueWrite(task: () => Promise<void>): Promise<void> {
 }
 
 async function idbGet(name: string): Promise<StorageValue<PersistedSlice> | null> {
-  try {
-    const db = await openDb();
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, "readonly");
-      const req = tx.objectStore(STORE_NAME).get(name);
-      req.onsuccess = () =>
-        resolve((req.result as StorageValue<PersistedSlice> | undefined) ?? null);
-      req.onerror = () => reject(req.error);
-    });
-  } catch {
-    return null;
-  }
+  const db = await openDb();
+  return await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const req = tx.objectStore(STORE_NAME).get(name);
+    req.onsuccess = () =>
+      resolve((req.result as StorageValue<PersistedSlice> | undefined) ?? null);
+    req.onerror = () => reject(req.error);
+  });
 }
 
 async function idbPut(name: string, value: StorageValue<PersistedSlice>): Promise<void> {
@@ -184,27 +181,21 @@ async function persistValue(name: string, value: StorageValue<PersistedSlice>): 
 
 const idbStorage: PersistStorage<PersistedSlice> = {
   getItem: async (name) => {
-    try {
-      const stored = await idbGet(name);
-      const filePrefs = await readDesktopPrefs();
-      persistEnabled = true;
-      if (filePrefs && stored?.state) {
-        return {
-          ...stored,
-          state: {
-            ...stored.state,
-            prefs: mergePrefs({ ...DEFAULT_PREFS, ...stored.state.prefs }, filePrefs),
-          },
-        };
-      }
-      if (filePrefs && !stored) {
-        pendingFilePrefs = filePrefs;
-      }
-      return stored;
-    } catch {
-      persistEnabled = true;
-      return null;
+    const stored = await idbGet(name);
+    const filePrefs = await readDesktopPrefs();
+    if (filePrefs && stored?.state) {
+      return {
+        ...stored,
+        state: {
+          ...stored.state,
+          prefs: mergePrefs({ ...DEFAULT_PREFS, ...stored.state.prefs }, filePrefs),
+        },
+      };
     }
+    if (filePrefs && !stored) {
+      pendingFilePrefs = filePrefs;
+    }
+    return stored;
   },
   setItem: async (name, value) => {
     if (!persistEnabled) return;
@@ -275,12 +266,39 @@ function withJoinedContent(note: Note, pages: string[]): Note {
   return withPagesAndMeta(note, pages);
 }
 
+function liveSelection(
+  notebooks: Notebook[],
+  notes: Note[],
+  notebookId: string | null,
+  noteId: string | null,
+) {
+  const liveNotebooks = notebooks.filter(isAlive);
+  const liveNotes = notes.filter(isAlive);
+  const activeNotebookId = liveNotebooks.some((nb) => nb.id === notebookId)
+    ? notebookId
+    : liveNotebooks[0]?.id ?? null;
+  const activeNoteId = liveNotes.some((note) => note.id === noteId)
+    ? noteId
+    : liveNotes.find((note) => note.notebookId === activeNotebookId)?.id ?? liveNotes[0]?.id ?? null;
+  return { activeNotebookId, activeNoteId };
+}
+
+function nextCopyTitle(title: string, notes: Note[]) {
+  const base = (title || "Untitled").replace(/ copy(?: \d+)?$/, "") || "Untitled";
+  const names = new Set(notes.filter(isAlive).map((note) => note.title));
+  if (!names.has(`${base} copy`)) return `${base} copy`;
+  let n = 2;
+  while (names.has(`${base} copy ${n}`)) n += 1;
+  return `${base} copy ${n}`;
+}
+
 export const useNotebookStore = create<NotebookState>()(
   persist(
     (set, get) => ({
       ...createSeed(),
       initialized: true,
       hasHydrated: false,
+      hydrateFailed: false,
       focusMode: false,
       quillOpen: false,
       pageMapOpen: false,
@@ -289,8 +307,10 @@ export const useNotebookStore = create<NotebookState>()(
       prefs: { ...DEFAULT_PREFS },
       session: { ...DEFAULT_SESSION },
 
-      completeHydration: () =>
+      completeHydration: () => {
+        cancelPendingEdits();
         set((state) => {
+          if (state.hydrateFailed) return { hasHydrated: true, hydrateFailed: true };
           if (!state.initialized) {
             const seed = createSeed();
             const filePrefs = takePendingFilePrefs();
@@ -327,6 +347,7 @@ export const useNotebookStore = create<NotebookState>()(
           const notebookOk = liveNotebooks.some((nb) => nb.id === (session.notebookId || state.activeNotebookId) && isAlive(nb));
           return {
             hasHydrated: true,
+            hydrateFailed: false,
             notes: liveNotes,
             notebooks: liveNotebooks,
             prefs,
@@ -336,14 +357,15 @@ export const useNotebookStore = create<NotebookState>()(
               ? (session.notebookId || state.activeNotebookId)
               : liveNotebooks.find(isAlive)?.id ?? null,
           };
-        }),
+        });
+      },
 
       setFocusMode: (value) => set({ focusMode: value }),
       setQuillOpen: (value) => set({ quillOpen: value }),
       setPageMapOpen: (value) => set({ pageMapOpen: value }),
 
       setPrefs: (patch) => {
-        if (!get().hasHydrated) return;
+        if (!get().hasHydrated || get().hydrateFailed) return;
         set((state) => ({
           prefs: nextPrefs(state.prefs, patch),
         }));
@@ -394,8 +416,10 @@ export const useNotebookStore = create<NotebookState>()(
       },
 
       createNotebook: (name, parentId = null) => {
-        const id = crypto.randomUUID();
+        flushPendingEdits();
         const parent = parentId && get().notebooks.some((nb) => nb.id === parentId) ? parentId : null;
+        if (parent && folderGate(get().notebooks, parent, get().unlockedIds)) return "";
+        const id = crypto.randomUUID();
         const notebook: Notebook = {
           id,
           name: name.trim() || "Untitled folder",
@@ -439,6 +463,7 @@ export const useNotebookStore = create<NotebookState>()(
       },
 
       deleteNotebook: (id) => {
+        flushPendingEdits();
         const { notebooks, notes, activeNotebookId } = get();
         const remove = new Set(descendantIds(notebooks, id));
         const now = Date.now();
@@ -511,6 +536,8 @@ export const useNotebookStore = create<NotebookState>()(
         if (!target && alive.some((nb) => nb.id === get().activeNotebookId)) target = get().activeNotebookId;
         if (!target) target = alive[0]?.id ?? null;
         if (!target) target = get().createNotebook("Notebook");
+        if (!target) return "";
+        if (folderGate(get().notebooks, target, get().unlockedIds)) return "";
         const now = Date.now();
         const html = starterHtmlForRecipe(recipe);
         const pages = [html];
@@ -539,6 +566,7 @@ export const useNotebookStore = create<NotebookState>()(
       },
 
       updateNote: (id, patch) => {
+        if (!get().hasHydrated || get().hydrateFailed) return;
         set((state) => ({
           notes: state.notes.map((item) => {
             if (item.id !== id) return item;
@@ -561,6 +589,7 @@ export const useNotebookStore = create<NotebookState>()(
       },
 
       updateNotePage: (id, pageIndex, html) => {
+        if (!get().hasHydrated || get().hydrateFailed) return;
         set((state) => ({
           notes: state.notes.map((item) => {
             if (item.id !== id) return item;
@@ -589,6 +618,7 @@ export const useNotebookStore = create<NotebookState>()(
       },
 
       setNotePages: (id, pages, edit) => {
+        if (!get().hasHydrated || get().hydrateFailed) return;
         set((state) => ({
           notes: state.notes.map((note) => {
             if (note.id !== id) return note;
@@ -621,6 +651,7 @@ export const useNotebookStore = create<NotebookState>()(
       },
 
       deleteNote: (id) => {
+        flushPendingEdits();
         const { notes, activeNoteId } = get();
         const target = notes.find((note) => note.id === id);
         const now = Date.now();
@@ -658,23 +689,40 @@ export const useNotebookStore = create<NotebookState>()(
       purgeForever: (kind, id) => {
         if (kind === "folder") {
           const remove = new Set(descendantIds(get().notebooks, id));
-          set((state) => ({
-            notebooks: state.notebooks.filter((nb) => !remove.has(nb.id)),
-            notes: state.notes.filter((note) => !remove.has(note.notebookId)),
-          }));
+          set((state) => {
+            const notebooks = state.notebooks.filter((nb) => !remove.has(nb.id));
+            const notes = state.notes.filter((note) => !remove.has(note.notebookId));
+            return {
+              notebooks,
+              notes,
+              ...liveSelection(notebooks, notes, state.activeNotebookId, state.activeNoteId),
+            };
+          });
           return;
         }
-        set((state) => ({ notes: state.notes.filter((note) => note.id !== id) }));
+        set((state) => {
+          const notes = state.notes.filter((note) => note.id !== id);
+          return {
+            notes,
+            ...liveSelection(state.notebooks, notes, state.activeNotebookId, state.activeNoteId),
+          };
+        });
       },
 
       emptyTrash: () => {
-        set((state) => ({
-          notebooks: state.notebooks.filter(isAlive),
-          notes: state.notes.filter(isAlive),
-        }));
+        set((state) => {
+          const notebooks = state.notebooks.filter(isAlive);
+          const notes = state.notes.filter(isAlive);
+          return {
+            notebooks,
+            notes,
+            ...liveSelection(notebooks, notes, state.activeNotebookId, state.activeNoteId),
+          };
+        });
       },
 
       duplicateNote: (id) => {
+        flushPendingEdits();
         const source = get().notes.find((note) => note.id === id);
         if (!source) return null;
         const copyId = crypto.randomUUID();
@@ -687,7 +735,7 @@ export const useNotebookStore = create<NotebookState>()(
         const copy: Note = {
           ...source,
           id: copyId,
-          title: source.title.endsWith(" copy") ? source.title : `${source.title} copy`,
+          title: nextCopyTitle(source.title, get().notes),
           pinned: false,
           createdAt: now,
           updatedAt: now,
@@ -809,7 +857,7 @@ export const useNotebookStore = create<NotebookState>()(
         set({
           notebooks: payload.notebooks.map(migrateNotebook),
           notes: payload.notes.map(migrateNote),
-          prefs: payload.prefs ? { ...DEFAULT_PREFS, ...get().prefs, ...payload.prefs } : get().prefs,
+          prefs: payload.prefs ? mergePrefs(get().prefs, payload.prefs) : get().prefs,
           activeNotebookId: payload.notebooks.find(isAlive)?.id ?? null,
           activeNoteId: payload.notes.find(isAlive)?.id ?? null,
           session: { ...DEFAULT_SESSION },
@@ -908,7 +956,12 @@ export const useNotebookStore = create<NotebookState>()(
         prefs: state.prefs,
         session: state.session,
       }),
-      onRehydrateStorage: () => (state) => {
+      onRehydrateStorage: () => (state, error) => {
+        if (error) {
+          persistEnabled = false;
+          useNotebookStore.setState({ hydrateFailed: true, hasHydrated: true });
+          return;
+        }
         persistEnabled = true;
         state?.completeHydration();
         rememberBoot(useNotebookStore.getState().prefs);
@@ -931,7 +984,7 @@ export const useNotebookStore = create<NotebookState>()(
 /** Await pending IDB (+ desktop prefs) writes; force one more snapshot if hydrated. */
 export async function flushNotebookPersist(): Promise<void> {
   const state = useNotebookStore.getState();
-  if (!state.hasHydrated) {
+  if (!state.hasHydrated || state.hydrateFailed) {
     await writeTail;
     return;
   }

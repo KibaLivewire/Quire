@@ -67,3 +67,22 @@ export function pinLooksValid(pin: string) {
   const next = pin.trim();
   return next.length >= 4 && next.length <= 32;
 }
+
+const failState = new Map<string, { count: number; until: number }>();
+
+export function lockWaitMs(kind: "note" | "folder", id: string) {
+  const row = failState.get(`${kind}:${id}`);
+  if (!row) return 0;
+  return Math.max(0, row.until - Date.now());
+}
+
+export function recordLockFailure(kind: "note" | "folder", id: string) {
+  const key = `${kind}:${id}`;
+  const count = (failState.get(key)?.count ?? 0) + 1;
+  const wait = Math.min(30_000, 500 * 2 ** Math.min(count, 8));
+  failState.set(key, { count, until: Date.now() + wait });
+}
+
+export function clearLockFailures(kind: "note" | "folder", id: string) {
+  failState.delete(`${kind}:${id}`);
+}
