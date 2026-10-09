@@ -48,8 +48,8 @@ The signed file is:
 4. Finish the store listing, content rating, and target audience.
 5. Create a release (start with **Internal testing**), upload `app-release.aab`,
    and roll it out. The next upload must have a higher `versionCode`.
-   `npm run build:android` keeps the Play build at versionName `1.0` and versionCode `1`.
-   The desktop installer is a separate number (`1.9.0`). Do not copy that onto the Play listing.
+   `npm run build:android` keeps the Play build at versionName `1.0.1` and versionCode `2`.
+   The desktop installer is a separate number (`1.9.2`). Do not copy that onto the Play listing.
 
 ## Phone notes
 

@@ -332,7 +332,7 @@ export function RichEditor({
       <div ref={deskRef} className="min-h-0 flex-1 overflow-auto">
         <div
           className="mx-auto flex w-full max-w-full flex-col items-center px-3 pt-4 pb-16 md:px-6 md:pt-5"
-          style={{ zoom: fit * zoom } as React.CSSProperties}
+          style={{ zoom: (phone ? 1 : fit) * zoom } as React.CSSProperties}
         >
           <textarea
             value={title}
@@ -356,7 +356,7 @@ export function RichEditor({
               }
             }}
             className="mb-4 w-full resize-none bg-transparent font-display text-3xl leading-tight font-semibold tracking-tight text-ink placeholder:text-ink-subtle focus:outline-none"
-            style={{ maxWidth: spreadOn ? `${pageWidth * 2 + 0.45}in` : `${pageWidth}in` }}
+            style={{ maxWidth: phone ? "100%" : spreadOn ? `${pageWidth * 2 + 0.45}in` : `${pageWidth}in` }}
           />
           {!focusMode && !inkOnly ? (
             <button

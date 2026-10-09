@@ -1,3 +1,17 @@
+# Quire 1.9.2 — The page stands upright
+
+Released 9 October 2026.
+
+- **A phone can write without being turned sideways.** The letter page fits the width of an upright screen and scrolls. It is no longer an 8.5 inch sheet clipped to the left edge.
+- **Desktop is 1.9.2.** The Windows installer is `Quire-Setup-1.9.2.exe`.
+- **The Play build is 1.0.1.** versionName `1.0.1`, versionCode `2`.
+
+Windows installer: Quire-Setup-1.9.2.exe
+
+Play bundle: versionName 1.0.1, versionCode 2
+
+---
+
 # Quire 1.9.1 — The same desk, looked at again
 
 Released 9 October 2026.

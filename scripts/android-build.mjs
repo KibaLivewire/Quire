@@ -19,8 +19,8 @@ function run(cmd, args, env) {
   });
 }
 
-const ANDROID_VERSION_NAME = "1.0";
-const ANDROID_VERSION_CODE = 1;
+const ANDROID_VERSION_NAME = "1.0.1";
+const ANDROID_VERSION_CODE = 2;
 
 await run(process.execPath, [wrapper, "vite", "build"], {
   ...process.env,

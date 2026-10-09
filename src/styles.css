@@ -1547,6 +1547,22 @@ html[data-device="phone"] .quire-shell {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* An upright phone is narrower than a letter sheet. Fit the sheet to the
+   screen and scroll it, instead of leaving an 8.5in page clipped until
+   the phone is turned sideways. */
+html[data-device="phone"] .page-frame,
+html[data-device="phone"] .page-frame.is-bare {
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+html[data-device="phone"] .paper-sheet {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .print-preview-sheet img {
   max-width: 100%;
   height: auto;
