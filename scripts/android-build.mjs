@@ -40,7 +40,8 @@ rmSync(dest, { recursive: true, force: true });
 mkdirSync(dest, { recursive: true });
 cpSync(publicDir, dest, { recursive: true });
 
-await run("npx", ["cap", "sync", "android"], process.env);
+const capCli = join(root, "node_modules", "@capacitor", "cli", "bin", "capacitor");
+await run(process.execPath, [capCli, "sync", "android"], process.env);
 
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const gradlePath = join(root, "android", "app", "build.gradle");

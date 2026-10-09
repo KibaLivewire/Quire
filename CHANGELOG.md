@@ -4,6 +4,7 @@ Released 8 October 2026.
 
 - **Desktop is 1.9.0.** The Windows installer is `Quire-Setup-1.9.0.exe`. It includes the 1.8.13 checks.
 - **The Play build is 1.0.** versionName `1.0`, versionCode `1`. The phone shows 1.0. A later desktop number does not change the store listing.
+- **Android sync no longer asks Windows for `npx`.** The page was already built. The sync now runs through Node, so `npm run build:android` can finish.
 - **The eight checks from 1.8.13 stay.** A stale sheet cannot grow the notebook. Find agrees across a line break. A zip is read from its directory. Word import keeps an emoji. PDF Latin text asks for WinAnsi. An imported style cannot cover the desk. A link is one web address or one email. A passcode check walks the whole digest. The passcode is still a screen gate. Backups stay plaintext.
 
 Windows installer: Quire-Setup-1.9.0.exe
