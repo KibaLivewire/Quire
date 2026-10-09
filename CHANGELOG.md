@@ -1,3 +1,22 @@
+# Quire 1.9.1 — The same desk, looked at again
+
+Released 9 October 2026.
+
+- **An imported style still cannot cover the desk.** A comment or a CSS escape no longer brings back fixed, absolute, or sticky placement, or a viewport size. Colour, type, a relative picture offset, and a filter or turn stay. An add-on can still restyle the desk.
+- **A picture edit stays a filter or a turn.** An escaped `url()` is dropped with the other remote picture addresses.
+- **Word import keeps a tab and a line break inside a paragraph.** The words on either side are not glued together. Struck-out revisions and field codes stay out. An emoji is still kept.
+- **An RTF picture no longer throws the reader off.** The bytes after `\bin` are skipped, including a brace. The writing after the picture stays.
+- **A folder's size and last edit ignore Trash.** A page or a folder you already removed does not make the folder look larger or newer. Delete, restore, and empty trash are unchanged.
+- **A written `<` is not counted as `<`.** The plain text of a page decodes `&` last, the same way export already did.
+- **A backup sheet that is not text becomes a blank sheet.** It does not throw, and it does not move the sheets beside it.
+- **The eight checks from 1.8.13 stay.** The passcode is still a screen gate. Backups stay plaintext.
+
+Windows installer: build `Quire-Setup-1.9.1.exe` from this source. The copy on disk before this release is still `Quire-Setup-1.9.0.exe`.
+
+Play bundle: unchanged, versionName `1.0`, versionCode `1`.
+
+---
+
 # Quire 1.9.0 — Ready to publish
 
 Released 8 October 2026.

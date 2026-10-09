@@ -10,13 +10,10 @@ import type { DOMOutputSpec } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import { PageBookmark, PageNote } from "./page-marks";
 import { isOpenableUrl } from "./desktop";
+import { sanitizeEditStyle } from "./sanitize-html";
 
 function safeEditStyle(value: string) {
-  return value
-    .split(";")
-    .map((part) => part.trim())
-    .filter((part) => /^(?:filter|transform)\s*:/i.test(part) && !/url\s*\(|expression|javascript|@import/i.test(part))
-    .join("; ");
+  return sanitizeEditStyle(value);
 }
 
 function safeColor(value: string | null | undefined) {

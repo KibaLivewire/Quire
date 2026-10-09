@@ -3,12 +3,14 @@ import { createRequire } from "node:module";
 import { describe, it } from "node:test";
 import { crc32, deflateRawSync } from "node:zlib";
 import { findHits, nonOverlappingHits } from "./find.ts";
+import { folderBytes, folderUpdated } from "./folders.ts";
 import { importDocument } from "./import-note.ts";
 import { clearLockFailures, hashPin, lockWaitMs, pinMatches, recordLockFailure } from "./lock.ts";
 import { isHttpUrl, isOpenableUrl, isStoredLink } from "./open-url.ts";
-import { replaceExistingPage } from "./page-write.ts";
+import { coercePages, replaceExistingPage } from "./page-write.ts";
 import { buildPdf } from "./pdf.ts";
-import { sanitizeInlineStyle, sanitizePluginCss } from "./sanitize-html.ts";
+import { sanitizeEditStyle, sanitizeInlineStyle, sanitizePluginCss } from "./sanitize-html.ts";
+import { plainText } from "./utils.ts";
 import { unzip, zipStore } from "./zip.ts";
 
 const require = createRequire(import.meta.url);
@@ -223,12 +225,25 @@ describe("word import", () => {
     assert.equal(got.html.includes("\uF600"), false);
     assert.equal(got.html.includes("\0"), false);
     assert.equal(got.html.includes("&"), true);
+    const tabbed = `<w:document><w:p><w:r><w:t>hello</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>world</w:t><w:br/><w:t>next</w:t></w:r><w:del><w:r><w:t>gone</w:t></w:r></w:del><w:r><w:instrText>PAGE</w:instrText></w:r></w:p></w:document>`;
+    const tabBlob = zipStore([{ name: "word/document.xml", data: new TextEncoder().encode(tabbed) }]);
+    const tabbedFile = new File([await tabBlob.arrayBuffer()], "tab.docx");
+    const opened = await importDocument(tabbedFile);
+    assert.match(opened.html, /hello world/);
+    assert.match(opened.html, /hello world<br>next/);
+    assert.equal(opened.html.includes("gone"), false);
+    assert.equal(opened.html.includes("PAGE"), false);
     const rtf = new File(["{\\rtf1 A\\u0 ?B\\u-10179?\\u-8704?}"], "note.rtf");
     const text = await importDocument(rtf);
     assert.equal(text.html.includes("\0"), false);
     assert.equal(text.html.includes("A"), true);
     assert.equal(text.html.includes("B"), true);
     assert.equal(text.html.includes("\u{1F600}"), true);
+    const picture = new File(["{\\rtf1 Keep {\\pict\\bin6 }}LOST}End}"], "pic.rtf");
+    const kept = await importDocument(picture);
+    assert.match(kept.html, /Keep/);
+    assert.match(kept.html, /End/);
+    assert.equal(kept.html.includes("LOST"), false);
   });
 });
 
@@ -269,6 +284,11 @@ describe("page styles", () => {
     assert.match(cleaned, /grayscale/);
     const bare = sanitizeInlineStyle("position:absolute !important;top:0");
     assert.equal(/absolute/i.test(bare), false);
+    assert.equal(/fixed/i.test(sanitizeInlineStyle("position:/**/fixed;top:0")), false);
+    assert.equal(/fixed/i.test(sanitizeInlineStyle("position:\\66 ixed;top:0")), false);
+    assert.equal(/vw/i.test(sanitizeInlineStyle("width:100\\76 w")), false);
+    assert.equal(sanitizeEditStyle("filter:\\75 rl(https://evil.test);transform:rotate(90deg)"), "transform:rotate(90deg)");
+    assert.match(sanitizeEditStyle("filter:grayscale(1);transform:rotate(90deg) scale(-1, 1)"), /grayscale/);
     assert.match(sanitizePluginCss(".desk{position:fixed;top:0}"), /fixed/);
   });
 });
@@ -289,6 +309,40 @@ describe("links", () => {
     assert.equal(isOpenableUrl("#note"), false);
     assert.equal(isStoredLink("#javascript:alert(1)"), false);
     assert.equal(isStoredLink("https://example.com"), true);
+  });
+});
+
+describe("desk counts", () => {
+  it("leaves a blank sheet where a backup page was not text, and ignores trash in a folder size", () => {
+    assert.deepEqual(coercePages(["one", null, "three"], "fallback"), ["one", "", "three"]);
+    assert.deepEqual(coercePages([], "fallback"), ["fallback"]);
+    const folder = {
+      id: "f",
+      name: "Pages",
+      hue: "forest" as const,
+      parentId: null,
+      color: null,
+      createdAt: 10,
+      deletedAt: null,
+    };
+    const child = { ...folder, id: "c", name: "Old", parentId: "f", deletedAt: 20 };
+    const live = {
+      id: "n1",
+      notebookId: "f",
+      title: "Live",
+      content: "abcd",
+      pages: ["abcd"],
+      pinned: false,
+      color: null,
+      createdAt: 10,
+      updatedAt: 50,
+      deletedAt: null,
+    };
+    const trashed = { ...live, id: "n2", title: "Trash", content: "zzzzzzzz", pages: ["zzzzzzzz"], updatedAt: 90, deletedAt: 80 };
+    const buried = { ...live, id: "n3", notebookId: "c", title: "Buried", content: "qqqqqqqq", pages: ["qqqqqqqq"], updatedAt: 70 };
+    assert.equal(folderBytes([folder, child], [live, trashed, buried], "f"), "Live".length + "abcd".length);
+    assert.equal(folderUpdated([folder, child], [live, trashed, buried], "f"), 50);
+    assert.equal(plainText("See &lt; and <"), "See < and <");
   });
 });
 

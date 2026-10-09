@@ -14,6 +14,31 @@ function isSafeSrc(value: string): boolean {
   return true;
 }
 
+function stripCssComments(value: string) {
+  return value.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, "");
+}
+
+/** Decoded form used only to recognise a dangerous declaration. The saved text stays as written. */
+export function cssForCheck(value: string) {
+  return decodeCssEscapes(stripCssComments(value));
+}
+
+function cssDangerous(value: string) {
+  return /url\s*\(|expression|javascript|@import/i.test(cssForCheck(value));
+}
+
+/** Picture edits stay a filter or a turn. An escaped url() is not a filter. */
+export function sanitizeEditStyle(value: string): string {
+  return value
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => {
+      const checked = cssForCheck(part);
+      return /^(?:filter|transform)\s*:/i.test(checked) && !cssDangerous(part);
+    })
+    .join("; ");
+}
+
 function decodeCssEscapes(value: string) {
   return value
     .replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex: string) => {
@@ -32,7 +57,7 @@ export function sanitizeHtml(html: string): string {
   const parsed = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
   const root = parsed.body.firstElementChild as HTMLElement | null;
   if (!root) return "";
-  root.querySelectorAll("script, iframe, object, embed, link, meta, base, style, form, svg, math").forEach((el) => el.remove());
+  root.querySelectorAll("script, iframe, object, embed, link, meta, base, style, form, svg, math, template, noscript").forEach((el) => el.remove());
   root.querySelectorAll("*").forEach((el) => {
     for (const attr of [...el.attributes]) {
       const name = attr.name.toLowerCase();
@@ -59,15 +84,11 @@ export function sanitizeHtml(html: string): string {
         continue;
       }
       if (name === "data-edit-style" || name === "data-color") {
-        if (/url\s*\(|expression|javascript|@import/i.test(value)) el.removeAttribute(attr.name);
+        if (cssDangerous(value)) el.removeAttribute(attr.name);
         else if (name === "data-color" && !/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value)) el.removeAttribute(attr.name);
         else if (name === "data-edit-style") {
-          const props = value
-            .split(";")
-            .map((part) => part.trim())
-            .filter(Boolean)
-            .filter((part) => /^(?:filter|transform)\s*:/i.test(part));
-          if (props.length) el.setAttribute(attr.name, props.join("; "));
+          const props = sanitizeEditStyle(value);
+          if (props) el.setAttribute(attr.name, props);
           else el.removeAttribute(attr.name);
         }
         continue;
@@ -95,12 +116,13 @@ export function sanitizeInlineStyle(value: string): string {
     if (idx <= 0) continue;
     const propRaw = piece.slice(0, idx).trim();
     const valRaw = piece.slice(idx + 1).trim();
-    const prop = propRaw.toLowerCase();
-    const val = valRaw.toLowerCase().replace(/!important/g, "").trim();
+    const prop = cssForCheck(propRaw).toLowerCase().replace(/\s+/g, "");
+    const val = cssForCheck(valRaw).toLowerCase().replace(/!important/g, "").trim();
+    const valTight = val.replace(/\s+/g, "");
     if (!prop || !val) continue;
-    if (/url\s*\(|expression|javascript|@import/i.test(`${propRaw}:${valRaw}`)) continue;
-    if (prop === "position" && /^(fixed|absolute|sticky)$/i.test(val)) continue;
-    if (VIEWPORT.test(valRaw)) continue;
+    if (cssDangerous(`${propRaw}:${valRaw}`)) continue;
+    if (prop === "position" && /^(fixed|absolute|sticky)$/.test(valTight)) continue;
+    if (VIEWPORT.test(val)) continue;
     kept.push(`${propRaw}:${valRaw}`);
   }
   return kept.join("; ");

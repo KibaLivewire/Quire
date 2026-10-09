@@ -81,23 +81,36 @@ export function folderPath(notebooks: Notebook[], id: string | null): Notebook[]
   return path;
 }
 
+function countedFolderIds(notebooks: Notebook[], folderId: string): Set<string> {
+  const ids = new Set<string>();
+  for (const id of descendantIds(notebooks, folderId)) {
+    if (id !== folderId) {
+      const folder = notebooks.find((nb) => nb.id === id);
+      if (!folder || !isAlive(folder)) continue;
+    }
+    ids.add(id);
+  }
+  return ids;
+}
+
 export function noteBytes(note: Note): number {
   const body = note.pages?.length ? note.pages.join("") : note.content || "";
   return (note.title || "").length + body.length;
 }
 
 export function folderUpdated(notebooks: Notebook[], notes: Note[], folderId: string): number {
-  const ids = new Set(descendantIds(notebooks, folderId));
+  const ids = countedFolderIds(notebooks, folderId);
   let latest = notebooks.find((nb) => nb.id === folderId)?.createdAt ?? 0;
   for (const note of notes) {
-    if (ids.has(note.notebookId) && note.updatedAt > latest) latest = note.updatedAt;
+    if (!isAlive(note) || !ids.has(note.notebookId)) continue;
+    if (note.updatedAt > latest) latest = note.updatedAt;
   }
   return latest;
 }
 
 export function folderBytes(notebooks: Notebook[], notes: Note[], folderId: string): number {
-  const ids = new Set(descendantIds(notebooks, folderId));
-  return notes.reduce((sum, note) => (ids.has(note.notebookId) ? sum + noteBytes(note) : sum), 0);
+  const ids = countedFolderIds(notebooks, folderId);
+  return notes.reduce((sum, note) => (isAlive(note) && ids.has(note.notebookId) ? sum + noteBytes(note) : sum), 0);
 }
 
 export function formatBytes(bytes: number): string {

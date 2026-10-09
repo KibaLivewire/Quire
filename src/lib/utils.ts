@@ -13,12 +13,12 @@ export function plainText(html: string): string {
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<img[^>]*>/gi, " ")
     .replace(/<[^>]+>/g, " ")
-    .replace(new RegExp(`${AMP}nbsp;`, "gi"), " ")
-    .replace(new RegExp(`${AMP}amp;`, "gi"), AMP)
     .replace(new RegExp(`${AMP}lt;`, "gi"), "<")
     .replace(new RegExp(`${AMP}gt;`, "gi"), ">")
     .replace(new RegExp(`${AMP}quot;`, "gi"), '"')
     .replace(new RegExp(`${AMP}#39;`, "gi"), "'")
+    .replace(new RegExp(`${AMP}nbsp;`, "gi"), " ")
+    .replace(new RegExp(`${AMP}amp;`, "gi"), AMP)
     .replace(/\s+/g, " ")
     .trim();
 }

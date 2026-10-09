@@ -60,6 +60,16 @@ function rtfToText(rtf: string) {
     i += 1;
   }
 
+  function consumeBin() {
+    const bin = /^\\bin(-?\d+) ?/.exec(rtf.slice(i));
+    if (!bin) return false;
+    const n = Number(bin[1]);
+    const count = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+    i += bin[0].length;
+    i += Math.min(count, Math.max(0, rtf.length - i));
+    return true;
+  }
+
   while (i < rtf.length) {
     const ch = rtf[i];
     if (ch === "{") {
@@ -72,6 +82,9 @@ function rtfToText(rtf: string) {
       if (skip > 0) skip -= 1;
       i += 1;
       continue;
+    }
+    if (ch === "\\") {
+      if (consumeBin()) continue;
     }
     if (skip > 0) {
       if (ch === "\\") skipControl();
@@ -132,12 +145,20 @@ function rtfToText(rtf: string) {
 function docxXmlToHtml(xml: string) {
   const parts: string[] = [];
   const blocks = xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g);
+  const token = /<w:tab\b[^>]*\/>|<w:br\b[^>]*\/>|<w:cr\b[^>]*\/>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
   for (const match of blocks) {
-    const block = match[0];
-    const text = Array.from(block.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g))
-      .map((hit) => decodeXml(hit[1] ?? ""))
-      .join("");
-    if (text.trim()) parts.push(`<p>${escapeText(text)}</p>`);
+    const visible = match[0]
+      .replace(/<w:del\b[\s\S]*?<\/w:del>/g, "")
+      .replace(/<w:moveFrom\b[\s\S]*?<\/w:moveFrom>/g, "")
+      .replace(/<w:instrText\b[\s\S]*?<\/w:instrText>/g, "");
+    let html = "";
+    for (const hit of visible.matchAll(token)) {
+      const raw = hit[0];
+      if (raw.startsWith("<w:tab")) html += " ";
+      else if (raw.startsWith("<w:br") || raw.startsWith("<w:cr")) html += "<br>";
+      else html += escapeText(decodeXml(hit[1] ?? ""));
+    }
+    if (html.replace(/<br>/g, "").trim()) parts.push(`<p>${html}</p>`);
   }
   return parts.join("");
 }

@@ -3,10 +3,11 @@ import type { Editor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/core";
 import type { Note } from "./types";
 import { plainText } from "./utils";
+import { coercePages } from "./page-write";
 
 export function notePages(note: Note): string[] {
-  if (note.pages?.length) return note.pages;
-  return [note.content || ""];
+  if (Array.isArray(note.pages) && note.pages.length) return coercePages(note.pages);
+  return coercePages(null, typeof note.content === "string" ? note.content : "");
 }
 
 export function isPageEmpty(html: string): boolean {
