@@ -1,4 +1,6 @@
 
+import { sanitizeEditStyle } from "./sanitize-html.ts";
+
 type PdfImage = { key: string; src: string; width: number; height: number; jpeg: Uint8Array };
 type PdfPiece = { kind: "lines"; lines: string[] } | { kind: "image"; img: PdfImage } | { kind: "sheet" };
 type PdfXRef = { name: string; key: string };
@@ -42,13 +44,14 @@ function winAnsi(value: string) {
 }
 
 function readEdit(style: string) {
+  const clean = sanitizeEditStyle(style);
   let filter = "";
   let rotate = 0;
   let flipH = 1;
   let flipV = 1;
-  const filterMatch = /filter\s*:\s*([^;]+)/i.exec(style);
+  const filterMatch = /filter\s*:\s*([^;]+)/i.exec(clean);
   if (filterMatch) filter = filterMatch[1].trim();
-  const transformMatch = /transform\s*:\s*([^;]+)/i.exec(style);
+  const transformMatch = /transform\s*:\s*([^;]+)/i.exec(clean);
   if (transformMatch) {
     const transform = transformMatch[1];
     const rot = /rotate\(\s*(-?\d+(?:\.\d+)?)deg\s*\)/i.exec(transform);

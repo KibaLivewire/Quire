@@ -95,7 +95,7 @@ function rtfEscape(value: string) {
 
 function htmlToRtf(html: string) {
   const root = document.createElement("div");
-  root.innerHTML = html;
+  root.innerHTML = sanitizeHtml(html);
   const parts: string[] = [];
   function walk(node: Node) {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -392,7 +392,7 @@ export async function exportPdf(
 
 function htmlToMarkdown(html: string): string {
   const node = document.createElement("div");
-  node.innerHTML = html;
+  node.innerHTML = sanitizeHtml(html);
   return walkMd(node).replace(/\n{3,}/g, "\n\n").trim();
 }
 

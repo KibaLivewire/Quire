@@ -9,9 +9,11 @@ import { clearLockFailures, hashPin, lockWaitMs, pinMatches, recordLockFailure }
 import { isHttpUrl, isOpenableUrl, isStoredLink } from "./open-url.ts";
 import { coercePages, replaceExistingPage } from "./page-write.ts";
 import { buildPdf } from "./pdf.ts";
+import { readFileSync } from "node:fs";
 import { sanitizeEditStyle, sanitizeInlineStyle, sanitizePluginCss } from "./sanitize-html.ts";
 import { plainText } from "./utils.ts";
 import { unzip, zipStore } from "./zip.ts";
+import { lookupWord } from "./word-tools.ts";
 
 const require = createRequire(import.meta.url);
 const { oneExternalUrl } = require("../../electron/open-url.cjs") as {
@@ -287,9 +289,19 @@ describe("page styles", () => {
     assert.equal(/fixed/i.test(sanitizeInlineStyle("position:/**/fixed;top:0")), false);
     assert.equal(/fixed/i.test(sanitizeInlineStyle("position:\\66 ixed;top:0")), false);
     assert.equal(/vw/i.test(sanitizeInlineStyle("width:100\\76 w")), false);
+    assert.equal(/fixed|absolute|sticky/i.test(sanitizeInlineStyle("position:var(--q,fixed);inset:0")), false);
+    assert.equal(/sticky/i.test(sanitizeInlineStyle("position:-webkit-sticky;top:0")), false);
+    assert.equal(/fixed/i.test(sanitizeInlineStyle("color:\\d800;position:\\d800 fixed")), false);
+    assert.match(sanitizeInlineStyle("position:relative;left:4px;color:#112233"), /relative/);
     assert.equal(sanitizeEditStyle("filter:\\75 rl(https://evil.test);transform:rotate(90deg)"), "transform:rotate(90deg)");
     assert.match(sanitizeEditStyle("filter:grayscale(1);transform:rotate(90deg) scale(-1, 1)"), /grayscale/);
     assert.match(sanitizePluginCss(".desk{position:fixed;top:0}"), /fixed/);
+    assert.equal(/evil\.test/i.test(sanitizePluginCss(".a{background:u\\72 l(https://evil.test/a.png)}")), false);
+    assert.equal(/@import|evil\.test/i.test(sanitizePluginCss("@\\69 mport 'https://evil.test/a.css';")), false);
+    assert.match(sanitizePluginCss(".a{background:url(data:image/png;base64,aaaa)}"), /data:image\/png/);
+    const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+    assert.match(css, /html\[data-device="phone"\] \.page-frame,\s*html\[data-device="phone"\] \.page-frame\.is-bare\s*\{[^}]*grid-template-rows:\s*var\(--page-h/);
+    assert.match(css, /html\[data-device="phone"\] \.page-frame \.ruler[\s\S]*?display:\s*none/);
   });
 });
 
@@ -343,6 +355,31 @@ describe("desk counts", () => {
     assert.equal(folderBytes([folder, child], [live, trashed, buried], "f"), "Live".length + "abcd".length);
     assert.equal(folderUpdated([folder, child], [live, trashed, buried], "f"), 50);
     assert.equal(plainText("See &lt; and <"), "See < and <");
+  });
+});
+
+describe("lookup", () => {
+  it("does not throw when a definition names a lone surrogate", async () => {
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("wiktionary")) {
+        return {
+          ok: true,
+          json: async () => ({
+            en: [{ partOfSpeech: "Noun", definitions: [{ definition: "A &#55296; mark and &#x1F600; face" }] }],
+          }),
+        } as Response;
+      }
+      return { ok: true, json: async () => [] } as Response;
+    }) as typeof fetch;
+    try {
+      const sense = await lookupWord("quire");
+      assert.match(sense?.definition ?? "", /mark/);
+      assert.match(sense?.definition ?? "", /\u{1F600}/u);
+    } finally {
+      globalThis.fetch = previous;
+    }
   });
 });
 

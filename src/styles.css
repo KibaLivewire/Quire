@@ -1547,15 +1547,26 @@ html[data-device="phone"] .quire-shell {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* An upright phone is narrower than a letter sheet. Fit the sheet to the
-   screen and scroll it, instead of leaving an 8.5in page clipped until
-   the phone is turned sideways. */
+/* An upright phone is narrower than a letter sheet. Fit the width and
+   keep the letter height, so the page scrolls instead of being clipped
+   sideways. Rulers stay off on every phone width: a wider phone is still
+   marked phone, and a one-column grid would otherwise park the ruler
+   on top of the sheet. */
 html[data-device="phone"] .page-frame,
 html[data-device="phone"] .page-frame.is-bare {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--page-h, 11in);
   width: 100%;
   min-width: 0;
   max-width: 100%;
+}
+html[data-device="phone"] .page-frame .ruler,
+html[data-device="phone"] .page-frame .ruler-corner {
+  display: none !important;
+}
+html[data-device="phone"] .page-frame > :last-child {
+  grid-column: 1;
+  grid-row: 1;
 }
 html[data-device="phone"] .paper-sheet {
   width: 100%;

@@ -71,6 +71,12 @@ function takeWords(rows: unknown, max = 10): string[] {
     .slice(0, max);
 }
 
+function characterFromCode(num: number): string {
+  if (!Number.isInteger(num) || num <= 0 || num > 0x10ffff) return "";
+  if (num >= 0xd800 && num <= 0xdfff) return "";
+  return String.fromCodePoint(num);
+}
+
 function stripMarkup(value: string): string {
   const amp = String.fromCharCode(38);
   const named = (entity: string) => new RegExp(amp + entity + ";", "gi");
@@ -83,10 +89,8 @@ function stripMarkup(value: string): string {
     .replace(named("apos"), "'")
     .replace(new RegExp(amp + "#39;", "gi"), "'")
     .replace(new RegExp(amp + "#x27;", "gi"), "'")
-    .replace(new RegExp(amp + "#(\\d+);", "gi"), (all, digits: string) => {
-      const code = Number(digits);
-      return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : all;
-    })
+    .replace(new RegExp(amp + "#(\\d+);", "gi"), (_all, digits: string) => characterFromCode(Number(digits)))
+    .replace(new RegExp(amp + "#x([0-9a-fA-F]+);", "gi"), (_all, hex: string) => characterFromCode(parseInt(hex, 16)))
     .replace(named("amp"), amp)
     .replace(/\s+/g, " ")
     .trim();

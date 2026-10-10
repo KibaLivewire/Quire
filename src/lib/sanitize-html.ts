@@ -20,7 +20,7 @@ function stripCssComments(value: string) {
 
 /** Decoded form used only to recognise a dangerous declaration. The saved text stays as written. */
 export function cssForCheck(value: string) {
-  return decodeCssEscapes(stripCssComments(value));
+  return decodeCssEscapes(stripCssComments(value), true);
 }
 
 function cssDangerous(value: string) {
@@ -39,14 +39,17 @@ export function sanitizeEditStyle(value: string): string {
     .join("; ");
 }
 
-function decodeCssEscapes(value: string) {
-  return value
-    .replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex: string) => {
-      const code = Number.parseInt(hex, 16);
-      return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : "";
-    })
-    .replace(/\\(.)/g, "$1")
-    .replace(/\s+/g, "");
+function cssCodePoint(code: number): string {
+  if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) return "";
+  if (code >= 0xd800 && code <= 0xdfff) return "";
+  return String.fromCodePoint(code);
+}
+
+function decodeCssEscapes(value: string, tight: boolean) {
+  const decoded = value
+    .replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex: string) => cssCodePoint(Number.parseInt(hex, 16)))
+    .replace(/\\(.)/g, "$1");
+  return tight ? decoded.replace(/\s+/g, "") : decoded;
 }
 
 const URL_ATTRS = new Set(["href", "xlink:href", "src", "action", "formaction", "poster", "cite", "data-href", "data-src"]);
@@ -121,15 +124,14 @@ export function sanitizeInlineStyle(value: string): string {
     const valTight = val.replace(/\s+/g, "");
     if (!prop || !val) continue;
     if (cssDangerous(`${propRaw}:${valRaw}`)) continue;
-    if (prop === "position" && /^(fixed|absolute|sticky)$/.test(valTight)) continue;
+    if (prop === "position" && valTight !== "static" && valTight !== "relative") continue;
     if (VIEWPORT.test(val)) continue;
     kept.push(`${propRaw}:${valRaw}`);
   }
   return kept.join("; ");
 }
 
-/** Add-on CSS can restyle the desk. It cannot pull a remote sheet or image. */
-export function sanitizePluginCss(css: string): string {
+function scrubPluginCss(css: string): string {
   let out = css
     .replace(/@import[\s\S]*?;/gi, "")
     .replace(/@import\s+(?:url\()?['"]?[^'")]+['"]?\)?/gi, "")
@@ -139,7 +141,7 @@ export function sanitizePluginCss(css: string): string {
     .replace(/-moz-binding/gi, "invalid");
   out = out.replace(/url\s*\(\s*([^)]*)\)/gi, (_all, inner: string) => {
     const raw = String(inner).trim().replace(/^['"]|['"]$/g, "");
-    const decoded = decodeCssEscapes(raw);
+    const decoded = decodeCssEscapes(raw, false);
     if (/^data:image\/(?:png|jpe?g|gif|webp)/i.test(decoded)) return `url(${inner})`;
     return "url(about:blank)";
   });
@@ -147,4 +149,11 @@ export function sanitizePluginCss(css: string): string {
     block.replace(/display\s*:\s*none\s*;?/gi, "").replace(/pointer-events\s*:\s*none\s*;?/gi, ""),
   );
   return out;
+}
+
+/** Add-on CSS can restyle the desk. It cannot pull a remote sheet or image. */
+export function sanitizePluginCss(css: string): string {
+  const once = scrubPluginCss(css);
+  if (!css.includes("\\")) return once;
+  return scrubPluginCss(decodeCssEscapes(stripCssComments(css), false));
 }
