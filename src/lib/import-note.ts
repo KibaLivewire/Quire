@@ -40,7 +40,7 @@ function decodeXml(value: string) {
 }
 
 function rtfToText(rtf: string) {
-  let uc = 1;
+  const ucStack = [1];
   let i = 0;
   let out = "";
   let skip = 0;
@@ -73,12 +73,14 @@ function rtfToText(rtf: string) {
   while (i < rtf.length) {
     const ch = rtf[i];
     if (ch === "{") {
+      ucStack.push(ucStack[ucStack.length - 1] ?? 1);
       const rest = rtf.slice(i + 1);
       if (skip > 0 || skipDest.test(rest)) skip += 1;
       i += 1;
       continue;
     }
     if (ch === "}") {
+      if (ucStack.length > 1) ucStack.pop();
       if (skip > 0) skip -= 1;
       i += 1;
       continue;
@@ -116,7 +118,7 @@ function rtfToText(rtf: string) {
       n &= 0xffff;
       if (n !== 0) out += String.fromCharCode(n);
       i += uni[0].length;
-      let skipAnsi = uc;
+      let skipAnsi = ucStack[ucStack.length - 1] ?? 1;
       while (skipAnsi > 0 && i < rtf.length) {
         if (rtf.startsWith("\\'", i)) {
           i += 4;
@@ -131,7 +133,7 @@ function rtfToText(rtf: string) {
     }
     const word = /^\\([a-zA-Z]+)(-?\d+)? ?/.exec(rtf.slice(i));
     if (word) {
-      if (word[1] === "uc") uc = Math.max(0, Number(word[2] || 0));
+      if (word[1] === "uc") ucStack[ucStack.length - 1] = Math.max(0, Number(word[2] || 0));
       if (word[1] === "par" || word[1] === "pard" || word[1] === "line") out += "\n";
       if (word[1] === "tab") out += "\t";
       i += word[0].length;
@@ -145,7 +147,7 @@ function rtfToText(rtf: string) {
 function docxXmlToHtml(xml: string) {
   const parts: string[] = [];
   const blocks = xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g);
-  const token = /<w:tab\b[^>]*\/>|<w:br\b[^>]*\/>|<w:cr\b[^>]*\/>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+  const token = /<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
   for (const match of blocks) {
     const visible = match[0]
       .replace(/<w:del\b[\s\S]*?<\/w:del>/g, "")

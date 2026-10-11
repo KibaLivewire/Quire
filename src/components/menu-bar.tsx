@@ -98,13 +98,15 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         flushPendingEdits();
         openPrintPreview();
       }
-      if (key === "f") {
+      if (key === "f" || key === "h") {
         event.preventDefault();
-        openFindBar(false);
-      }
-      if (key === "h") {
-        event.preventDefault();
-        openFindBar(true);
+        const state = useNotebookStore.getState();
+        const openNote = state.notes.find((item) => item.id === state.activeNoteId) ?? null;
+        if (noteGate(state.notebooks, openNote, state.unlockedIds)) {
+          toast.error("Unlock this page first.");
+          return;
+        }
+        openFindBar(key === "h");
       }
     }
     window.addEventListener("keydown", onKey);
@@ -340,10 +342,30 @@ export function MenuBar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             Select all <Shortcut>Ctrl+A</Shortcut>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => openFindBar(false)}>
+          <DropdownMenuItem
+            onSelect={() => {
+              const state = useNotebookStore.getState();
+              const openNote = state.notes.find((item) => item.id === state.activeNoteId) ?? null;
+              if (noteGate(state.notebooks, openNote, state.unlockedIds)) {
+                toast.error("Unlock this page first.");
+                return;
+              }
+              openFindBar(false);
+            }}
+          >
             Find in this note… <Shortcut>Ctrl+F</Shortcut>
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => openFindBar(true)}>
+          <DropdownMenuItem
+            onSelect={() => {
+              const state = useNotebookStore.getState();
+              const openNote = state.notes.find((item) => item.id === state.activeNoteId) ?? null;
+              if (noteGate(state.notebooks, openNote, state.unlockedIds)) {
+                toast.error("Unlock this page first.");
+                return;
+              }
+              openFindBar(true);
+            }}
+          >
             Replace… <Shortcut>Ctrl+H</Shortcut>
           </DropdownMenuItem>
           <DropdownMenuItem

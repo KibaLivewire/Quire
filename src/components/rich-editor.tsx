@@ -92,9 +92,10 @@ export function RichEditor({
       handleClick(_view, _pos, event) {
         const target = event.target as HTMLElement | null;
         const link = target?.closest("a[href]") as HTMLAnchorElement | null;
-        if (link?.href && (event.metaKey || event.ctrlKey || event.altKey)) {
-          event.preventDefault();
-          const raw = link.getAttribute("href") || link.href || "";
+        if (!link?.href) return false;
+        event.preventDefault();
+        if (event.metaKey || event.ctrlKey || event.altKey) {
+          const raw = link.getAttribute("href") || "";
           if (isOpenableUrl(raw)) void openExternal(raw);
           return true;
         }

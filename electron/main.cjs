@@ -317,6 +317,21 @@ function iconPath() {
   return fs.existsSync(packed) ? packed : undefined;
 }
 
+function isAppUrl(next) {
+  try {
+    const url = new URL(next);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    return url.hostname === "127.0.0.1" || url.hostname === "localhost";
+  } catch {
+    return false;
+  }
+}
+
+function keepDesk(event, next) {
+  if (isAppUrl(next)) return;
+  event.preventDefault();
+}
+
 function createWindow(url) {
   const win = new BrowserWindow({
     width: 1280,
@@ -342,6 +357,8 @@ function createWindow(url) {
     if (href) void shell.openExternal(href);
     return { action: "deny" };
   });
+  win.webContents.on("will-navigate", (event, next) => keepDesk(event, next));
+  win.webContents.on("will-redirect", (event, next) => keepDesk(event, next));
 
   let flushing = false;
   win.on("close", (event) => {

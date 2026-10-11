@@ -6,19 +6,40 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 const AMP = "\u0026";
+const AMP_MARK = "\uE000";
 
-export function plainText(html: string): string {
-  return html
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<img[^>]*>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
+function characterFromCode(num: number): string {
+  if (!Number.isInteger(num) || num <= 0 || num > 0x10ffff) return "";
+  if (num === 38) return AMP_MARK;
+  if (num >= 0xd800 && num <= 0xdfff) return "";
+  return String.fromCodePoint(num);
+}
+
+/** Named marks, then numeric marks, then the ampersand. A written entity stays the letters the writer typed. */
+export function decodeTextEntities(value: string): string {
+  return value
     .replace(new RegExp(`${AMP}lt;`, "gi"), "<")
     .replace(new RegExp(`${AMP}gt;`, "gi"), ">")
     .replace(new RegExp(`${AMP}quot;`, "gi"), '"')
+    .replace(new RegExp(`${AMP}apos;`, "gi"), "'")
     .replace(new RegExp(`${AMP}#39;`, "gi"), "'")
     .replace(new RegExp(`${AMP}nbsp;`, "gi"), " ")
+    .replace(new RegExp(`${AMP}#x26;`, "gi"), AMP_MARK)
+    .replace(new RegExp(`${AMP}#38;`, "gi"), AMP_MARK)
+    .replace(new RegExp(`${AMP}#(\\d+);`, "g"), (_, digits: string) => characterFromCode(Number(digits)))
+    .replace(new RegExp(`${AMP}#x([0-9a-fA-F]+);`, "gi"), (_, hex: string) => characterFromCode(Number.parseInt(hex, 16)))
     .replace(new RegExp(`${AMP}amp;`, "gi"), AMP)
+    .replaceAll(AMP_MARK, AMP);
+}
+
+export function plainText(html: string): string {
+  return decodeTextEntities(
+    html
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<img[^>]*>/gi, " ")
+      .replace(/<[^>]+>/g, " "),
+  )
     .replace(/\s+/g, " ")
     .trim();
 }

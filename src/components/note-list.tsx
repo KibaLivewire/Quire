@@ -94,9 +94,8 @@ export function NoteList({
       if (!inDateRange(note.createdAt, created)) return false;
       if (!inDateRange(note.updatedAt, updated)) return false;
       if (!inSizeRange(bytes, size)) return false;
+      if (searching && noteGate(notebooks, note, unlockedIds)) return false;
       if (!q) return true;
-      const gated = Boolean(noteGate(notebooks, note, unlockedIds));
-      if (gated) return false;
       return (
         note.title.toLowerCase().includes(q) ||
         plainText(note.content).toLowerCase().includes(q)

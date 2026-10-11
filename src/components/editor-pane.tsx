@@ -252,7 +252,7 @@ export function EditorPane({
         </>
       ) : (
         <>
-      <FindBar noteId={note.id} pageIndex={pageIndex} />
+      {gate ? null : <FindBar noteId={note.id} pageIndex={pageIndex} />}
       <header className="flex items-center gap-1 border-b border-rule/80 bg-paper-raised/80 px-2 py-1.5">
         {onBack ? (
           <Button variant="ghost" size="icon" className="md:hidden" aria-label="Back to pages" data-mobile-back onClick={onBack}>
@@ -289,7 +289,8 @@ export function EditorPane({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
-              onSelect={() => openRecipeChooser({ mode: "change", noteId: note.id, pageIndex })}
+              disabled={Boolean(gate)}
+              onSelect={() => unlessLocked(() => openRecipeChooser({ mode: "change", noteId: note.id, pageIndex }))}
             >
               <FileText className="size-4" />
               Change recipe…

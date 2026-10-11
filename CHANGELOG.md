@@ -1,3 +1,35 @@
+# Quire 1.9.4 — The lock holds the page
+
+Released 11 October 2026.
+
+- **Find waits for the passcode.** Ctrl+F, Ctrl+H, and Find in the Edit menu no longer count or replace words on a locked page. The page menu's Change recipe waits as well. Pin, move, export, print, and delete already did.
+- **A desk-wide filter no longer lists a locked title.** A date or a size, with or without words in the box, follows the same rule as Find. Inside the folder you already opened, the title still shows with "Locked page."
+- **An RTF group puts the character width back.** A group that changed `\uc` no longer leaves a question mark after the character when the group ends.
+- **A Word tab or break written as a pair keeps the space.** A tab or a line break with a closing tag no longer glues the words. A self-closing tab was already kept.
+- **The plain text of a page reads a numeric character.** Word count, the page list, and a text export see the character the page shows. A numeric mark such as `&#60;` is that character. A written `&amp;lt;` is still the letters `&lt;`. `&` is still decoded last.
+- **A link is still one address.** A mail link with an encoded line break is refused, and a web address cannot hide a different host behind a username. An ordinary https link and an ordinary email stay.
+- **The Windows window stays on the desk.** A link cannot navigate the window away. A new window was already refused. Modifier-click and the link chip still open one address outside Quire.
+
+Windows installer: Quire-Setup-1.9.4.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
+# Quire 1.9.3 — The same page, still
+
+Released 10 October 2026.
+
+- **A page style can no longer cover the desk through a variable or an old sticky name.** A position on the page is only static or relative. A bad escape no longer stops the page from opening.
+- **An add-on still cannot name a remote sheet.** Escapes are read before the check. Fixed placement in an add-on still works.
+- **A dictionary line no longer throws on a lone surrogate.**
+- **RTF and Markdown export read the page the same way HTML export does.**
+- **A wider phone no longer parks the ruler on the sheet.**
+
+Windows installer: Quire-Setup-1.9.3.exe
+
+---
+
 # Quire 1.9.2 — The page stands upright
 
 Released 9 October 2026.

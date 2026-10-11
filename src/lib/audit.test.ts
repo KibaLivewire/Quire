@@ -11,7 +11,7 @@ import { coercePages, replaceExistingPage } from "./page-write.ts";
 import { buildPdf } from "./pdf.ts";
 import { readFileSync } from "node:fs";
 import { sanitizeEditStyle, sanitizeInlineStyle, sanitizePluginCss } from "./sanitize-html.ts";
-import { plainText } from "./utils.ts";
+import { plainText, decodeTextEntities } from "./utils.ts";
 import { unzip, zipStore } from "./zip.ts";
 import { lookupWord } from "./word-tools.ts";
 
@@ -246,6 +246,15 @@ describe("word import", () => {
     assert.match(kept.html, /Keep/);
     assert.match(kept.html, /End/);
     assert.equal(kept.html.includes("LOST"), false);
+    const grouped = new File(["{\\rtf1{\\uc0 }Hi \\u233 ?}"], "group.rtf");
+    const restored = await importDocument(grouped);
+    assert.match(restored.html, /Hi é/);
+    assert.equal(restored.html.includes("é?"), false);
+    const paired = `<w:document><w:p><w:r><w:t>hello</w:t></w:r><w:r><w:tab></w:tab></w:r><w:r><w:t>world</w:t><w:br></w:br><w:t>next</w:t></w:r></w:p></w:document>`;
+    const pairedBlob = zipStore([{ name: "word/document.xml", data: new TextEncoder().encode(paired) }]);
+    const pairedFile = new File([await pairedBlob.arrayBuffer()], "pair.docx");
+    const pairedOpen = await importDocument(pairedFile);
+    assert.match(pairedOpen.html, /hello world<br>next/);
   });
 });
 
@@ -320,7 +329,12 @@ describe("links", () => {
     assert.equal(isStoredLink("#note"), true);
     assert.equal(isOpenableUrl("#note"), false);
     assert.equal(isStoredLink("#javascript:alert(1)"), false);
-    assert.equal(isStoredLink("https://example.com"), true);
+    assert.equal(isOpenableUrl("https://example.com"), true);
+    assert.equal(isOpenableUrl("https://example.com@evil.test"), false);
+    assert.equal(oneExternalUrl("https://example.com@evil.test"), null);
+    assert.equal(isOpenableUrl("mailto:a@b.com?subject=Hi%0aBcc:x@y"), false);
+    assert.equal(oneExternalUrl("mailto:a@b.com?subject=Hi%0aBcc:x@y"), null);
+    assert.equal(oneExternalUrl("https://example.com/a"), "https://example.com/a");
   });
 });
 
@@ -355,6 +369,10 @@ describe("desk counts", () => {
     assert.equal(folderBytes([folder, child], [live, trashed, buried], "f"), "Live".length + "abcd".length);
     assert.equal(folderUpdated([folder, child], [live, trashed, buried], "f"), 50);
     assert.equal(plainText("See &lt; and <"), "See < and <");
+    assert.equal(plainText("Say &#60; and &#x27; and &amp;lt;"), "Say < and ' and &lt;");
+    assert.equal(decodeTextEntities("&#128512;"), "\u{1F600}");
+    assert.equal(decodeTextEntities("&#55296;"), "");
+    assert.equal(decodeTextEntities("&#38;amp;"), "&amp;");
   });
 });
 
