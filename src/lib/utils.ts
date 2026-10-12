@@ -30,7 +30,7 @@ export function decodeTextEntities(value: string): string {
     .replace(new RegExp(`${AMP}#x([0-9a-fA-F]+);`, "gi"), (_, hex: string) => characterFromCode(Number.parseInt(hex, 16)))
     .replace(new RegExp(`${AMP}amp;`, "gi"), AMP)
     .replaceAll(AMP_MARK, AMP)
-    .replaceAll("\u00a0", " ");
+    .replace(/[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/g, " ");
 }
 
 /** Same letter folding Find uses on the sheet. The computer's language must not disagree. */

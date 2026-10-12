@@ -261,6 +261,20 @@ describe("word import", () => {
     const boxedOpen = await importDocument(boxedFile);
     assert.match(boxedOpen.html, /before inside after/);
     assert.match(boxedOpen.html, /<p>next<\/p>/);
+    const alt = `<w:document><w:p><w:r><mc:AlternateContent><mc:Choice><w:drawing><w:txbxContent><w:p><w:r><w:t>Inside</w:t></w:r></w:p></w:txbxContent></w:drawing></mc:Choice><mc:Fallback><w:pict><w:txbxContent><w:p><w:r><w:t>Inside</w:t></w:r></w:p></w:txbxContent></w:pict></mc:Fallback></mc:AlternateContent></w:r></w:p><w:p><w:r><w:t>After</w:t></w:r></w:p></w:document>`;
+    const altBlob = zipStore([{ name: "word/document.xml", data: new TextEncoder().encode(alt) }]);
+    const altOpen = await importDocument(new File([await altBlob.arrayBuffer()], "alt.docx"));
+    assert.equal((altOpen.html.match(/Inside/g) || []).length, 1);
+    assert.match(altOpen.html, /<p>After<\/p>/);
+    const onlyFallback = `<w:document><w:p><w:r><mc:AlternateContent><mc:Fallback><w:txbxContent><w:p><w:r><w:t>Only</w:t></w:r></w:p></w:txbxContent></mc:Fallback></mc:AlternateContent></w:r><w:r><w:t>After</w:t></w:r></w:p></w:document>`;
+    const onlyBlob = zipStore([{ name: "word/document.xml", data: new TextEncoder().encode(onlyFallback) }]);
+    const onlyOpen = await importDocument(new File([await onlyBlob.arrayBuffer()], "only.docx"));
+    assert.match(onlyOpen.html, /Only After/);
+    const hyphens = `<w:document><w:p><w:r><w:t>well</w:t></w:r><w:r><w:softHyphen/></w:r><w:r><w:t>known</w:t></w:r><w:r><w:noBreakHyphen></w:noBreakHyphen></w:r><w:r><w:t>word</w:t></w:r></w:p></w:document>`;
+    const hyphenBlob = zipStore([{ name: "word/document.xml", data: new TextEncoder().encode(hyphens) }]);
+    const hyphenOpen = await importDocument(new File([await hyphenBlob.arrayBuffer()], "hyphen.docx"));
+    assert.equal(hyphenOpen.html.includes("wellknownword"), false);
+    assert.match(hyphenOpen.html, /well\u00adknown-word/);
   });
 });
 
@@ -322,6 +336,14 @@ describe("page styles", () => {
     assert.match(sanitizeInlineStyle("background:image-set('https://evil.test/a.png' 1x);color:red"), /red/);
     assert.match(sanitizePluginCss(".a{background:image-set('data:image/png;base64,aaaa' 1x)}"), /data:image\/png/);
     assert.match(sanitizePluginCss('.a{content:"/* stay */"}'), /stay/);
+    assert.equal(/evil\.test/i.test(sanitizePluginCss(".a{background:src('https://evil.test/a.png')}")), false);
+    assert.equal(/evil\.test/i.test(sanitizePluginCss(".a{background:image-set(src('https://evil.test/a.png') 1x)}")), false);
+    assert.equal(/evil\.test/i.test(sanitizePluginCss(".a{background:s/**/rc('https://evil.test/a.png')}")), false);
+    assert.equal(/evil\.test/i.test(sanitizeInlineStyle("background:src('https://evil.test/a.png');color:red")), false);
+    assert.match(sanitizeInlineStyle("background:src('https://evil.test/a.png');color:red"), /red/);
+    assert.equal(/evil\.test/i.test(sanitizePluginCss(".a{background:image(https://evil.test/a.png)}")), false);
+    assert.match(sanitizePluginCss(".a{background:src('data:image/png;base64,aaaa')}"), /data:image\/png/);
+    assert.equal(sanitizeEditStyle("filter:src('https://evil.test/a.png');transform:rotate(90deg)"), "transform:rotate(90deg)");
     const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
     assert.match(css, /html\[data-device="phone"\] \.page-frame,\s*html\[data-device="phone"\] \.page-frame\.is-bare\s*\{[^}]*grid-template-rows:\s*var\(--page-h/);
     assert.match(css, /html\[data-device="phone"\] \.page-frame \.ruler[\s\S]*?display:\s*none/);
@@ -394,6 +416,7 @@ describe("desk counts", () => {
     assert.equal(decodeTextEntities("&#38;amp;"), "&amp;");
     assert.equal(plainText("hello&#160;world"), "hello world");
     assert.equal(plainText("hello&nbsp;world"), "hello world");
+    assert.equal(plainText("a&#8239;b&#8194;c&#12288;d"), "a b c d");
     assert.equal(foldDeskText("I"), "i");
     assert.notEqual(foldDeskText("I"), "I".toLocaleLowerCase("tr"));
   });

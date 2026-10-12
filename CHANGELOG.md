@@ -1,3 +1,19 @@
+# Quire 1.9.6 — One copy of the words
+
+Released 12 October 2026.
+
+- **A Word text box is no longer written twice.** The older copy that Word keeps beside the drawing is skipped when the drawing is already there. A box that only has the older copy still comes across. The words after the box stay.
+- **A Word hyphen stays a hyphen.** A no-break hyphen is a hyphen, and a soft hyphen stays between the two halves. They no longer become one word.
+- **`src()` cannot name a remote picture.** It is treated like `url()`. A data image stays. An unquoted address inside `image()` is refused as well. Fixed placement in an add-on stays.
+- **Other numeric spaces count as spaces.** A narrow space, an em space, and an ideographic space no longer glue the words. `&#160;` already did not.
+- **Pasted HTML is read the same way an opened HTML file is.** A remote picture, a script, or a cover style does not come in with the paste. Bold, italic, a link, and a picture already on the page stay.
+
+Windows installer: Quire-Setup-1.9.6.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.5 — The same words, still
 
 Released 12 October 2026.

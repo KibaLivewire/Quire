@@ -146,17 +146,44 @@ function rtfToText(rtf: string) {
 
 function docxXmlToHtml(xml: string) {
   const re =
-    /<w:p\b[^>]*\/?>|<\/w:p>|<w:del\b[^>]*\/?>|<\/w:del>|<w:moveFrom\b[^>]*\/?>|<\/w:moveFrom>|<w:instrText\b[^>]*\/?>|<\/w:instrText>|<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+    /<w:p\b[^>]*\/?>|<\/w:p>|<w:del\b[^>]*\/?>|<\/w:del>|<w:moveFrom\b[^>]*\/?>|<\/w:moveFrom>|<w:instrText\b[^>]*\/?>|<\/w:instrText>|<mc:AlternateContent\b[^>]*\/?>|<\/mc:AlternateContent>|<mc:Choice\b[^>]*\/?>|<\/mc:Choice>|<mc:Fallback\b[^>]*\/?>|<\/mc:Fallback>|<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:noBreakHyphen\b[^>]*\/>|<w:noBreakHyphen\b[^>]*>\s*<\/w:noBreakHyphen>|<w:softHyphen\b[^>]*\/>|<w:softHyphen\b[^>]*>\s*<\/w:softHyphen>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
   const parts: string[] = [];
   let html = "";
   let pDepth = 0;
   let skip = 0;
+  let fallbackSkip = 0;
+  const altStack: { choice: boolean }[] = [];
   const flush = () => {
     if (html.replace(/<br>/g, "").trim()) parts.push(`<p>${html}</p>`);
     html = "";
   };
   for (const hit of xml.matchAll(re)) {
     const raw = hit[0];
+    if (fallbackSkip > 0) {
+      if (raw.startsWith("<mc:Fallback") && !raw.endsWith("/>")) fallbackSkip += 1;
+      else if (raw.startsWith("</mc:Fallback") && fallbackSkip > 0) fallbackSkip -= 1;
+      continue;
+    }
+    if (raw.startsWith("<mc:AlternateContent")) {
+      if (!raw.endsWith("/>")) altStack.push({ choice: false });
+      continue;
+    }
+    if (raw.startsWith("</mc:AlternateContent")) {
+      altStack.pop();
+      continue;
+    }
+    if (raw.startsWith("<mc:Choice")) {
+      const top = altStack[altStack.length - 1];
+      if (top) top.choice = true;
+      continue;
+    }
+    if (raw.startsWith("</mc:Choice")) continue;
+    if (raw.startsWith("<mc:Fallback")) {
+      const top = altStack[altStack.length - 1];
+      if (top?.choice && !raw.endsWith("/>")) fallbackSkip = 1;
+      continue;
+    }
+    if (raw.startsWith("</mc:Fallback")) continue;
     if (raw.startsWith("<w:p")) {
       if (!raw.endsWith("/>")) {
         if (pDepth > 0 && html && !/ $/.test(html) && !html.endsWith("<br>")) html += " ";
@@ -181,6 +208,8 @@ function docxXmlToHtml(xml: string) {
     if (pDepth <= 0 || skip > 0) continue;
     if (raw.startsWith("<w:tab")) html += " ";
     else if (raw.startsWith("<w:br") || raw.startsWith("<w:cr")) html += "<br>";
+    else if (raw.startsWith("<w:noBreakHyphen")) html += "-";
+    else if (raw.startsWith("<w:softHyphen")) html += "\u00ad";
     else html += escapeText(decodeXml(hit[1] ?? ""));
   }
   if (pDepth > 0) flush();

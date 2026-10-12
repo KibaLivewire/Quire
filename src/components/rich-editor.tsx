@@ -64,11 +64,14 @@ export function RichEditor({
   const editor = useEditor({
     immediatelyRender: false,
     extensions: editorExtensions,
-    content: pageHtml || "",
+    content: sanitizeHtml(pageHtml || ""),
     editorProps: {
       attributes: {
         class: "quire-doc tiptap min-h-full px-1 pb-6 focus:outline-none",
         spellcheck: prefs.spellcheck ? "true" : "false",
+      },
+      transformPastedHTML(html) {
+        return sanitizeHtml(html);
       },
       handlePaste(_view, event) {
         const files = collectImageFiles(event.clipboardData?.files);

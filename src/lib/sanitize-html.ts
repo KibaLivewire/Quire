@@ -65,15 +65,26 @@ function isDataImage(value: string) {
 /** A string inside image() or image-set() is a picture address. A remote one is not a filter. */
 function remoteImageCall(value: string) {
   for (const call of value.matchAll(/\b(?:-webkit-image-set|image-set|image)\s*\(([^()]*)\)/gi)) {
-    const quoted = quotedCssStrings(call[1] ?? "");
+    const inner = call[1] ?? "";
+    const quoted = quotedCssStrings(inner);
     if (quoted.some((item) => item && !isDataImage(item))) return true;
+    if (!quoted.length && /(?:https?:|\/\/)/i.test(inner)) return true;
+  }
+  return false;
+}
+
+/** src() is another way to name a picture. A data image stays. A remote one does not. */
+function hasRemoteSrc(value: string) {
+  for (const call of value.matchAll(/\bsrc\s*\(\s*([^)]*)\)/gi)) {
+    const raw = String(call[1] ?? "").trim().replace(/^['"]|['"]$/g, "");
+    if (!isDataImage(decodeCssEscapes(raw, false))) return true;
   }
   return false;
 }
 
 function cssDangerous(value: string) {
   const checked = cssForCheck(value);
-  return /url\s*\(|expression|javascript|@import/i.test(checked) || remoteImageCall(checked);
+  return /url\s*\(|expression|javascript|@import/i.test(checked) || remoteImageCall(checked) || hasRemoteSrc(checked);
 }
 
 /** Picture edits stay a filter or a turn. An escaped url() is not a filter. */
@@ -188,10 +199,11 @@ function scrubPluginCss(css: string): string {
     .replace(/behaviour\s*:/gi, "invalid:")
     .replace(/behavior\s*:/gi, "invalid:")
     .replace(/-moz-binding/gi, "invalid");
-  out = out.replace(/url\s*\(\s*([^)]*)\)/gi, (_all, inner: string) => {
+  out = out.replace(/(?:url|src)\s*\(\s*([^)]*)\)/gi, (all, inner: string) => {
     const raw = String(inner).trim().replace(/^['"]|['"]$/g, "");
     const decoded = decodeCssEscapes(raw, false);
-    if (/^data:image\/(?:png|jpe?g|gif|webp)/i.test(decoded)) return `url(${inner})`;
+    const kind = /^src/i.test(all) ? "src" : "url";
+    if (/^data:image\/(?:png|jpe?g|gif|webp)/i.test(decoded)) return `${kind}(${inner})`;
     return "url(about:blank)";
   });
   out = out.replace(/(?:html|body|:root)[^{]*\{[^}]*\}/gi, (block) =>
@@ -202,10 +214,14 @@ function scrubPluginCss(css: string): string {
 
 function scrubRemoteImageCalls(css: string) {
   return css.replace(/\b(?:-webkit-image-set|image-set|image)\s*\(([^()]*)\)/gi, (all, inner: string) => {
-    const quoted = quotedCssStrings(String(inner));
-    if (!quoted.length) return all;
-    if (quoted.every((item) => !item || isDataImage(item))) return all;
-    return "none";
+    const body = String(inner);
+    const quoted = quotedCssStrings(body);
+    if (quoted.length) {
+      if (quoted.every((item) => !item || isDataImage(item))) return all;
+      return "none";
+    }
+    if (/(?:https?:|\/\/)/i.test(body)) return "none";
+    return all;
   });
 }
 
