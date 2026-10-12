@@ -1,4 +1,5 @@
 import { sanitizeHtml } from "./sanitize-html.ts";
+import { foldDeskText } from "./utils.ts";
 
 type OpenFind = (replace?: boolean) => void;
 let opener: OpenFind | null = null;
@@ -50,7 +51,7 @@ function foldInto(
     const cp = text.codePointAt(i) ?? 0;
     const width = cp > 0xffff ? 2 : 1;
     const ch = text.slice(i, i + width);
-    const lower = ch.toLocaleLowerCase("en-US");
+    const lower = foldDeskText(ch);
     if (lower.length === width) {
       for (let j = 0; j < width; j += 1) {
         hay.value += lower[j];
@@ -77,7 +78,7 @@ export function findHits(
   },
   query: string,
 ): TextHit[] {
-  const needle = query.trim().toLocaleLowerCase("en-US");
+  const needle = foldDeskText(query.trim());
   if (!needle) return [];
   const hay = { value: "" };
   const map: number[] = [];
@@ -162,7 +163,7 @@ function indexHtml(html: string): { root: HTMLElement; hay: string; refs: CharRe
 }
 
 function hitSpans(hay: string, query: string, overlap: boolean): { from: number; to: number }[] {
-  const needle = query.trim().toLocaleLowerCase("en-US");
+  const needle = foldDeskText(query.trim());
   if (!needle) return [];
   const spans: { from: number; to: number }[] = [];
   let start = 0;

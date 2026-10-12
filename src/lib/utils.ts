@@ -29,7 +29,13 @@ export function decodeTextEntities(value: string): string {
     .replace(new RegExp(`${AMP}#(\\d+);`, "g"), (_, digits: string) => characterFromCode(Number(digits)))
     .replace(new RegExp(`${AMP}#x([0-9a-fA-F]+);`, "gi"), (_, hex: string) => characterFromCode(Number.parseInt(hex, 16)))
     .replace(new RegExp(`${AMP}amp;`, "gi"), AMP)
-    .replaceAll(AMP_MARK, AMP);
+    .replaceAll(AMP_MARK, AMP)
+    .replaceAll("\u00a0", " ");
+}
+
+/** Same letter folding Find uses on the sheet. The computer's language must not disagree. */
+export function foldDeskText(value: string): string {
+  return value.toLocaleLowerCase("en-US");
 }
 
 export function plainText(html: string): string {

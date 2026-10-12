@@ -11,7 +11,7 @@ import { coercePages, replaceExistingPage } from "./page-write.ts";
 import { buildPdf } from "./pdf.ts";
 import { readFileSync } from "node:fs";
 import { sanitizeEditStyle, sanitizeInlineStyle, sanitizePluginCss } from "./sanitize-html.ts";
-import { plainText, decodeTextEntities } from "./utils.ts";
+import { plainText, decodeTextEntities, foldDeskText } from "./utils.ts";
 import { unzip, zipStore } from "./zip.ts";
 import { lookupWord } from "./word-tools.ts";
 
@@ -255,6 +255,12 @@ describe("word import", () => {
     const pairedFile = new File([await pairedBlob.arrayBuffer()], "pair.docx");
     const pairedOpen = await importDocument(pairedFile);
     assert.match(pairedOpen.html, /hello world<br>next/);
+    const boxed = `<w:document><w:p><w:r><w:t>before</w:t></w:r><w:r><w:drawing><w:txbxContent><w:p><w:r><w:t>inside</w:t></w:r></w:p></w:txbxContent></w:drawing></w:r><w:r><w:t>after</w:t></w:r></w:p><w:p><w:r><w:t>next</w:t></w:r></w:p></w:document>`;
+    const boxedBlob = zipStore([{ name: "word/document.xml", data: new TextEncoder().encode(boxed) }]);
+    const boxedFile = new File([await boxedBlob.arrayBuffer()], "box.docx");
+    const boxedOpen = await importDocument(boxedFile);
+    assert.match(boxedOpen.html, /before inside after/);
+    assert.match(boxedOpen.html, /<p>next<\/p>/);
   });
 });
 
@@ -308,6 +314,14 @@ describe("page styles", () => {
     assert.equal(/evil\.test/i.test(sanitizePluginCss(".a{background:u\\72 l(https://evil.test/a.png)}")), false);
     assert.equal(/@import|evil\.test/i.test(sanitizePluginCss("@\\69 mport 'https://evil.test/a.css';")), false);
     assert.match(sanitizePluginCss(".a{background:url(data:image/png;base64,aaaa)}"), /data:image\/png/);
+    assert.equal(/evil\.test/i.test(sanitizePluginCss(".a{background:u/**/rl(https://evil.test/a.png)}")), false);
+    assert.equal(/evil\.test/i.test(sanitizePluginCss(".a{background:url/**/(https://evil.test/a.png)}")), false);
+    assert.equal(/@import|evil\.test/i.test(sanitizePluginCss("@im/**/port 'https://evil.test/a.css';")), false);
+    assert.equal(/evil\.test/i.test(sanitizePluginCss(".a{background:image-set('https://evil.test/a.png' 1x)}")), false);
+    assert.equal(/evil\.test/i.test(sanitizeInlineStyle("background:image-set('https://evil.test/a.png' 1x);color:red")), false);
+    assert.match(sanitizeInlineStyle("background:image-set('https://evil.test/a.png' 1x);color:red"), /red/);
+    assert.match(sanitizePluginCss(".a{background:image-set('data:image/png;base64,aaaa' 1x)}"), /data:image\/png/);
+    assert.match(sanitizePluginCss('.a{content:"/* stay */"}'), /stay/);
     const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
     assert.match(css, /html\[data-device="phone"\] \.page-frame,\s*html\[data-device="phone"\] \.page-frame\.is-bare\s*\{[^}]*grid-template-rows:\s*var\(--page-h/);
     assert.match(css, /html\[data-device="phone"\] \.page-frame \.ruler[\s\S]*?display:\s*none/);
@@ -335,6 +349,11 @@ describe("links", () => {
     assert.equal(isOpenableUrl("mailto:a@b.com?subject=Hi%0aBcc:x@y"), false);
     assert.equal(oneExternalUrl("mailto:a@b.com?subject=Hi%0aBcc:x@y"), null);
     assert.equal(oneExternalUrl("https://example.com/a"), "https://example.com/a");
+    assert.equal(oneExternalUrl("https://example.com\\@evil.test"), "https://example.com/@evil.test");
+    assert.equal(oneExternalUrl("https://example.com\\evil.test"), "https://example.com/evil.test");
+    assert.equal(oneExternalUrl("mailto:a@b.com?subject=Hi%09Bcc:x@y"), null);
+    assert.equal(oneExternalUrl("mailto:a@b.com?subject=Hi%E2%80%A8Bcc:x@y"), null);
+    assert.equal(isOpenableUrl("mailto:a@b.com?subject=Hi\u2028Bcc:x@y"), false);
   });
 });
 
@@ -373,6 +392,10 @@ describe("desk counts", () => {
     assert.equal(decodeTextEntities("&#128512;"), "\u{1F600}");
     assert.equal(decodeTextEntities("&#55296;"), "");
     assert.equal(decodeTextEntities("&#38;amp;"), "&amp;");
+    assert.equal(plainText("hello&#160;world"), "hello world");
+    assert.equal(plainText("hello&nbsp;world"), "hello world");
+    assert.equal(foldDeskText("I"), "i");
+    assert.notEqual(foldDeskText("I"), "I".toLocaleLowerCase("tr"));
   });
 });
 

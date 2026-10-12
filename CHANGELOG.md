@@ -1,3 +1,19 @@
+# Quire 1.9.5 — The same words, still
+
+Released 12 October 2026.
+
+- **An add-on comment can no longer name a remote sheet or picture.** A comment split inside `url` or `@import` is read before the check. `image-set` and `image` with a remote address are refused, on the page and in an add-on. A data image stays. Fixed placement in an add-on stays.
+- **A Word text box no longer drops the words after it.** The writing inside the box stays, and so does the writing that follows it. A tab, a line break, a revision, and a field code are unchanged.
+- **The Windows shell opens the address the page already checked.** A backslash is not handed across as written. A mail link with a tab, or a unicode line break, is refused. An ordinary https link and an ordinary email stay.
+- **A numeric non-breaking space is a space in the count.** `&#160;` no longer glues the two words. `&nbsp;` already did not.
+- **Desk search folds letters the same way Find does.** The computer's language no longer makes `I` and `i` disagree. Turkish still types as itself on the page.
+
+Windows installer: Quire-Setup-1.9.5.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.4 — The lock holds the page
 
 Released 11 October 2026.

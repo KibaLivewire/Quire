@@ -145,23 +145,45 @@ function rtfToText(rtf: string) {
 }
 
 function docxXmlToHtml(xml: string) {
+  const re =
+    /<w:p\b[^>]*\/?>|<\/w:p>|<w:del\b[^>]*\/?>|<\/w:del>|<w:moveFrom\b[^>]*\/?>|<\/w:moveFrom>|<w:instrText\b[^>]*\/?>|<\/w:instrText>|<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
   const parts: string[] = [];
-  const blocks = xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g);
-  const token = /<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
-  for (const match of blocks) {
-    const visible = match[0]
-      .replace(/<w:del\b[\s\S]*?<\/w:del>/g, "")
-      .replace(/<w:moveFrom\b[\s\S]*?<\/w:moveFrom>/g, "")
-      .replace(/<w:instrText\b[\s\S]*?<\/w:instrText>/g, "");
-    let html = "";
-    for (const hit of visible.matchAll(token)) {
-      const raw = hit[0];
-      if (raw.startsWith("<w:tab")) html += " ";
-      else if (raw.startsWith("<w:br") || raw.startsWith("<w:cr")) html += "<br>";
-      else html += escapeText(decodeXml(hit[1] ?? ""));
-    }
+  let html = "";
+  let pDepth = 0;
+  let skip = 0;
+  const flush = () => {
     if (html.replace(/<br>/g, "").trim()) parts.push(`<p>${html}</p>`);
+    html = "";
+  };
+  for (const hit of xml.matchAll(re)) {
+    const raw = hit[0];
+    if (raw.startsWith("<w:p")) {
+      if (!raw.endsWith("/>")) {
+        if (pDepth > 0 && html && !/ $/.test(html) && !html.endsWith("<br>")) html += " ";
+        pDepth += 1;
+      }
+      continue;
+    }
+    if (raw.startsWith("</w:p")) {
+      if (pDepth > 1 && html && !/ $/.test(html) && !html.endsWith("<br>")) html += " ";
+      if (pDepth > 0) pDepth -= 1;
+      if (pDepth === 0) flush();
+      continue;
+    }
+    if (raw.startsWith("<w:del") || raw.startsWith("<w:moveFrom") || raw.startsWith("<w:instrText")) {
+      if (!raw.endsWith("/>")) skip += 1;
+      continue;
+    }
+    if (raw.startsWith("</w:del") || raw.startsWith("</w:moveFrom") || raw.startsWith("</w:instrText")) {
+      if (skip > 0) skip -= 1;
+      continue;
+    }
+    if (pDepth <= 0 || skip > 0) continue;
+    if (raw.startsWith("<w:tab")) html += " ";
+    else if (raw.startsWith("<w:br") || raw.startsWith("<w:cr")) html += "<br>";
+    else html += escapeText(decodeXml(hit[1] ?? ""));
   }
+  if (pDepth > 0) flush();
   return parts.join("");
 }
 

@@ -15,7 +15,38 @@ function isSafeSrc(value: string): boolean {
 }
 
 function stripCssComments(value: string) {
-  return value.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, "");
+  let out = "";
+  let i = 0;
+  let quote = "";
+  while (i < value.length) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      out += ch;
+      if (ch === "\\" && next) {
+        out += next;
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      out += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      const end = value.indexOf("*/", i + 2);
+      i = end < 0 ? value.length : end + 2;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
 }
 
 /** Decoded form used only to recognise a dangerous declaration. The saved text stays as written. */
@@ -23,8 +54,26 @@ export function cssForCheck(value: string) {
   return decodeCssEscapes(stripCssComments(value), true);
 }
 
+function quotedCssStrings(value: string): string[] {
+  return [...value.matchAll(/['"]([^'"]*)['"]/g)].map((item) => item[1]?.trim() ?? "");
+}
+
+function isDataImage(value: string) {
+  return /^data:image\/(?:png|jpe?g|gif|webp)/i.test(value);
+}
+
+/** A string inside image() or image-set() is a picture address. A remote one is not a filter. */
+function remoteImageCall(value: string) {
+  for (const call of value.matchAll(/\b(?:-webkit-image-set|image-set|image)\s*\(([^()]*)\)/gi)) {
+    const quoted = quotedCssStrings(call[1] ?? "");
+    if (quoted.some((item) => item && !isDataImage(item))) return true;
+  }
+  return false;
+}
+
 function cssDangerous(value: string) {
-  return /url\s*\(|expression|javascript|@import/i.test(cssForCheck(value));
+  const checked = cssForCheck(value);
+  return /url\s*\(|expression|javascript|@import/i.test(checked) || remoteImageCall(checked);
 }
 
 /** Picture edits stay a filter or a turn. An escaped url() is not a filter. */
@@ -151,9 +200,17 @@ function scrubPluginCss(css: string): string {
   return out;
 }
 
+function scrubRemoteImageCalls(css: string) {
+  return css.replace(/\b(?:-webkit-image-set|image-set|image)\s*\(([^()]*)\)/gi, (all, inner: string) => {
+    const quoted = quotedCssStrings(String(inner));
+    if (!quoted.length) return all;
+    if (quoted.every((item) => !item || isDataImage(item))) return all;
+    return "none";
+  });
+}
+
 /** Add-on CSS can restyle the desk. It cannot pull a remote sheet or image. */
 export function sanitizePluginCss(css: string): string {
-  const once = scrubPluginCss(css);
-  if (!css.includes("\\")) return once;
-  return scrubPluginCss(decodeCssEscapes(stripCssComments(css), false));
+  const readable = decodeCssEscapes(stripCssComments(css), false);
+  return scrubRemoteImageCalls(scrubPluginCss(readable));
 }

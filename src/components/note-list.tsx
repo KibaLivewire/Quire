@@ -31,7 +31,7 @@ import { openRecipeChooser } from "@/lib/recipe-chooser";
 import { folderGate, isLocked, noteGate } from "@/lib/lock";
 import { LockOverlay } from "@/components/lock-gate";
 import { useNotebookStore } from "@/lib/store";
-import { cn, plainText } from "@/lib/utils";
+import { cn, foldDeskText, plainText } from "@/lib/utils";
 
 const DATE_OPTS: { id: DateFilter; label: string }[] = [
   { id: "any", label: "Any time" },
@@ -87,7 +87,7 @@ export function NoteList({
   const nested = childFolders(notebooks, activeNotebookId);
 
   const filteredNotes = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = foldDeskText(query.trim());
     const pool = searching ? notes.filter(isAlive) : notes.filter((note) => note.notebookId === activeNotebookId && isAlive(note));
     const list = pool.filter((note) => {
       const bytes = noteBytes(note);
@@ -97,8 +97,8 @@ export function NoteList({
       if (searching && noteGate(notebooks, note, unlockedIds)) return false;
       if (!q) return true;
       return (
-        note.title.toLowerCase().includes(q) ||
-        plainText(note.content).toLowerCase().includes(q)
+        foldDeskText(note.title).includes(q) ||
+        foldDeskText(plainText(note.content)).includes(q)
       );
     });
     return list.sort((a, b) => {
@@ -114,7 +114,7 @@ export function NoteList({
   }, [notes, notebooks, activeNotebookId, query, created, updated, size, sort, searching, unlockedIds]);
 
   const filteredFolders = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = foldDeskText(query.trim());
     const pool = searching ? notebooks.filter(isAlive) : nested;
     return pool
       .filter((folder) => {
@@ -123,7 +123,7 @@ export function NoteList({
         if (!inDateRange(folderUpdated(notebooks, notes, folder.id), updated)) return false;
         if (!inSizeRange(bytes, size)) return false;
         if (!q) return true;
-        return folder.name.toLowerCase().includes(q);
+        return foldDeskText(folder.name).includes(q);
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [notebooks, notes, nested, query, created, updated, size, searching]);
