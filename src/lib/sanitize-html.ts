@@ -112,6 +112,19 @@ function decodeCssEscapes(value: string, tight: boolean) {
   return tight ? decoded.replace(/\s+/g, "") : decoded;
 }
 
+/** A legacy picture attribute, or a click that would also call a second address.
+ *  Undefined means this attribute is not one of those. A data image on background stays. ping never does.
+ */
+export function presentationalUrl(name: string, value: string): string | null | undefined {
+  const key = name.toLowerCase();
+  if (key === "ping") return null;
+  if (key === "background") {
+    const src = value.trim();
+    return isSafeSrc(src) ? src : null;
+  }
+  return undefined;
+}
+
 const URL_ATTRS = new Set(["href", "xlink:href", "src", "action", "formaction", "poster", "cite", "data-href", "data-src"]);
 
 /** Drop scripts and event handlers. Formatting, pictures, and Quire marks stay. */
@@ -127,6 +140,12 @@ export function sanitizeHtml(html: string): string {
       const value = attr.value.trim();
       if (name.startsWith("on") || name === "srcdoc" || name.startsWith("xmlns")) {
         el.removeAttribute(attr.name);
+        continue;
+      }
+      const fetched = presentationalUrl(name, value);
+      if (fetched !== undefined) {
+        if (fetched) el.setAttribute(attr.name, fetched);
+        else el.removeAttribute(attr.name);
         continue;
       }
       if (name === "srcset") {

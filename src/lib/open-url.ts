@@ -40,3 +40,12 @@ export function isStoredLink(value: string): boolean {
   if (href.startsWith("#")) return !href.startsWith("#//") && !/[:\\]/.test(href);
   return isOpenableUrl(href);
 }
+
+/** The desk window may stay on its own origin. Another port on this machine is not the desk. */
+export function sameDeskOrigin(next: string, home: string): boolean {
+  try {
+    return new URL(next).origin === new URL(home).origin;
+  } catch {
+    return false;
+  }
+}

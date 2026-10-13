@@ -3,7 +3,7 @@ const { spawn } = require("node:child_process");
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
-const { oneExternalUrl } = require("./open-url.cjs");
+const { oneExternalUrl, sameDeskOrigin } = require("./open-url.cjs");
 
 const DEV_URL = process.env.QUIRE_URL || "http://127.0.0.1:8080/";
 const PROD_PORT = Number(process.env.QUIRE_PORT) || 4173;
@@ -317,14 +317,10 @@ function iconPath() {
   return fs.existsSync(packed) ? packed : undefined;
 }
 
+let deskOrigin = "";
+
 function isAppUrl(next) {
-  try {
-    const url = new URL(next);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
-    return url.hostname === "127.0.0.1" || url.hostname === "localhost";
-  } catch {
-    return false;
-  }
+  return Boolean(deskOrigin) && sameDeskOrigin(next, deskOrigin);
 }
 
 function keepDesk(event, next) {
@@ -333,6 +329,7 @@ function keepDesk(event, next) {
 }
 
 function createWindow(url) {
+  deskOrigin = new URL(url).origin;
   const win = new BrowserWindow({
     width: 1280,
     height: 800,

@@ -19,7 +19,7 @@ import { applyDevice } from "@/lib/device";
 import { applyTheme } from "@/lib/theme";
 import { stopSharedReading } from "@/components/read-back-chip";
 import { getActiveEditor } from "@/lib/editor-commands";
-import { hydrateAppVersion, notifyDesktopFlushDone, onDesktopFlushRequest } from "@/lib/desktop";
+import { hydrateAppVersion, isOpenableUrl, notifyDesktopFlushDone, onDesktopFlushRequest, openExternal } from "@/lib/desktop";
 import { flushNotebookPersist, useNotebookStore } from "@/lib/store";
 import { flushPendingEdits } from "@/lib/pending-save";
 import { sanitizePluginCss } from "@/lib/sanitize-html";
@@ -63,6 +63,20 @@ export function AppShell() {
   const [booting, setBooting] = useState(true);
   const bootingRef = useRef(true);
   bootingRef.current = booting;
+
+  useEffect(() => {
+    function onDocLink(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      const link = target?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!link || link.closest(".ProseMirror")) return;
+      event.preventDefault();
+      if (!(event.metaKey || event.ctrlKey || event.altKey)) return;
+      const raw = link.getAttribute("href") || "";
+      if (isOpenableUrl(raw)) void openExternal(raw);
+    }
+    document.addEventListener("click", onDocLink);
+    return () => document.removeEventListener("click", onDocLink);
+  }, []);
 
   useEffect(() => {
     void useNotebookStore.persist.rehydrate();

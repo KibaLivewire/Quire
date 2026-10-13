@@ -27,6 +27,23 @@ function characterFromCode(num: number): string {
   return String.fromCodePoint(num);
 }
 
+const RTF_MARK: Record<string, string> = {
+  emdash: "\u2014",
+  endash: "\u2013",
+  emspace: "\u2003",
+  enspace: "\u2002",
+  qmspace: "\u2005",
+  bullet: "\u2022",
+  lquote: "\u2018",
+  rquote: "\u2019",
+  ldblquote: "\u201c",
+  rdblquote: "\u201d",
+};
+
+function rtfMark(name: string): string {
+  return RTF_MARK[name] ?? "";
+}
+
 function decodeXml(value: string) {
   const amp = String.fromCharCode(38);
   return value
@@ -103,6 +120,22 @@ function rtfToText(rtf: string) {
       i += 2;
       continue;
     }
+    const mark = rtf[i + 1];
+    if (mark === "~") {
+      out += "\u00a0";
+      i += 2;
+      continue;
+    }
+    if (mark === "-") {
+      out += "\u00ad";
+      i += 2;
+      continue;
+    }
+    if (mark === "_") {
+      out += "-";
+      i += 2;
+      continue;
+    }
     if (rtf.startsWith("\\'", i)) {
       const hex = rtf.slice(i + 2, i + 4);
       if (/^[0-9a-fA-F]{2}$/.test(hex)) {
@@ -135,7 +168,12 @@ function rtfToText(rtf: string) {
     if (word) {
       if (word[1] === "uc") ucStack[ucStack.length - 1] = Math.max(0, Number(word[2] || 0));
       if (word[1] === "par" || word[1] === "pard" || word[1] === "line") out += "\n";
-      if (word[1] === "tab") out += "\t";
+      else if (word[1] === "tab") out += "\t";
+      else if (word[1] === "page") out += "\n";
+      else {
+        const glyph = rtfMark(word[1]);
+        if (glyph) out += glyph;
+      }
       i += word[0].length;
       continue;
     }
@@ -146,7 +184,7 @@ function rtfToText(rtf: string) {
 
 function docxXmlToHtml(xml: string) {
   const re =
-    /<w:p\b[^>]*\/?>|<\/w:p>|<w:del\b[^>]*\/?>|<\/w:del>|<w:moveFrom\b[^>]*\/?>|<\/w:moveFrom>|<w:instrText\b[^>]*\/?>|<\/w:instrText>|<mc:AlternateContent\b[^>]*\/?>|<\/mc:AlternateContent>|<mc:Choice\b[^>]*\/?>|<\/mc:Choice>|<mc:Fallback\b[^>]*\/?>|<\/mc:Fallback>|<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:noBreakHyphen\b[^>]*\/>|<w:noBreakHyphen\b[^>]*>\s*<\/w:noBreakHyphen>|<w:softHyphen\b[^>]*\/>|<w:softHyphen\b[^>]*>\s*<\/w:softHyphen>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+    /<w:p\b[^>]*\/?>|<\/w:p>|<w:del\b[^>]*\/?>|<\/w:del>|<w:moveFrom\b[^>]*\/?>|<\/w:moveFrom>|<w:instrText\b[^>]*\/?>|<\/w:instrText>|<mc:AlternateContent\b[^>]*\/?>|<\/mc:AlternateContent>|<mc:Choice\b[^>]*\/?>|<\/mc:Choice>|<mc:Fallback\b[^>]*\/?>|<\/mc:Fallback>|<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:ptab\b[^>]*\/>|<w:ptab\b[^>]*>\s*<\/w:ptab>|<w:separator\b[^>]*\/>|<w:separator\b[^>]*>\s*<\/w:separator>|<w:continuationSeparator\b[^>]*\/>|<w:continuationSeparator\b[^>]*>\s*<\/w:continuationSeparator>|<w:sym\b[^>]*\/>|<w:sym\b[^>]*>\s*<\/w:sym>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:noBreakHyphen\b[^>]*\/>|<w:noBreakHyphen\b[^>]*>\s*<\/w:noBreakHyphen>|<w:softHyphen\b[^>]*\/>|<w:softHyphen\b[^>]*>\s*<\/w:softHyphen>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
   const parts: string[] = [];
   let html = "";
   let pDepth = 0;
@@ -184,7 +222,7 @@ function docxXmlToHtml(xml: string) {
       continue;
     }
     if (raw.startsWith("</mc:Fallback")) continue;
-    if (raw.startsWith("<w:p")) {
+    if (raw.startsWith("<w:p>") || raw.startsWith("<w:p ") || raw.startsWith("<w:p/")) {
       if (!raw.endsWith("/>")) {
         if (pDepth > 0 && html && !/ $/.test(html) && !html.endsWith("<br>")) html += " ";
         pDepth += 1;
@@ -206,7 +244,12 @@ function docxXmlToHtml(xml: string) {
       continue;
     }
     if (pDepth <= 0 || skip > 0) continue;
-    if (raw.startsWith("<w:tab")) html += " ";
+    if (raw.startsWith("<w:tab") || raw.startsWith("<w:ptab") || raw.startsWith("<w:separator") || raw.startsWith("<w:continuationSeparator")) html += " ";
+    else if (raw.startsWith("<w:sym")) {
+      const ch = /w:char="([0-9A-Fa-f]+)"/.exec(raw);
+      const glyph = ch ? characterFromCode(parseInt(ch[1], 16)) : "";
+      html += glyph ? escapeText(glyph) : " ";
+    }
     else if (raw.startsWith("<w:br") || raw.startsWith("<w:cr")) html += "<br>";
     else if (raw.startsWith("<w:noBreakHyphen")) html += "-";
     else if (raw.startsWith("<w:softHyphen")) html += "\u00ad";

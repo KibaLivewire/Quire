@@ -1,3 +1,18 @@
+# Quire 1.9.7 — The page stays put
+
+Released 13 October 2026.
+
+- **A table no longer fetches a picture from the old background attribute.** A row, a cell, or the table itself was still a remote image. A data image stays. A link no longer pings a second address when it is clicked.
+- **A Word mark between two runs keeps the words apart.** A positional tab, a separator, and a symbol were skipped, so the words on either side became one word. A tab was already a space. A symbol that names a character is that character.
+- **An RTF dash, quote, bullet, or space is the character.** Those marks were dropped, and the words on either side became one word. A soft hyphen stays a soft hyphen. A no-break hyphen is a hyphen. A page break is a line break.
+- **A link off the writing page does not move the window.** The facing page and print preview follow the same rule as the editor. Another port on this machine is not the desk. Modifier-click still opens the one address outside Quire.
+
+Windows installer: Quire-Setup-1.9.7.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.6 — One copy of the words
 
 Released 12 October 2026.

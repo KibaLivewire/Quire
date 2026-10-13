@@ -24,4 +24,12 @@ function oneExternalUrl(value) {
   }
 }
 
-module.exports = { oneExternalUrl };
+function sameDeskOrigin(next, home) {
+  try {
+    return new URL(next).origin === new URL(home).origin;
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { oneExternalUrl, sameDeskOrigin };

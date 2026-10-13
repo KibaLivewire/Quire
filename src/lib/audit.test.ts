@@ -6,18 +6,19 @@ import { findHits, nonOverlappingHits } from "./find.ts";
 import { folderBytes, folderUpdated } from "./folders.ts";
 import { importDocument } from "./import-note.ts";
 import { clearLockFailures, hashPin, lockWaitMs, pinMatches, recordLockFailure } from "./lock.ts";
-import { isHttpUrl, isOpenableUrl, isStoredLink } from "./open-url.ts";
+import { isHttpUrl, isOpenableUrl, isStoredLink, sameDeskOrigin } from "./open-url.ts";
 import { coercePages, replaceExistingPage } from "./page-write.ts";
 import { buildPdf } from "./pdf.ts";
 import { readFileSync } from "node:fs";
-import { sanitizeEditStyle, sanitizeInlineStyle, sanitizePluginCss } from "./sanitize-html.ts";
+import { sanitizeEditStyle, sanitizeInlineStyle, sanitizePluginCss, presentationalUrl } from "./sanitize-html.ts";
 import { plainText, decodeTextEntities, foldDeskText } from "./utils.ts";
 import { unzip, zipStore } from "./zip.ts";
 import { lookupWord } from "./word-tools.ts";
 
 const require = createRequire(import.meta.url);
-const { oneExternalUrl } = require("../../electron/open-url.cjs") as {
+const { oneExternalUrl, sameDeskOrigin: shellSameDesk } = require("../../electron/open-url.cjs") as {
   oneExternalUrl: (value: string) => string | null;
+  sameDeskOrigin: (next: string, home: string) => boolean;
 };
 
 type FakeNode = {
@@ -275,6 +276,23 @@ describe("word import", () => {
     const hyphenOpen = await importDocument(new File([await hyphenBlob.arrayBuffer()], "hyphen.docx"));
     assert.equal(hyphenOpen.html.includes("wellknownword"), false);
     assert.match(hyphenOpen.html, /well\u00adknown-word/);
+    const marked = `<w:document><w:p><w:r><w:t>Chapter</w:t></w:r><w:r><w:ptab w:alignment="right" w:relativeTo="margin" w:leader="dot"/></w:r><w:r><w:t>12</w:t></w:r></w:p><w:p><w:r><w:t>hello</w:t></w:r><w:r><w:sym w:font="Symbol" w:char="00A0"/></w:r><w:r><w:t>world</w:t></w:r><w:r><w:separator/></w:r><w:r><w:t>note</w:t></w:r></w:p></w:document>`;
+    const markedBlob = zipStore([{ name: "word/document.xml", data: new TextEncoder().encode(marked) }]);
+    const markedOpen = await importDocument(new File([await markedBlob.arrayBuffer()], "mark.docx"));
+    assert.match(markedOpen.html, /Chapter 12/);
+    assert.equal(markedOpen.html.includes("Chapter12"), false);
+    assert.equal(markedOpen.html.includes("helloworld"), false);
+    assert.match(markedOpen.html, /hello\u00a0world note/);
+    const rtfMarks = new File(["{\\rtf1 hello\\endash world\\emdash more\\~gap well\\-known well\\_known say \\ldblquote hi\\rdblquote\\bullet now\\page next\\enspace far}"], "marks.rtf");
+    const rtfOpen = await importDocument(rtfMarks);
+    assert.equal(rtfOpen.html.includes("helloworld"), false);
+    assert.match(rtfOpen.html, /hello\u2013world\u2014more/);
+    assert.match(rtfOpen.html, /hello\u2013world\u2014more\u00a0gap/);
+    assert.match(rtfOpen.html, /well\u00adknown well-known/);
+    assert.equal(rtfOpen.html.includes("well_known"), false);
+    assert.match(rtfOpen.html, /say \u201chi\u201d\u2022now/);
+    assert.match(rtfOpen.html, /now<br>next/);
+    assert.equal(rtfOpen.html.includes("nextfar"), false);
   });
 });
 
@@ -376,6 +394,15 @@ describe("links", () => {
     assert.equal(oneExternalUrl("mailto:a@b.com?subject=Hi%09Bcc:x@y"), null);
     assert.equal(oneExternalUrl("mailto:a@b.com?subject=Hi%E2%80%A8Bcc:x@y"), null);
     assert.equal(isOpenableUrl("mailto:a@b.com?subject=Hi\u2028Bcc:x@y"), false);
+    assert.equal(presentationalUrl("background", "https://evil.test/a.png"), null);
+    assert.equal(presentationalUrl("background", "data:image/png;base64,aaaa"), "data:image/png;base64,aaaa");
+    assert.equal(presentationalUrl("ping", "https://evil.test/ping"), null);
+    assert.equal(presentationalUrl("href", "https://example.com"), undefined);
+    assert.equal(sameDeskOrigin("http://127.0.0.1:1/", "http://127.0.0.1:8080/"), false);
+    assert.equal(sameDeskOrigin("http://127.0.0.1:8080/page", "http://127.0.0.1:8080/"), true);
+    assert.equal(sameDeskOrigin("https://example.com/", "http://127.0.0.1:8080/"), false);
+    assert.equal(shellSameDesk("http://localhost:8080/", "http://127.0.0.1:8080/"), false);
+    assert.equal(shellSameDesk("http://127.0.0.1:8080/a", "http://127.0.0.1:8080/"), true);
   });
 });
 
