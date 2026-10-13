@@ -1,3 +1,18 @@
+# Quire 1.9.8 — The name is the character
+
+Released 13 October 2026.
+
+- **A named space is a space in the count.** An em space, an en space, a thin space, and the other named spaces no longer glue the words. A tab or a new line written as a name does the same. A soft hyphen stays a soft hyphen. A dash written as a name is that dash. A dictionary line uses that same reading. A numeric space already did. Writing the ampersand out in front of the name still leaves the letters.
+- **A data image cannot hide a remote picture beside it.** `image()` and `image-set()` drop an unquoted address even when a data image is quoted in the same call. `src()` and `url()` stay only when the whole address is one data image. A slash pair inside that image stays. A semicolon inside it no longer cuts the page style in half. Colour stays. Fixed placement in an add-on stays.
+- **An empty Choice no longer drops the only copy of a text box.** The older copy is skipped only after the Choice has written something. A Choice that already has the words still skips that older copy.
+- **An RTF column break or section break is a line break.** A page break already was. The words on either side no longer run together.
+
+Windows installer: Quire-Setup-1.9.8.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.7 — The page stays put
 
 Released 13 October 2026.

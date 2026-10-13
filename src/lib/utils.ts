@@ -15,9 +15,29 @@ function characterFromCode(num: number): string {
   return String.fromCodePoint(num);
 }
 
+const NAMED_SPACE = new Set(["ensp", "emsp", "emsp13", "emsp14", "numsp", "puncsp", "thinsp", "hairsp"]);
+
+const NAMED_MARK: Record<string, string> = {
+  shy: "\u00ad",
+  mdash: "\u2014",
+  ndash: "\u2013",
+  hellip: "\u2026",
+  lsquo: "\u2018",
+  rsquo: "\u2019",
+  ldquo: "\u201c",
+  rdquo: "\u201d",
+  bull: "\u2022",
+  Tab: " ",
+  NewLine: " ",
+};
+
 /** Named marks, then numeric marks, then the ampersand. A written entity stays the letters the writer typed. */
 export function decodeTextEntities(value: string): string {
-  return value
+  const named = value.replace(new RegExp(`${AMP}([A-Za-z][A-Za-z0-9]*);`, "g"), (all, name: string) => {
+    if (NAMED_SPACE.has(name)) return " ";
+    return NAMED_MARK[name] ?? all;
+  });
+  return named
     .replace(new RegExp(`${AMP}lt;`, "gi"), "<")
     .replace(new RegExp(`${AMP}gt;`, "gi"), ">")
     .replace(new RegExp(`${AMP}quot;`, "gi"), '"')

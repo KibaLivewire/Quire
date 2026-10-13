@@ -293,6 +293,16 @@ describe("word import", () => {
     assert.match(rtfOpen.html, /say \u201chi\u201d\u2022now/);
     assert.match(rtfOpen.html, /now<br>next/);
     assert.equal(rtfOpen.html.includes("nextfar"), false);
+    const emptyChoice = `<w:document><w:p><w:r><mc:AlternateContent><mc:Choice Requires="wps"></mc:Choice><mc:Fallback><w:t>Only</w:t></mc:Fallback></mc:AlternateContent></w:r><w:r><w:t>After</w:t></w:r></w:p></w:document>`;
+    const emptyBlob = zipStore([{ name: "word/document.xml", data: new TextEncoder().encode(emptyChoice) }]);
+    const emptyOpen = await importDocument(new File([await emptyBlob.arrayBuffer()], "empty.docx"));
+    assert.match(emptyOpen.html, /Only/);
+    assert.match(emptyOpen.html, /After/);
+    const column = new File(["{\\rtf1 hello\\column world\\sect next}"], "break.rtf");
+    const columnOpen = await importDocument(column);
+    assert.equal(columnOpen.html.includes("helloworld"), false);
+    assert.equal(columnOpen.html.includes("worldnext"), false);
+    assert.match(columnOpen.html, /hello<br>world<br>next/);
   });
 });
 
@@ -361,6 +371,13 @@ describe("page styles", () => {
     assert.match(sanitizeInlineStyle("background:src('https://evil.test/a.png');color:red"), /red/);
     assert.equal(/evil\.test/i.test(sanitizePluginCss(".a{background:image(https://evil.test/a.png)}")), false);
     assert.match(sanitizePluginCss(".a{background:src('data:image/png;base64,aaaa')}"), /data:image\/png/);
+    assert.match(sanitizePluginCss(".a{background:url(data:image/png;base64,abc//def+g==)}"), /abc\/\/def/);
+    assert.equal(/evil\.test/i.test(sanitizePluginCss('.a{background:image-set("data:image/png;base64,aaaa" 1x, https://evil.test/a.png 2x)}')), false);
+    assert.equal(/evil\.test/i.test(sanitizePluginCss(".a{background:src('data:image/png;base64,aaaa' https://evil.test/a.png)}")), false);
+    assert.equal(/evil\.test/i.test(sanitizePluginCss('.a{background:url("data:image/png;base64,aaaa" https://evil.test/a.png)}')), false);
+    assert.match(sanitizeInlineStyle('background:image-set("data:image/png;base64,aaaa" 1x);color:#112233'), /data:image\/png;base64,aaaa/);
+    assert.equal(/evil\.test/i.test(sanitizeInlineStyle('background:image-set("data:image/png;base64,aaaa" 1x, https://evil.test/a.png 2x);color:#112233')), false);
+    assert.match(sanitizeInlineStyle('background:image-set("data:image/png;base64,aaaa" 1x, https://evil.test/a.png 2x);color:#112233'), /#112233/);
     assert.equal(sanitizeEditStyle("filter:src('https://evil.test/a.png');transform:rotate(90deg)"), "transform:rotate(90deg)");
     const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
     assert.match(css, /html\[data-device="phone"\] \.page-frame,\s*html\[data-device="phone"\] \.page-frame\.is-bare\s*\{[^}]*grid-template-rows:\s*var\(--page-h/);
@@ -444,6 +461,12 @@ describe("desk counts", () => {
     assert.equal(plainText("hello&#160;world"), "hello world");
     assert.equal(plainText("hello&nbsp;world"), "hello world");
     assert.equal(plainText("a&#8239;b&#8194;c&#12288;d"), "a b c d");
+    assert.equal(plainText("a&emsp;b&ensp;c&thinsp;d"), "a b c d");
+    assert.equal(plainText("a&emsp13;b&numsp;c&hairsp;d"), "a b c d");
+    assert.equal(plainText("a&Tab;b&NewLine;c"), "a b c");
+    assert.equal(plainText("well&shy;known"), "well\u00adknown");
+    assert.equal(plainText("a&mdash;b"), "a\u2014b");
+    assert.equal(plainText("a" + String.fromCharCode(38) + "amp;emsp;b"), "a" + String.fromCharCode(38) + "emsp;b");
     assert.equal(foldDeskText("I"), "i");
     assert.notEqual(foldDeskText("I"), "I".toLocaleLowerCase("tr"));
   });

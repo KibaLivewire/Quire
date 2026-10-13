@@ -167,9 +167,8 @@ function rtfToText(rtf: string) {
     const word = /^\\([a-zA-Z]+)(-?\d+)? ?/.exec(rtf.slice(i));
     if (word) {
       if (word[1] === "uc") ucStack[ucStack.length - 1] = Math.max(0, Number(word[2] || 0));
-      if (word[1] === "par" || word[1] === "pard" || word[1] === "line") out += "\n";
+      if (word[1] === "par" || word[1] === "pard" || word[1] === "line" || word[1] === "page" || word[1] === "column" || word[1] === "sect") out += "\n";
       else if (word[1] === "tab") out += "\t";
-      else if (word[1] === "page") out += "\n";
       else {
         const glyph = rtfMark(word[1]);
         if (glyph) out += glyph;
@@ -190,7 +189,12 @@ function docxXmlToHtml(xml: string) {
   let pDepth = 0;
   let skip = 0;
   let fallbackSkip = 0;
-  const altStack: { choice: boolean }[] = [];
+  const altStack: { choice: boolean; wrote: boolean }[] = [];
+  const markWrote = () => {
+    for (const frame of altStack) {
+      if (frame.choice) frame.wrote = true;
+    }
+  };
   const flush = () => {
     if (html.replace(/<br>/g, "").trim()) parts.push(`<p>${html}</p>`);
     html = "";
@@ -203,7 +207,7 @@ function docxXmlToHtml(xml: string) {
       continue;
     }
     if (raw.startsWith("<mc:AlternateContent")) {
-      if (!raw.endsWith("/>")) altStack.push({ choice: false });
+      if (!raw.endsWith("/>")) altStack.push({ choice: false, wrote: false });
       continue;
     }
     if (raw.startsWith("</mc:AlternateContent")) {
@@ -218,7 +222,7 @@ function docxXmlToHtml(xml: string) {
     if (raw.startsWith("</mc:Choice")) continue;
     if (raw.startsWith("<mc:Fallback")) {
       const top = altStack[altStack.length - 1];
-      if (top?.choice && !raw.endsWith("/>")) fallbackSkip = 1;
+      if (top?.wrote && !raw.endsWith("/>")) fallbackSkip = 1;
       continue;
     }
     if (raw.startsWith("</mc:Fallback")) continue;
@@ -244,16 +248,30 @@ function docxXmlToHtml(xml: string) {
       continue;
     }
     if (pDepth <= 0 || skip > 0) continue;
-    if (raw.startsWith("<w:tab") || raw.startsWith("<w:ptab") || raw.startsWith("<w:separator") || raw.startsWith("<w:continuationSeparator")) html += " ";
-    else if (raw.startsWith("<w:sym")) {
+    if (raw.startsWith("<w:tab") || raw.startsWith("<w:ptab") || raw.startsWith("<w:separator") || raw.startsWith("<w:continuationSeparator")) {
+      html += " ";
+      markWrote();
+    } else if (raw.startsWith("<w:sym")) {
       const ch = /w:char="([0-9A-Fa-f]+)"/.exec(raw);
       const glyph = ch ? characterFromCode(parseInt(ch[1], 16)) : "";
-      html += glyph ? escapeText(glyph) : " ";
+      const piece = glyph ? escapeText(glyph) : " ";
+      html += piece;
+      if (piece.trim() || piece === " ") markWrote();
+    } else if (raw.startsWith("<w:br") || raw.startsWith("<w:cr")) {
+      html += "<br>";
+      markWrote();
+    } else if (raw.startsWith("<w:noBreakHyphen")) {
+      html += "-";
+      markWrote();
+    } else if (raw.startsWith("<w:softHyphen")) {
+      html += "\u00ad";
+      markWrote();
+    } else {
+      const text = escapeText(decodeXml(hit[1] ?? ""));
+      if (!text) continue;
+      html += text;
+      markWrote();
     }
-    else if (raw.startsWith("<w:br") || raw.startsWith("<w:cr")) html += "<br>";
-    else if (raw.startsWith("<w:noBreakHyphen")) html += "-";
-    else if (raw.startsWith("<w:softHyphen")) html += "\u00ad";
-    else html += escapeText(decodeXml(hit[1] ?? ""));
   }
   if (pDepth > 0) flush();
   return parts.join("");

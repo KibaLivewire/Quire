@@ -1,3 +1,5 @@
+import { decodeTextEntities } from "./utils.ts";
+
 export type WordSense = {
   word: string;
   phonetic: string;
@@ -71,29 +73,8 @@ function takeWords(rows: unknown, max = 10): string[] {
     .slice(0, max);
 }
 
-function characterFromCode(num: number): string {
-  if (!Number.isInteger(num) || num <= 0 || num > 0x10ffff) return "";
-  if (num >= 0xd800 && num <= 0xdfff) return "";
-  return String.fromCodePoint(num);
-}
-
 function stripMarkup(value: string): string {
-  const amp = String.fromCharCode(38);
-  const named = (entity: string) => new RegExp(amp + entity + ";", "gi");
-  return value
-    .replace(/<[^>]+>/g, "")
-    .replace(named("nbsp"), " ")
-    .replace(named("lt"), "<")
-    .replace(named("gt"), ">")
-    .replace(named("quot"), '"')
-    .replace(named("apos"), "'")
-    .replace(new RegExp(amp + "#39;", "gi"), "'")
-    .replace(new RegExp(amp + "#x27;", "gi"), "'")
-    .replace(new RegExp(amp + "#(\\d+);", "gi"), (_all, digits: string) => characterFromCode(Number(digits)))
-    .replace(new RegExp(amp + "#x([0-9a-fA-F]+);", "gi"), (_all, hex: string) => characterFromCode(parseInt(hex, 16)))
-    .replace(named("amp"), amp)
-    .replace(/\s+/g, " ")
-    .trim();
+  return decodeTextEntities(value.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
 }
 
 async function fetchJson(url: string, ms = 5000): Promise<unknown> {

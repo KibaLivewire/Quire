@@ -58,17 +58,39 @@ function quotedCssStrings(value: string): string[] {
   return [...value.matchAll(/['"]([^'"]*)['"]/g)].map((item) => item[1]?.trim() ?? "");
 }
 
-function isDataImage(value: string) {
-  return /^data:image\/(?:png|jpe?g|gif|webp)/i.test(value);
+function isOnlyDataImage(value: string) {
+  const next = value.trim();
+  if (!/^data:image\/(?:png|jpe?g|gif|webp)(?:[;,].*)?$/i.test(next)) return false;
+  if (/https?:\/\//i.test(next)) return false;
+  if (/\s\/\//.test(next)) return false;
+  return true;
+}
+
+/** A remote address outside a data-image payload. Slashes inside the payload are not a host. */
+function hasRemoteAddress(value: string) {
+  const rest = value.replace(/['"][^'"]*['"]/g, " ");
+  if (/https?:\/\//i.test(rest)) return true;
+  const withoutData = rest.replace(/data:image\/(?:png|jpe?g|gif|webp)(?:[;,][^\s"']*)?/gi, " ");
+  return /(?:https?:|\/\/)/i.test(withoutData);
+}
+
+/** src() or url() stays only when the whole address is one data image. */
+function cssAddressIsDataImage(inner: string) {
+  const decoded = decodeCssEscapes(String(inner).trim(), false);
+  if (hasRemoteAddress(decoded)) return false;
+  const quoted = quotedCssStrings(decoded);
+  if (quoted.length) return quoted.every((item) => !item || isOnlyDataImage(decodeCssEscapes(item, false)));
+  const raw = decoded.replace(/^['"]|['"]$/g, "").trim();
+  return isOnlyDataImage(raw);
 }
 
 /** A string inside image() or image-set() is a picture address. A remote one is not a filter. */
 function remoteImageCall(value: string) {
   for (const call of value.matchAll(/\b(?:-webkit-image-set|image-set|image)\s*\(([^()]*)\)/gi)) {
     const inner = call[1] ?? "";
+    if (hasRemoteAddress(inner)) return true;
     const quoted = quotedCssStrings(inner);
-    if (quoted.some((item) => item && !isDataImage(item))) return true;
-    if (!quoted.length && /(?:https?:|\/\/)/i.test(inner)) return true;
+    if (quoted.some((item) => item && !isOnlyDataImage(item))) return true;
   }
   return false;
 }
@@ -76,8 +98,7 @@ function remoteImageCall(value: string) {
 /** src() is another way to name a picture. A data image stays. A remote one does not. */
 function hasRemoteSrc(value: string) {
   for (const call of value.matchAll(/\bsrc\s*\(\s*([^)]*)\)/gi)) {
-    const raw = String(call[1] ?? "").trim().replace(/^['"]|['"]$/g, "");
-    if (!isDataImage(decodeCssEscapes(raw, false))) return true;
+    if (!cssAddressIsDataImage(call[1] ?? "")) return true;
   }
   return false;
 }
@@ -187,11 +208,56 @@ export function sanitizeHtml(html: string): string {
 
 const VIEWPORT = /(?:^|[\s,(])-?\d*\.?\d+(?:vw|vh|vmin|vmax|vb|vi)\b/i;
 
+/** Semicolons inside a quote or a function stay with that declaration. A data image uses one. */
+function splitCssDeclarations(value: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let quote = "";
+  let depth = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      current += ch;
+      if (ch === "\\" && next) {
+        current += next;
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "(") {
+      depth += 1;
+      current += ch;
+      continue;
+    }
+    if (ch === ")" && depth > 0) {
+      depth -= 1;
+      current += ch;
+      continue;
+    }
+    if (ch === ";" && depth === 0) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current) parts.push(current);
+  return parts;
+}
+
 /** Page styles keep colour, type, a relative picture offset, a filter, and a turn. They cannot cover the desk. */
 export function sanitizeInlineStyle(value: string): string {
   const cleaned = sanitizePluginCss(`x{${value}}`).replace(/^x\{/, "").replace(/\}$/, "");
   const kept: string[] = [];
-  for (const part of cleaned.split(";")) {
+  for (const part of splitCssDeclarations(cleaned)) {
     const piece = part.trim();
     if (!piece) continue;
     const idx = piece.indexOf(":");
@@ -219,10 +285,8 @@ function scrubPluginCss(css: string): string {
     .replace(/behavior\s*:/gi, "invalid:")
     .replace(/-moz-binding/gi, "invalid");
   out = out.replace(/(?:url|src)\s*\(\s*([^)]*)\)/gi, (all, inner: string) => {
-    const raw = String(inner).trim().replace(/^['"]|['"]$/g, "");
-    const decoded = decodeCssEscapes(raw, false);
     const kind = /^src/i.test(all) ? "src" : "url";
-    if (/^data:image\/(?:png|jpe?g|gif|webp)/i.test(decoded)) return `${kind}(${inner})`;
+    if (cssAddressIsDataImage(inner)) return `${kind}(${inner})`;
     return "url(about:blank)";
   });
   out = out.replace(/(?:html|body|:root)[^{]*\{[^}]*\}/gi, (block) =>
@@ -234,9 +298,10 @@ function scrubPluginCss(css: string): string {
 function scrubRemoteImageCalls(css: string) {
   return css.replace(/\b(?:-webkit-image-set|image-set|image)\s*\(([^()]*)\)/gi, (all, inner: string) => {
     const body = String(inner);
+    if (hasRemoteAddress(body)) return "none";
     const quoted = quotedCssStrings(body);
     if (quoted.length) {
-      if (quoted.every((item) => !item || isDataImage(item))) return all;
+      if (quoted.every((item) => !item || isOnlyDataImage(item))) return all;
       return "none";
     }
     if (/(?:https?:|\/\/)/i.test(body)) return "none";
