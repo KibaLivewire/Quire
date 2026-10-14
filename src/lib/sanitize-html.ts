@@ -84,14 +84,100 @@ function cssAddressIsDataImage(inner: string) {
   return isOnlyDataImage(raw);
 }
 
-/** A string inside image() or image-set() is a picture address. A remote one is not a filter. */
+/** A string inside image() or image-set() is a picture address. A remote one is not a filter. Nested calls count. */
 function remoteImageCall(value: string) {
-  for (const call of value.matchAll(/\b(?:-webkit-image-set|image-set|image)\s*\(([^()]*)\)/gi)) {
-    const inner = call[1] ?? "";
-    if (hasRemoteAddress(inner)) return true;
-    const quoted = quotedCssStrings(inner);
-    if (quoted.some((item) => item && !isOnlyDataImage(item))) return true;
+  return imageCalls(value).some((call) => imageCallIsRemote(call.inner));
+}
+
+function imageCalls(value: string): { start: number; end: number; inner: string }[] {
+  const calls: { start: number; end: number; inner: string }[] = [];
+  let i = 0;
+  let quote = "";
+  while (i < value.length) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      if (ch === "\\" && next) {
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      i += 1;
+      continue;
+    }
+    const paren = imageNameParen(value, i);
+    if (!paren) {
+      i += 1;
+      continue;
+    }
+    const end = matchingParen(value, paren);
+    if (end < 0) {
+      i += 1;
+      continue;
+    }
+    calls.push({ start: i, end, inner: value.slice(paren + 1, end) });
+    i = end + 1;
   }
+  return calls;
+}
+
+function imageNameParen(value: string, i: number): number {
+  if (i > 0 && /[A-Za-z0-9_-]/.test(value[i - 1] ?? "")) return 0;
+  const names = ["-webkit-image-set", "image-set", "image"];
+  for (const name of names) {
+    if (!value.startsWith(name, i)) continue;
+    const after = i + name.length;
+    if (/[A-Za-z0-9_-]/.test(value[after] ?? "")) continue;
+    let j = after;
+    while (value[j] === " " || value[j] === "\t" || value[j] === "\n" || value[j] === "\r" || value[j] === "\f") j += 1;
+    if (value[j] === "(") return j;
+  }
+  return 0;
+}
+
+function matchingParen(value: string, open: number): number {
+  let depth = 0;
+  let quote = "";
+  for (let i = open; i < value.length; i += 1) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      if (ch === "\\" && next) {
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** type() names a format. It is not a picture address. */
+function stripTypeCalls(value: string) {
+  return value.replace(/\btype\s*\(\s*(['"])[^'"]*\1\s*\)/gi, " ");
+}
+
+function imageCallIsRemote(inner: string) {
+  const body = stripTypeCalls(inner);
+  if (hasRemoteAddress(body)) return true;
+  const quoted = quotedCssStrings(body);
+  if (quoted.some((item) => item && !isOnlyDataImage(item))) return true;
+  if (/\bvar\s*\(/i.test(body)) return true;
   return false;
 }
 
@@ -296,17 +382,16 @@ function scrubPluginCss(css: string): string {
 }
 
 function scrubRemoteImageCalls(css: string) {
-  return css.replace(/\b(?:-webkit-image-set|image-set|image)\s*\(([^()]*)\)/gi, (all, inner: string) => {
-    const body = String(inner);
-    if (hasRemoteAddress(body)) return "none";
-    const quoted = quotedCssStrings(body);
-    if (quoted.length) {
-      if (quoted.every((item) => !item || isOnlyDataImage(item))) return all;
-      return "none";
-    }
-    if (/(?:https?:|\/\/)/i.test(body)) return "none";
-    return all;
-  });
+  const calls = imageCalls(css);
+  if (!calls.length) return css;
+  let out = "";
+  let cursor = 0;
+  for (const call of calls) {
+    out += css.slice(cursor, call.start);
+    out += imageCallIsRemote(call.inner) ? "none" : css.slice(call.start, call.end + 1);
+    cursor = call.end + 1;
+  }
+  return out + css.slice(cursor);
 }
 
 /** Add-on CSS can restyle the desk. It cannot pull a remote sheet or image. */

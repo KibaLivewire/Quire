@@ -44,6 +44,44 @@ function rtfMark(name: string): string {
   return RTF_MARK[name] ?? "";
 }
 
+const CP1252_EXTRA: Record<number, string> = {
+  0x80: "\u20ac",
+  0x82: "\u201a",
+  0x83: "\u0192",
+  0x84: "\u201e",
+  0x85: "\u2026",
+  0x86: "\u2020",
+  0x87: "\u2021",
+  0x88: "\u02c6",
+  0x89: "\u2030",
+  0x8a: "\u0160",
+  0x8b: "\u2039",
+  0x8c: "\u0152",
+  0x8e: "\u017d",
+  0x91: "\u2018",
+  0x92: "\u2019",
+  0x93: "\u201c",
+  0x94: "\u201d",
+  0x95: "\u2022",
+  0x96: "\u2013",
+  0x97: "\u2014",
+  0x98: "\u02dc",
+  0x99: "\u2122",
+  0x9a: "\u0161",
+  0x9b: "\u203a",
+  0x9c: "\u0153",
+  0x9e: "\u017e",
+  0x9f: "\u0178",
+};
+
+function rtfByteChar(byte: number, codePage: number): string {
+  if (codePage === 1252) {
+    if (CP1252_EXTRA[byte]) return CP1252_EXTRA[byte];
+    if (byte >= 0x80 && byte <= 0x9f) return "";
+  }
+  return byte === 0 ? "" : String.fromCharCode(byte);
+}
+
 function decodeXml(value: string) {
   const amp = String.fromCharCode(38);
   return value
@@ -58,6 +96,7 @@ function decodeXml(value: string) {
 
 function rtfToText(rtf: string) {
   const ucStack = [1];
+  const cpStack = [1252];
   let i = 0;
   let out = "";
   let skip = 0;
@@ -91,6 +130,7 @@ function rtfToText(rtf: string) {
     const ch = rtf[i];
     if (ch === "{") {
       ucStack.push(ucStack[ucStack.length - 1] ?? 1);
+      cpStack.push(cpStack[cpStack.length - 1] ?? 1252);
       const rest = rtf.slice(i + 1);
       if (skip > 0 || skipDest.test(rest)) skip += 1;
       i += 1;
@@ -98,6 +138,7 @@ function rtfToText(rtf: string) {
     }
     if (ch === "}") {
       if (ucStack.length > 1) ucStack.pop();
+      if (cpStack.length > 1) cpStack.pop();
       if (skip > 0) skip -= 1;
       i += 1;
       continue;
@@ -137,9 +178,25 @@ function rtfToText(rtf: string) {
       continue;
     }
     if (rtf.startsWith("\\'", i)) {
+      const codePage = cpStack[cpStack.length - 1] ?? 1252;
+      if (codePage === 65001) {
+        const bytes: number[] = [];
+        while (rtf.startsWith("\\'", i) && /^[0-9a-fA-F]{2}$/.test(rtf.slice(i + 2, i + 4))) {
+          bytes.push(parseInt(rtf.slice(i + 2, i + 4), 16));
+          i += 4;
+        }
+        if (!bytes.length) {
+          i += 1;
+          continue;
+        }
+        const glyph = new TextDecoder("utf-8", { fatal: false }).decode(Uint8Array.from(bytes)).replace(/\uFFFD/g, "");
+        if (glyph) out += glyph;
+        continue;
+      }
       const hex = rtf.slice(i + 2, i + 4);
       if (/^[0-9a-fA-F]{2}$/.test(hex)) {
-        out += String.fromCharCode(parseInt(hex, 16));
+        const glyph = rtfByteChar(parseInt(hex, 16), codePage);
+        if (glyph) out += glyph;
         i += 4;
         continue;
       }
@@ -148,8 +205,10 @@ function rtfToText(rtf: string) {
     if (uni) {
       let n = Number(uni[1]);
       if (n < 0) n += 65536;
-      n &= 0xffff;
-      if (n !== 0) out += String.fromCharCode(n);
+      let glyph = "";
+      if (n > 0xffff) glyph = characterFromCode(n);
+      else if ((n & 0xffff) !== 0) glyph = String.fromCharCode(n & 0xffff);
+      if (glyph) out += glyph;
       i += uni[0].length;
       let skipAnsi = ucStack[ucStack.length - 1] ?? 1;
       while (skipAnsi > 0 && i < rtf.length) {
@@ -167,7 +226,14 @@ function rtfToText(rtf: string) {
     const word = /^\\([a-zA-Z]+)(-?\d+)? ?/.exec(rtf.slice(i));
     if (word) {
       if (word[1] === "uc") ucStack[ucStack.length - 1] = Math.max(0, Number(word[2] || 0));
-      if (word[1] === "par" || word[1] === "pard" || word[1] === "line" || word[1] === "page" || word[1] === "column" || word[1] === "sect") out += "\n";
+      if (word[1] === "ansicpg") {
+        const page = Number(word[2] || 0);
+        if (Number.isFinite(page) && page > 0) cpStack[cpStack.length - 1] = Math.floor(page);
+      } else if (word[1] === "ansi") cpStack[cpStack.length - 1] = 1252;
+      else if (word[1] === "mac") cpStack[cpStack.length - 1] = 10000;
+      else if (word[1] === "pc") cpStack[cpStack.length - 1] = 437;
+      else if (word[1] === "pca") cpStack[cpStack.length - 1] = 850;
+      if (word[1] === "par" || word[1] === "pard" || word[1] === "line" || word[1] === "page" || word[1] === "column" || word[1] === "sect" || word[1] === "cell" || word[1] === "nestcell" || word[1] === "row" || word[1] === "nestrow") out += "\n";
       else if (word[1] === "tab") out += "\t";
       else {
         const glyph = rtfMark(word[1]);
@@ -183,7 +249,7 @@ function rtfToText(rtf: string) {
 
 function docxXmlToHtml(xml: string) {
   const re =
-    /<w:p\b[^>]*\/?>|<\/w:p>|<w:del\b[^>]*\/?>|<\/w:del>|<w:moveFrom\b[^>]*\/?>|<\/w:moveFrom>|<w:instrText\b[^>]*\/?>|<\/w:instrText>|<mc:AlternateContent\b[^>]*\/?>|<\/mc:AlternateContent>|<mc:Choice\b[^>]*\/?>|<\/mc:Choice>|<mc:Fallback\b[^>]*\/?>|<\/mc:Fallback>|<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:ptab\b[^>]*\/>|<w:ptab\b[^>]*>\s*<\/w:ptab>|<w:separator\b[^>]*\/>|<w:separator\b[^>]*>\s*<\/w:separator>|<w:continuationSeparator\b[^>]*\/>|<w:continuationSeparator\b[^>]*>\s*<\/w:continuationSeparator>|<w:sym\b[^>]*\/>|<w:sym\b[^>]*>\s*<\/w:sym>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:noBreakHyphen\b[^>]*\/>|<w:noBreakHyphen\b[^>]*>\s*<\/w:noBreakHyphen>|<w:softHyphen\b[^>]*\/>|<w:softHyphen\b[^>]*>\s*<\/w:softHyphen>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+    /<w:p\b[^>]*\/?>|<\/w:p>|<w:del\b[^>]*\/?>|<\/w:del>|<w:moveFrom\b[^>]*\/?>|<\/w:moveFrom>|<w:instrText\b[^>]*\/?>|<\/w:instrText>|<mc:AlternateContent\b[^>]*\/?>|<\/mc:AlternateContent>|<mc:Choice\b[^>]*\/?>|<\/mc:Choice>|<mc:Fallback\b[^>]*\/?>|<\/mc:Fallback>|<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:ptab\b[^>]*\/>|<w:ptab\b[^>]*>\s*<\/w:ptab>|<w:separator\b[^>]*\/>|<w:separator\b[^>]*>\s*<\/w:separator>|<w:continuationSeparator\b[^>]*\/>|<w:continuationSeparator\b[^>]*>\s*<\/w:continuationSeparator>|<w:sym\b[^>]*\/>|<w:sym\b[^>]*>\s*<\/w:sym>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:lastRenderedPageBreak\b[^>]*\/>|<w:lastRenderedPageBreak\b[^>]*>\s*<\/w:lastRenderedPageBreak>|<w:noBreakHyphen\b[^>]*\/>|<w:noBreakHyphen\b[^>]*>\s*<\/w:noBreakHyphen>|<w:softHyphen\b[^>]*\/>|<w:softHyphen\b[^>]*>\s*<\/w:softHyphen>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
   const parts: string[] = [];
   let html = "";
   let pDepth = 0;
@@ -257,7 +323,7 @@ function docxXmlToHtml(xml: string) {
       const piece = glyph ? escapeText(glyph) : " ";
       html += piece;
       if (piece.trim() || piece === " ") markWrote();
-    } else if (raw.startsWith("<w:br") || raw.startsWith("<w:cr")) {
+    } else if (raw.startsWith("<w:br") || raw.startsWith("<w:cr") || raw.startsWith("<w:lastRenderedPageBreak")) {
       html += "<br>";
       markWrote();
     } else if (raw.startsWith("<w:noBreakHyphen")) {

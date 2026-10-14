@@ -15,12 +15,28 @@ function characterFromCode(num: number): string {
   return String.fromCodePoint(num);
 }
 
-const NAMED_SPACE = new Set(["ensp", "emsp", "emsp13", "emsp14", "numsp", "puncsp", "thinsp", "hairsp"]);
+const NAMED_SPACE = new Set([
+  "ensp",
+  "emsp",
+  "emsp13",
+  "emsp14",
+  "numsp",
+  "puncsp",
+  "thinsp",
+  "hairsp",
+  "MediumSpace",
+  "ThinSpace",
+  "VeryThinSpace",
+  "NonBreakingSpace",
+]);
 
 const NAMED_MARK: Record<string, string> = {
   shy: "\u00ad",
   mdash: "\u2014",
   ndash: "\u2013",
+  dash: "\u2010",
+  horbar: "\u2015",
+  minus: "\u2212",
   hellip: "\u2026",
   lsquo: "\u2018",
   rsquo: "\u2019",
@@ -29,6 +45,7 @@ const NAMED_MARK: Record<string, string> = {
   bull: "\u2022",
   Tab: " ",
   NewLine: " ",
+  ThickSpace: "\u205f\u200a",
 };
 
 /** Named marks, then numeric marks, then the ampersand. A written entity stays the letters the writer typed. */

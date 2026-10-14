@@ -1,3 +1,19 @@
+# Quire 1.9.9 — The break is a break
+
+Released 14 October 2026.
+
+- **A named space that 1.9.8 still spelled out is a space in the count.** Medium, thin, very thin, thick, and non-breaking space no longer glue the words. A dash, a horizontal bar, and a minus written as a name are those marks. A soft hyphen and an em dash already were. Writing the ampersand out in front of the name still leaves the letters.
+- **A picture address inside another function cannot fetch a remote file.** `image()` and `image-set()` are read with the parentheses matched, so `type()`, a gradient, or `rgba()` no longer hides the address. A variable inside that call is refused. A data image stays, including one that names its type. Colour stays. Fixed placement in an add-on stays.
+- **An RTF table cell or row is a line break.** The words in the next cell no longer run together. A column break already was a line break.
+- **An RTF Windows quote or dash is the character.** A hex byte in the Windows-1252 set is the quote, the dash, the bullet, or the euro the page should show, not a control character. A UTF-8 file is read as UTF-8. A character written as one `\u` above the old 16-bit line stays that character. A pair of RTF characters is still one emoji.
+- **A Word page break between two runs is a line break.** The words on either side no longer become one word.
+
+Windows installer: Quire-Setup-1.9.9.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.8 — The name is the character
 
 Released 13 October 2026.
