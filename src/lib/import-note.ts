@@ -274,7 +274,7 @@ function rtfToText(rtf: string) {
       else if (word[1] === "mac") cpStack[cpStack.length - 1] = 10000;
       else if (word[1] === "pc") cpStack[cpStack.length - 1] = 437;
       else if (word[1] === "pca") cpStack[cpStack.length - 1] = 850;
-      if (word[1] === "par" || word[1] === "pard" || word[1] === "line" || word[1] === "page" || word[1] === "column" || word[1] === "sect" || word[1] === "cell" || word[1] === "nestcell" || word[1] === "row" || word[1] === "nestrow" || word[1] === "softline" || word[1] === "softpage" || word[1] === "softcol") out += "\n";
+      if (word[1] === "par" || word[1] === "pard" || word[1] === "line" || word[1] === "lbr" || word[1] === "page" || word[1] === "column" || word[1] === "sect" || word[1] === "cell" || word[1] === "nestcell" || word[1] === "row" || word[1] === "nestrow" || word[1] === "softline" || word[1] === "softpage" || word[1] === "softcol") out += "\n";
       else if (word[1] === "tab") out += "\t";
       else {
         const glyph = rtfMark(word[1]);
@@ -290,7 +290,7 @@ function rtfToText(rtf: string) {
 
 function docxXmlToHtml(xml: string) {
   const re =
-    /<w:p\b[^>]*\/?>|<\/w:p>|<w:del\b[^>]*\/?>|<\/w:del>|<w:moveFrom\b[^>]*\/?>|<\/w:moveFrom>|<w:instrText\b[^>]*\/?>|<\/w:instrText>|<mc:AlternateContent\b[^>]*\/?>|<\/mc:AlternateContent>|<mc:Choice\b[^>]*\/?>|<\/mc:Choice>|<mc:Fallback\b[^>]*\/?>|<\/mc:Fallback>|<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:ptab\b[^>]*\/>|<w:ptab\b[^>]*>\s*<\/w:ptab>|<w:separator\b[^>]*\/>|<w:separator\b[^>]*>\s*<\/w:separator>|<w:continuationSeparator\b[^>]*\/>|<w:continuationSeparator\b[^>]*>\s*<\/w:continuationSeparator>|<w:sym\b[^>]*\/>|<w:sym\b[^>]*>\s*<\/w:sym>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:lastRenderedPageBreak\b[^>]*\/>|<w:lastRenderedPageBreak\b[^>]*>\s*<\/w:lastRenderedPageBreak>|<w:noBreakHyphen\b[^>]*\/>|<w:noBreakHyphen\b[^>]*>\s*<\/w:noBreakHyphen>|<w:softHyphen\b[^>]*\/>|<w:softHyphen\b[^>]*>\s*<\/w:softHyphen>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+    /<w:p\b[^>]*\/?>|<\/w:p>|<w:del\b[^>]*\/?>|<\/w:del>|<w:moveFrom\b[^>]*\/?>|<\/w:moveFrom>|<w:instrText\b[^>]*\/?>|<\/w:instrText>|<mc:AlternateContent\b[^>]*\/?>|<\/mc:AlternateContent>|<mc:Choice\b[^>]*\/?>|<\/mc:Choice>|<mc:Fallback\b[^>]*\/?>|<\/mc:Fallback>|<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:ptab\b[^>]*\/>|<w:ptab\b[^>]*>\s*<\/w:ptab>|<w:separator\b[^>]*\/>|<w:separator\b[^>]*>\s*<\/w:separator>|<w:continuationSeparator\b[^>]*\/>|<w:continuationSeparator\b[^>]*>\s*<\/w:continuationSeparator>|<w:footnoteReference\b[^>]*\/>|<w:footnoteReference\b[^>]*>\s*<\/w:footnoteReference>|<w:endnoteReference\b[^>]*\/>|<w:endnoteReference\b[^>]*>\s*<\/w:endnoteReference>|<w:sym\b[^>]*\/>|<w:sym\b[^>]*>\s*<\/w:sym>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:lastRenderedPageBreak\b[^>]*\/>|<w:lastRenderedPageBreak\b[^>]*>\s*<\/w:lastRenderedPageBreak>|<w:noBreakHyphen\b[^>]*\/>|<w:noBreakHyphen\b[^>]*>\s*<\/w:noBreakHyphen>|<w:softHyphen\b[^>]*\/>|<w:softHyphen\b[^>]*>\s*<\/w:softHyphen>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
   const parts: string[] = [];
   let html = "";
   let pDepth = 0;
@@ -355,7 +355,7 @@ function docxXmlToHtml(xml: string) {
       continue;
     }
     if (pDepth <= 0 || skip > 0) continue;
-    if (raw.startsWith("<w:tab") || raw.startsWith("<w:ptab") || raw.startsWith("<w:separator") || raw.startsWith("<w:continuationSeparator")) {
+    if (raw.startsWith("<w:tab") || raw.startsWith("<w:ptab") || raw.startsWith("<w:separator") || raw.startsWith("<w:continuationSeparator") || raw.startsWith("<w:footnoteReference") || raw.startsWith("<w:endnoteReference")) {
       html += " ";
       markWrote();
     } else if (raw.startsWith("<w:sym")) {

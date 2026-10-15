@@ -213,10 +213,36 @@ function cssCodePoint(code: number): string {
 }
 
 function decodeCssEscapes(value: string, tight: boolean) {
-  const decoded = value
-    .replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex: string) => cssCodePoint(Number.parseInt(hex, 16)))
-    .replace(/\\(.)/g, "$1");
-  return tight ? decoded.replace(/\s+/g, "") : decoded;
+  let out = "";
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i] ?? "";
+    if (ch !== "\\") {
+      out += ch;
+      continue;
+    }
+    const next = value[i + 1] ?? "";
+    if (!next) break;
+    if (next === "\n" || next === "\r" || next === "\f") {
+      i += 1;
+      if (next === "\r" && value[i + 1] === "\n") i += 1;
+      continue;
+    }
+    if (/[0-9a-fA-F]/.test(next)) {
+      let hex = "";
+      let j = i + 1;
+      while (j < value.length && hex.length < 6 && /[0-9a-fA-F]/.test(value[j] ?? "")) {
+        hex += value[j];
+        j += 1;
+      }
+      if (j < value.length && /[ \t\n\r\f]/.test(value[j] ?? "")) j += 1;
+      out += cssCodePoint(Number.parseInt(hex, 16));
+      i = j - 1;
+      continue;
+    }
+    out += next;
+    i += 1;
+  }
+  return tight ? out.replace(/\s+/g, "") : out;
 }
 
 /** A legacy picture attribute, or a click that would also call a second address.
@@ -396,6 +422,6 @@ function scrubRemoteImageCalls(css: string) {
 
 /** Add-on CSS can restyle the desk. It cannot pull a remote sheet or image. */
 export function sanitizePluginCss(css: string): string {
-  const readable = decodeCssEscapes(stripCssComments(css), false);
+  const readable = stripCssComments(decodeCssEscapes(stripCssComments(css), false));
   return scrubRemoteImageCalls(scrubPluginCss(readable));
 }

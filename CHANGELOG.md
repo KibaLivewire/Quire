@@ -1,3 +1,17 @@
+# Quire 1.9.11 — The name is still the name
+
+Released 15 October 2026.
+
+- **A backslash at the end of a CSS line no longer fetches a picture or a sheet.** The page already joined that name. `url`, `src`, `image`, and `@import` are still refused, and the same break cannot hide the desk or stay on a picture edit. A data image stays. Colour stays. Fixed placement in an add-on stays. An RTF line broken for transport is unchanged.
+- **An RTF text-wrapping break is a line break.** `\lbr` no longer glues the words. A soft line already was a line break.
+- **A Word footnote or endnote mark keeps the words apart.** The mark between two runs is a space, the same as a separator. A tab, a line break, a revision, and a field code stay as they were.
+
+Windows installer: Quire-Setup-1.9.11.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.10 — The page and the count
 
 Released 15 October 2026.
