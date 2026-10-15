@@ -38,6 +38,10 @@ const RTF_MARK: Record<string, string> = {
   rquote: "\u2019",
   ldblquote: "\u201c",
   rdblquote: "\u201d",
+  zwj: "\u200d",
+  zwnj: "\u200c",
+  ltrmark: "\u200e",
+  rtlmark: "\u200f",
 };
 
 function rtfMark(name: string): string {
@@ -78,9 +82,32 @@ function rtfByteChar(byte: number, codePage: number): string {
   if (codePage === 1252) {
     if (CP1252_EXTRA[byte]) return CP1252_EXTRA[byte];
     if (byte >= 0x80 && byte <= 0x9f) return "";
+  } else {
+    const label = WINDOWS_PAGE[codePage];
+    if (label) {
+      try {
+        const decoded = new TextDecoder(label, { fatal: false }).decode(Uint8Array.of(byte));
+        if (decoded && !decoded.includes("\uFFFD") && decoded !== "\0") return decoded;
+        return "";
+      } catch {
+        /* a page this runtime cannot name falls through */
+      }
+    }
   }
   return byte === 0 ? "" : String.fromCharCode(byte);
 }
+
+const WINDOWS_PAGE: Record<number, string> = {
+  874: "windows-874",
+  1250: "windows-1250",
+  1251: "windows-1251",
+  1253: "windows-1253",
+  1254: "windows-1254",
+  1255: "windows-1255",
+  1256: "windows-1256",
+  1257: "windows-1257",
+  1258: "windows-1258",
+};
 
 function decodeXml(value: string) {
   const amp = String.fromCharCode(38);
@@ -152,8 +179,17 @@ function rtfToText(rtf: string) {
       continue;
     }
     if (ch !== "\\") {
+      if (ch === "\n" || ch === "\r") {
+        i += 1;
+        continue;
+      }
       out += ch;
       i += 1;
+      continue;
+    }
+    if (rtf[i + 1] === "\n" || rtf[i + 1] === "\r") {
+      out += "\n";
+      i += 2;
       continue;
     }
     if (rtf[i + 1] === "\\" || rtf[i + 1] === "{" || rtf[i + 1] === "}") {
@@ -181,7 +217,12 @@ function rtfToText(rtf: string) {
       const codePage = cpStack[cpStack.length - 1] ?? 1252;
       if (codePage === 65001) {
         const bytes: number[] = [];
-        while (rtf.startsWith("\\'", i) && /^[0-9a-fA-F]{2}$/.test(rtf.slice(i + 2, i + 4))) {
+        while (i < rtf.length) {
+          if (rtf[i] === "\n" || rtf[i] === "\r") {
+            i += 1;
+            continue;
+          }
+          if (!rtf.startsWith("\\'", i) || !/^[0-9a-fA-F]{2}$/.test(rtf.slice(i + 2, i + 4))) break;
           bytes.push(parseInt(rtf.slice(i + 2, i + 4), 16));
           i += 4;
         }
@@ -233,7 +274,7 @@ function rtfToText(rtf: string) {
       else if (word[1] === "mac") cpStack[cpStack.length - 1] = 10000;
       else if (word[1] === "pc") cpStack[cpStack.length - 1] = 437;
       else if (word[1] === "pca") cpStack[cpStack.length - 1] = 850;
-      if (word[1] === "par" || word[1] === "pard" || word[1] === "line" || word[1] === "page" || word[1] === "column" || word[1] === "sect" || word[1] === "cell" || word[1] === "nestcell" || word[1] === "row" || word[1] === "nestrow") out += "\n";
+      if (word[1] === "par" || word[1] === "pard" || word[1] === "line" || word[1] === "page" || word[1] === "column" || word[1] === "sect" || word[1] === "cell" || word[1] === "nestcell" || word[1] === "row" || word[1] === "nestrow" || word[1] === "softline" || word[1] === "softpage" || word[1] === "softcol") out += "\n";
       else if (word[1] === "tab") out += "\t";
       else {
         const glyph = rtfMark(word[1]);

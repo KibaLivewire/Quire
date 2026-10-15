@@ -1,3 +1,19 @@
+# Quire 1.9.10 — The page and the count
+
+Released 15 October 2026.
+
+- **A named character the page already shows is that character in the count.** 1.9.9 still spelled a hyphen written as `hyphen`, and a letter such as `eacute`. The named set is read once. A written ampersand in front of the name still leaves the letters. A dictionary line uses that same reading.
+- **A newer viewport size can no longer cover the desk.** `dvh`, `svh`, `lvh`, and the other dynamic viewport sizes follow the same rule as `vh`. Colour, a relative offset, a filter, and a turn stay. Fixed placement in an add-on stays.
+- **A cross-fade can no longer name a remote picture.** A bare address inside `cross-fade()` or `-webkit-cross-fade()` is refused. A cross-fade of two colours stays.
+- **An RTF soft break is a line break.** A soft line, a soft page, and a soft column no longer glue the words. A line the file wrapped for transport is not a break on the page. A backslash in front of that line is still a break. A zero-width joiner stays between the letters.
+- **An RTF file in another Windows set is those letters.** Windows-1251 and Windows-1250 no longer come across as Latin-1. Windows-1252 is unchanged.
+
+Windows installer: Quire-Setup-1.9.10.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.9 — The break is a break
 
 Released 14 October 2026.

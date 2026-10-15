@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { HTML_NAMED } from "./html-entities.ts";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -15,52 +16,13 @@ function characterFromCode(num: number): string {
   return String.fromCodePoint(num);
 }
 
-const NAMED_SPACE = new Set([
-  "ensp",
-  "emsp",
-  "emsp13",
-  "emsp14",
-  "numsp",
-  "puncsp",
-  "thinsp",
-  "hairsp",
-  "MediumSpace",
-  "ThinSpace",
-  "VeryThinSpace",
-  "NonBreakingSpace",
-]);
-
-const NAMED_MARK: Record<string, string> = {
-  shy: "\u00ad",
-  mdash: "\u2014",
-  ndash: "\u2013",
-  dash: "\u2010",
-  horbar: "\u2015",
-  minus: "\u2212",
-  hellip: "\u2026",
-  lsquo: "\u2018",
-  rsquo: "\u2019",
-  ldquo: "\u201c",
-  rdquo: "\u201d",
-  bull: "\u2022",
-  Tab: " ",
-  NewLine: " ",
-  ThickSpace: "\u205f\u200a",
-};
-
 /** Named marks, then numeric marks, then the ampersand. A written entity stays the letters the writer typed. */
 export function decodeTextEntities(value: string): string {
   const named = value.replace(new RegExp(`${AMP}([A-Za-z][A-Za-z0-9]*);`, "g"), (all, name: string) => {
-    if (NAMED_SPACE.has(name)) return " ";
-    return NAMED_MARK[name] ?? all;
+    if (name === "amp" || name === "AMP") return all;
+    return HTML_NAMED[name] ?? all;
   });
   return named
-    .replace(new RegExp(`${AMP}lt;`, "gi"), "<")
-    .replace(new RegExp(`${AMP}gt;`, "gi"), ">")
-    .replace(new RegExp(`${AMP}quot;`, "gi"), '"')
-    .replace(new RegExp(`${AMP}apos;`, "gi"), "'")
-    .replace(new RegExp(`${AMP}#39;`, "gi"), "'")
-    .replace(new RegExp(`${AMP}nbsp;`, "gi"), " ")
     .replace(new RegExp(`${AMP}#x26;`, "gi"), AMP_MARK)
     .replace(new RegExp(`${AMP}#38;`, "gi"), AMP_MARK)
     .replace(new RegExp(`${AMP}#(\\d+);`, "g"), (_, digits: string) => characterFromCode(Number(digits)))

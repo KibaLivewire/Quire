@@ -128,7 +128,7 @@ function imageCalls(value: string): { start: number; end: number; inner: string 
 
 function imageNameParen(value: string, i: number): number {
   if (i > 0 && /[A-Za-z0-9_-]/.test(value[i - 1] ?? "")) return 0;
-  const names = ["-webkit-image-set", "image-set", "image"];
+  const names = ["-webkit-image-set", "-webkit-cross-fade", "image-set", "cross-fade", "image"];
   for (const name of names) {
     if (!value.startsWith(name, i)) continue;
     const after = i + name.length;
@@ -292,7 +292,7 @@ export function sanitizeHtml(html: string): string {
   return root.innerHTML;
 }
 
-const VIEWPORT = /(?:^|[\s,(])-?\d*\.?\d+(?:vw|vh|vmin|vmax|vb|vi)\b/i;
+const VIEWPORT = /(?:^|[\s,(])-?\d*\.?\d+(?:[dls])?v(?:min|max|h|w|i|b)\b/i;
 
 /** Semicolons inside a quote or a function stay with that declaration. A data image uses one. */
 function splitCssDeclarations(value: string): string[] {
