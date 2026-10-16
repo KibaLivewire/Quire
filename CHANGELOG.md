@@ -1,3 +1,17 @@
+# Quire 1.9.12 — The address stays out
+
+Released 16 October 2026.
+
+- **An attribute can no longer name a remote picture.** `attr(title url)` was still fetched, and so was `attr()` inside `image()`, `image-set()`, or `cross-fade()`. The picture is refused. `attr(data-note)` still reads the text of that attribute. A quoted mention of the word stays text. Colour stays. Fixed placement in an add-on stays. A data image stays.
+- **An RTF footnote or comment keeps the words apart.** The mark is a space, and the note still comes across. A text-wrapping break already was a line break.
+- **A left, right, or first-page header or footer is not body text.** Those follow the same rule as a plain header. A footnote separator line is not body text either.
+
+Windows installer: Quire-Setup-1.9.12.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.11 — The name is still the name
 
 Released 15 October 2026.

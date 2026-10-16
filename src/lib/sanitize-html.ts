@@ -178,6 +178,8 @@ function imageCallIsRemote(inner: string) {
   const quoted = quotedCssStrings(body);
   if (quoted.some((item) => item && !isOnlyDataImage(item))) return true;
   if (/\bvar\s*\(/i.test(body)) return true;
+  // A string from the page is an address inside a picture function. The same as a variable.
+  if (/\battr\s*\(/i.test(body)) return true;
   return false;
 }
 
@@ -189,9 +191,118 @@ function hasRemoteSrc(value: string) {
   return false;
 }
 
+function attrNameParen(value: string, i: number): number {
+  if (i > 0 && /[A-Za-z0-9_-]/.test(value[i - 1] ?? "")) return 0;
+  if (!value.slice(i, i + 4).toLowerCase().startsWith("attr")) return 0;
+  const after = i + 4;
+  if (/[A-Za-z0-9_-]/.test(value[after] ?? "")) return 0;
+  let j = after;
+  while (value[j] === " " || value[j] === "\t" || value[j] === "\n" || value[j] === "\r" || value[j] === "\f") j += 1;
+  if (value[j] === "(") return j;
+  return 0;
+}
+
+function attrCalls(value: string): { start: number; end: number; inner: string }[] {
+  const calls: { start: number; end: number; inner: string }[] = [];
+  let i = 0;
+  let quote = "";
+  while (i < value.length) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      if (ch === "\\" && next) {
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      i += 1;
+      continue;
+    }
+    const paren = attrNameParen(value, i);
+    if (!paren) {
+      i += 1;
+      continue;
+    }
+    const end = matchingParen(value, paren);
+    if (end < 0) {
+      i += 1;
+      continue;
+    }
+    calls.push({ start: i, end, inner: value.slice(paren + 1, end) });
+    i = end + 1;
+  }
+  return calls;
+}
+
+/** The type, before a fallback comma. Quotes and nested calls stay out of the type. */
+function attrHead(inner: string): string {
+  let out = "";
+  let quote = "";
+  let depth = 0;
+  for (let i = 0; i < inner.length; i += 1) {
+    const ch = inner[i] ?? "";
+    const next = inner[i + 1] ?? "";
+    if (quote) {
+      if (ch === "\\" && next) {
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "(") {
+      depth += 1;
+      continue;
+    }
+    if (ch === ")" && depth > 0) {
+      depth -= 1;
+      continue;
+    }
+    if (ch === "," && depth === 0) break;
+    out += ch;
+  }
+  return out;
+}
+
+/** attr(name url) is a picture. attr(name) is still the text of that attribute. */
+function attrCallIsUrl(inner: string): boolean {
+  const tokens = attrHead(inner)
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return tokens.length >= 2 && /^url$/i.test(tokens[1] ?? "");
+}
+
+function hasAttrUrl(value: string): boolean {
+  const spaced = decodeCssEscapes(stripCssComments(value), false);
+  return attrCalls(spaced).some((call) => attrCallIsUrl(call.inner));
+}
+
+function scrubAttrUrls(css: string): string {
+  const calls = attrCalls(css).filter((call) => attrCallIsUrl(call.inner));
+  if (!calls.length) return css;
+  let out = "";
+  let cursor = 0;
+  for (const call of calls) {
+    out += css.slice(cursor, call.start);
+    out += "none";
+    cursor = call.end + 1;
+  }
+  return out + css.slice(cursor);
+}
+
 function cssDangerous(value: string) {
   const checked = cssForCheck(value);
-  return /url\s*\(|expression|javascript|@import/i.test(checked) || remoteImageCall(checked) || hasRemoteSrc(checked);
+  return /url\s*\(|expression|javascript|@import/i.test(checked) || remoteImageCall(checked) || hasRemoteSrc(checked) || hasAttrUrl(value);
 }
 
 /** Picture edits stay a filter or a turn. An escaped url() is not a filter. */
@@ -423,5 +534,5 @@ function scrubRemoteImageCalls(css: string) {
 /** Add-on CSS can restyle the desk. It cannot pull a remote sheet or image. */
 export function sanitizePluginCss(css: string): string {
   const readable = stripCssComments(decodeCssEscapes(stripCssComments(css), false));
-  return scrubRemoteImageCalls(scrubPluginCss(readable));
+  return scrubAttrUrls(scrubRemoteImageCalls(scrubPluginCss(readable)));
 }

@@ -128,7 +128,9 @@ function rtfToText(rtf: string) {
   let out = "";
   let skip = 0;
   const skipDest =
-    /^(?:\\\*|\\(?:fonttbl|colortbl|stylesheet|info|pict|header|footer|object|datastore|themedata|colorschememapping|generator|title|author|operator|creatim|revtim|company|comment|doccomm|keywords|subject|category|manager|hlinkbase|filetbl|listtable|listoverridetable|revtbl|rsidtbl|latentstyles|xmlnstbl|mmathPr|userprops)\b)/;
+    /^(?:\\\*|\\(?:fonttbl|colortbl|stylesheet|info|pict|headerl|headerr|headerf|footerl|footerr|footerf|header|footer|ftnsep|ftnsepc|ftncn|aftnsep|aftnsepc|aftncn|object|datastore|themedata|colorschememapping|generator|title|author|operator|creatim|revtim|company|comment|doccomm|keywords|subject|category|manager|hlinkbase|filetbl|listtable|listoverridetable|revtbl|rsidtbl|latentstyles|xmlnstbl|mmathPr|userprops)\b)/;
+  const blockSkip =
+    /^(?:\\\*\s*)?\\(?:headerl|headerr|headerf|footerl|footerr|footerf|ftnsep|ftnsepc|ftncn|aftnsep|aftnsepc|aftncn)\b/;
 
   function skipControl() {
     if (rtf.startsWith("\\'", i)) {
@@ -159,6 +161,7 @@ function rtfToText(rtf: string) {
       ucStack.push(ucStack[ucStack.length - 1] ?? 1);
       cpStack.push(cpStack[cpStack.length - 1] ?? 1252);
       const rest = rtf.slice(i + 1);
+      if (skip === 0 && blockSkip.test(rest) && out && !out.endsWith("\n")) out += "\n";
       if (skip > 0 || skipDest.test(rest)) skip += 1;
       i += 1;
       continue;
@@ -276,7 +279,9 @@ function rtfToText(rtf: string) {
       else if (word[1] === "pca") cpStack[cpStack.length - 1] = 850;
       if (word[1] === "par" || word[1] === "pard" || word[1] === "line" || word[1] === "lbr" || word[1] === "page" || word[1] === "column" || word[1] === "sect" || word[1] === "cell" || word[1] === "nestcell" || word[1] === "row" || word[1] === "nestrow" || word[1] === "softline" || word[1] === "softpage" || word[1] === "softcol") out += "\n";
       else if (word[1] === "tab") out += "\t";
-      else {
+      else if (word[1] === "footnote" || word[1] === "annotation" || word[1] === "chftn" || word[1] === "chatn") {
+        if (!out.endsWith(" ") && !out.endsWith("\n")) out += " ";
+      } else {
         const glyph = rtfMark(word[1]);
         if (glyph) out += glyph;
       }
