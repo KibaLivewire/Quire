@@ -1,3 +1,19 @@
+# Quire 1.9.13 — The words stay apart
+
+Released 16 October 2026.
+
+- **A container-query size can no longer cover the desk.** `cqw`, `cqh`, `cqi`, `cqb`, `cqmin`, and `cqmax` follow the same rule as `dvh`. Colour, a relative offset, a filter, and a turn stay. Fixed placement in an add-on stays. An add-on may still name those sizes.
+- **An add-on can no longer hide the desk.** `display` and `pointer-events` no longer take `none` through a variable, and a bare `*` cannot hide every element. `visibility: hidden`, `content-visibility: hidden`, and `opacity: 0` on `html`, `body`, or `:root` are dropped. A class rule can still use `display: none`. Colour stays. Fixed placement in an add-on stays. A refused picture can no longer become `display: none`.
+- **A Word comment, page number, date mark, or note mark keeps the words apart.** A comment reference, an annotation reference, a footnote or endnote mark, a page number, and a date part between two runs are a space. The date and the number are not invented. A phonetic guide is not written into the word. The base stays. A tab, a line break, a revision, and a field code stay as they were.
+- **An RTF zero-width break stays between the letters.** `\zwbo` is a zero-width space. `\zwnbo` is a word joiner. A zero-width joiner already was.
+- **An RTF header field no longer glues the words.** `\chdate`, `\chpgn`, and the other header fields are a space. Quire still does not invent the date or the page number. A footnote mark already was a space.
+
+Windows installer: Quire-Setup-1.9.13.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.12 — The address stays out
 
 Released 16 October 2026.

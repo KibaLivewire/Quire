@@ -429,7 +429,8 @@ export function sanitizeHtml(html: string): string {
   return root.innerHTML;
 }
 
-const VIEWPORT = /(?:^|[\s,(])-?\d*\.?\d+(?:[dls])?v(?:min|max|h|w|i|b)\b/i;
+const VIEWPORT =
+  /(?:^|[\s,(])-?\d*\.?\d+(?:[dls])?v(?:min|max|h|w|i|b)\b|(?:^|[\s,(])-?\d*\.?\d+cq(?:min|max|h|w|i|b)\b/i;
 
 /** Semicolons inside a quote or a function stay with that declaration. A data image uses one. */
 function splitCssDeclarations(value: string): string[] {
@@ -512,8 +513,28 @@ function scrubPluginCss(css: string): string {
     if (cssAddressIsDataImage(inner)) return `${kind}(${inner})`;
     return "url(about:blank)";
   });
-  out = out.replace(/(?:html|body|:root)[^{]*\{[^}]*\}/gi, (block) =>
-    block.replace(/display\s*:\s*none\s*;?/gi, "").replace(/pointer-events\s*:\s*none\s*;?/gi, ""),
+  return out;
+}
+
+/** html, body, :root, and a bare * can still sit over the desk or swallow a click. A class rule stays. */
+function scrubHideBody(body: string) {
+  return body
+    .replace(/display\s*:[^;{}]*\bnone\b[^;{}]*;?/gi, "")
+    .replace(/pointer-events\s*:[^;{}]*\bnone\b[^;{}]*;?/gi, "")
+    .replace(/visibility\s*:[^;{}]*\bhidden\b[^;{}]*;?/gi, "")
+    .replace(/content-visibility\s*:[^;{}]*\bhidden\b[^;{}]*;?/gi, "")
+    .replace(/opacity\s*:\s*0(?:\.0+)?(?![0-9.])(?:\s*!important)?\s*;?/gi, "");
+}
+
+function scrubDeskHide(css: string) {
+  let out = css.replace(/(?:html|body|:root)\b[^{]*\{[^}]*\}/gi, (block) => {
+    const open = block.indexOf("{");
+    if (open < 0) return block;
+    return `${block.slice(0, open + 1)}${scrubHideBody(block.slice(open + 1, -1))}}`;
+  });
+  out = out.replace(
+    /(^|[{},]\s*)(\*(?![A-Za-z0-9_-])(?:(?::[a-zA-Z-]+(?:\([^)]*\))?)*)\s*)\{([^}]*)\}/g,
+    (_all, pre: string, sel: string, body: string) => `${pre}${sel}{${scrubHideBody(body)}}`,
   );
   return out;
 }
@@ -531,8 +552,8 @@ function scrubRemoteImageCalls(css: string) {
   return out + css.slice(cursor);
 }
 
-/** Add-on CSS can restyle the desk. It cannot pull a remote sheet or image. */
+/** Add-on CSS can restyle the desk. It cannot pull a remote sheet or image, or hide the desk. */
 export function sanitizePluginCss(css: string): string {
   const readable = stripCssComments(decodeCssEscapes(stripCssComments(css), false));
-  return scrubAttrUrls(scrubRemoteImageCalls(scrubPluginCss(readable)));
+  return scrubDeskHide(scrubAttrUrls(scrubRemoteImageCalls(scrubPluginCss(readable))));
 }
