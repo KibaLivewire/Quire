@@ -1,3 +1,18 @@
+# Quire 1.9.14 — The desk stays on the desk
+
+Released 17 October 2026.
+
+- **An add-on can no longer hide the desk with another spelling of zero.** `opacity: .0`, `0.`, `00`, `+0`, and a fallback of zero are dropped on `html`, `body`, `:root`, and `*`. `visibility: collapse` follows `hidden`. `filter: opacity(0)` and `scale(0)` follow `opacity: 0`. A custom property that is `none`, `hidden`, or zero can no longer be the desk's display, visibility, or opacity. `:is(*)`, `:where(*)`, and `:matches(*)` follow a bare `*`. `opacity: 0.5` stays. A class rule can still use `display: none`. Colour stays. A turn that is not a zero scale stays. Fixed placement in an add-on stays.
+- **`attr()` can no longer name a picture with `type(<url>)` or `type(<image>)`.** That is the same picture as `attr(title url)`. `attr(data-note)` still reads the text. A string type stays. A quoted mention stays text. Colour stays.
+- **A Word drawing, picture, or embedded object keeps the words apart.** The object is not invented. An empty Choice still keeps the only copy of the words. A text box still comes across once.
+- **An RTF object placeholder keeps the words apart.** `\objattph` is a space. The object is not invented.
+
+Windows installer: Quire-Setup-1.9.14.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.13 — The words stay apart
 
 Released 16 October 2026.

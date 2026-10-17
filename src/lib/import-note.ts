@@ -50,8 +50,8 @@ function rtfMark(name: string): string {
   return RTF_MARK[name] ?? "";
 }
 
-/** A header field is not invented. The words on either side still stay apart. */
-const RTF_GAP = new Set(["chdate", "chdpl", "chdpa", "chtime", "chpgn", "sectnum", "chftnsep", "chftnsepc"]);
+/** A header field or an object placeholder is not invented. The words on either side still stay apart. */
+const RTF_GAP = new Set(["chdate", "chdpl", "chdpa", "chtime", "chpgn", "sectnum", "chftnsep", "chftnsepc", "objattph"]);
 
 const CP1252_EXTRA: Record<number, string> = {
   0x80: "\u20ac",
@@ -300,7 +300,7 @@ function rtfToText(rtf: string) {
 
 function docxXmlToHtml(xml: string) {
   const re =
-    /<w:p\b[^>]*\/?>|<\/w:p>|<w:del\b[^>]*\/?>|<\/w:del>|<w:moveFrom\b[^>]*\/?>|<\/w:moveFrom>|<w:instrText\b[^>]*\/?>|<\/w:instrText>|<mc:AlternateContent\b[^>]*\/?>|<\/mc:AlternateContent>|<mc:Choice\b[^>]*\/?>|<\/mc:Choice>|<mc:Fallback\b[^>]*\/?>|<\/mc:Fallback>|<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:ptab\b[^>]*\/>|<w:ptab\b[^>]*>\s*<\/w:ptab>|<w:separator\b[^>]*\/>|<w:separator\b[^>]*>\s*<\/w:separator>|<w:continuationSeparator\b[^>]*\/>|<w:continuationSeparator\b[^>]*>\s*<\/w:continuationSeparator>|<w:footnoteReference\b[^>]*\/>|<w:footnoteReference\b[^>]*>\s*<\/w:footnoteReference>|<w:endnoteReference\b[^>]*\/>|<w:endnoteReference\b[^>]*>\s*<\/w:endnoteReference>|<w:sym\b[^>]*\/>|<w:sym\b[^>]*>\s*<\/w:sym>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:lastRenderedPageBreak\b[^>]*\/>|<w:lastRenderedPageBreak\b[^>]*>\s*<\/w:lastRenderedPageBreak>|<w:noBreakHyphen\b[^>]*\/>|<w:noBreakHyphen\b[^>]*>\s*<\/w:noBreakHyphen>|<w:softHyphen\b[^>]*\/>|<w:softHyphen\b[^>]*>\s*<\/w:softHyphen>|<w:commentReference\b[^>]*\/>|<w:commentReference\b[^>]*>\s*<\/w:commentReference>|<w:annotationRef\b[^>]*\/>|<w:annotationRef\b[^>]*>\s*<\/w:annotationRef>|<w:footnoteRef\b[^>]*\/>|<w:footnoteRef\b[^>]*>\s*<\/w:footnoteRef>|<w:endnoteRef\b[^>]*\/>|<w:endnoteRef\b[^>]*>\s*<\/w:endnoteRef>|<w:pgNum\b[^>]*\/>|<w:pgNum\b[^>]*>\s*<\/w:pgNum>|<w:dayLong\b[^>]*\/>|<w:dayLong\b[^>]*>\s*<\/w:dayLong>|<w:dayShort\b[^>]*\/>|<w:dayShort\b[^>]*>\s*<\/w:dayShort>|<w:monthLong\b[^>]*\/>|<w:monthLong\b[^>]*>\s*<\/w:monthLong>|<w:monthShort\b[^>]*\/>|<w:monthShort\b[^>]*>\s*<\/w:monthShort>|<w:yearLong\b[^>]*\/>|<w:yearLong\b[^>]*>\s*<\/w:yearLong>|<w:yearShort\b[^>]*\/>|<w:yearShort\b[^>]*>\s*<\/w:yearShort>|<w:rt\b[^>]*\/?>|<\/w:rt>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+    /<w:p\b[^>]*\/?>|<\/w:p>|<w:del\b[^>]*\/?>|<\/w:del>|<w:moveFrom\b[^>]*\/?>|<\/w:moveFrom>|<w:instrText\b[^>]*\/?>|<\/w:instrText>|<mc:AlternateContent\b[^>]*\/?>|<\/mc:AlternateContent>|<mc:Choice\b[^>]*\/?>|<\/mc:Choice>|<mc:Fallback\b[^>]*\/?>|<\/mc:Fallback>|<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:ptab\b[^>]*\/>|<w:ptab\b[^>]*>\s*<\/w:ptab>|<w:separator\b[^>]*\/>|<w:separator\b[^>]*>\s*<\/w:separator>|<w:continuationSeparator\b[^>]*\/>|<w:continuationSeparator\b[^>]*>\s*<\/w:continuationSeparator>|<w:footnoteReference\b[^>]*\/>|<w:footnoteReference\b[^>]*>\s*<\/w:footnoteReference>|<w:endnoteReference\b[^>]*\/>|<w:endnoteReference\b[^>]*>\s*<\/w:endnoteReference>|<w:sym\b[^>]*\/>|<w:sym\b[^>]*>\s*<\/w:sym>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:lastRenderedPageBreak\b[^>]*\/>|<w:lastRenderedPageBreak\b[^>]*>\s*<\/w:lastRenderedPageBreak>|<w:noBreakHyphen\b[^>]*\/>|<w:noBreakHyphen\b[^>]*>\s*<\/w:noBreakHyphen>|<w:softHyphen\b[^>]*\/>|<w:softHyphen\b[^>]*>\s*<\/w:softHyphen>|<w:drawing\b[^>]*\/?>|<w:pict\b[^>]*\/?>|<w:object\b[^>]*\/?>|<w:commentReference\b[^>]*\/>|<w:commentReference\b[^>]*>\s*<\/w:commentReference>|<w:annotationRef\b[^>]*\/>|<w:annotationRef\b[^>]*>\s*<\/w:annotationRef>|<w:footnoteRef\b[^>]*\/>|<w:footnoteRef\b[^>]*>\s*<\/w:footnoteRef>|<w:endnoteRef\b[^>]*\/>|<w:endnoteRef\b[^>]*>\s*<\/w:endnoteRef>|<w:pgNum\b[^>]*\/>|<w:pgNum\b[^>]*>\s*<\/w:pgNum>|<w:dayLong\b[^>]*\/>|<w:dayLong\b[^>]*>\s*<\/w:dayLong>|<w:dayShort\b[^>]*\/>|<w:dayShort\b[^>]*>\s*<\/w:dayShort>|<w:monthLong\b[^>]*\/>|<w:monthLong\b[^>]*>\s*<\/w:monthLong>|<w:monthShort\b[^>]*\/>|<w:monthShort\b[^>]*>\s*<\/w:monthShort>|<w:yearLong\b[^>]*\/>|<w:yearLong\b[^>]*>\s*<\/w:yearLong>|<w:yearShort\b[^>]*\/>|<w:yearShort\b[^>]*>\s*<\/w:yearShort>|<w:rt\b[^>]*\/?>|<\/w:rt>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
   const parts: string[] = [];
   let html = "";
   let pDepth = 0;
@@ -374,6 +374,10 @@ function docxXmlToHtml(xml: string) {
       continue;
     }
     if (pDepth <= 0 || skip > 0 || rtSkip > 0) continue;
+    if (raw.startsWith("<w:drawing") || raw.startsWith("<w:pict") || raw.startsWith("<w:object")) {
+      if (html && !/ $/.test(html) && !html.endsWith("<br>")) html += " ";
+      continue;
+    }
     if (raw.startsWith("<w:tab") || raw.startsWith("<w:ptab") || raw.startsWith("<w:separator") || raw.startsWith("<w:continuationSeparator") || raw.startsWith("<w:footnote") || raw.startsWith("<w:endnote") || raw.startsWith("<w:commentReference") || raw.startsWith("<w:annotationRef") || raw.startsWith("<w:pgNum") || raw.startsWith("<w:dayLong") || raw.startsWith("<w:dayShort") || raw.startsWith("<w:monthLong") || raw.startsWith("<w:monthShort") || raw.startsWith("<w:yearLong") || raw.startsWith("<w:yearShort")) {
       html += " ";
       markWrote();

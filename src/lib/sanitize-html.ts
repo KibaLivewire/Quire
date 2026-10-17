@@ -273,13 +273,38 @@ function attrHead(inner: string): string {
   return out;
 }
 
-/** attr(name url) is a picture. attr(name) is still the text of that attribute. */
+/** attr(name url) and attr(name type(<url|image>)) are pictures. attr(name) is still the text. */
 function attrCallIsUrl(inner: string): boolean {
   const tokens = attrHead(inner)
     .trim()
     .split(/\s+/)
     .filter(Boolean);
-  return tokens.length >= 2 && /^url$/i.test(tokens[1] ?? "");
+  if (tokens.length >= 2 && /^url$/i.test(tokens[1] ?? "")) return true;
+  return attrTypeFetches(inner);
+}
+
+/** type(<url>) and type(<image>) are the newer way to say the same picture. A quoted fallback is not. */
+function attrTypeFetches(inner: string): boolean {
+  let quote = "";
+  let text = "";
+  for (let i = 0; i < inner.length; i += 1) {
+    const ch = inner[i] ?? "";
+    const next = inner[i + 1] ?? "";
+    if (quote) {
+      if (ch === "\\" && next) {
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    text += ch;
+  }
+  return /<\s*url\b/i.test(text) || /<\s*image\b/i.test(text);
 }
 
 function hasAttrUrl(value: string): boolean {
@@ -516,25 +541,322 @@ function scrubPluginCss(css: string): string {
   return out;
 }
 
-/** html, body, :root, and a bare * can still sit over the desk or swallow a click. A class rule stays. */
-function scrubHideBody(body: string) {
-  return body
-    .replace(/display\s*:[^;{}]*\bnone\b[^;{}]*;?/gi, "")
-    .replace(/pointer-events\s*:[^;{}]*\bnone\b[^;{}]*;?/gi, "")
-    .replace(/visibility\s*:[^;{}]*\bhidden\b[^;{}]*;?/gi, "")
-    .replace(/content-visibility\s*:[^;{}]*\bhidden\b[^;{}]*;?/gi, "")
-    .replace(/opacity\s*:\s*0(?:\.0+)?(?![0-9.])(?:\s*!important)?\s*;?/gi, "");
+/** html, body, :root, a bare *, and :is(*) can still hide the desk. A class rule stays. */
+function isZeroAmount(value: string): boolean {
+  const v = value.replace(/!important/gi, "").replace(/\s+/g, "").toLowerCase();
+  return /^\+?(?:0+(?:\.0*)?|\.0+)%?$/.test(v);
 }
 
-function scrubDeskHide(css: string) {
+function varNameParen(value: string, i: number): number {
+  if (i > 0 && /[A-Za-z0-9_-]/.test(value[i - 1] ?? "")) return 0;
+  if (value.slice(i, i + 3).toLowerCase() !== "var") return 0;
+  const after = i + 3;
+  if (/[A-Za-z0-9_-]/.test(value[after] ?? "")) return 0;
+  let j = after;
+  while (value[j] === " " || value[j] === "\t" || value[j] === "\n" || value[j] === "\r" || value[j] === "\f") j += 1;
+  if (value[j] === "(") return j;
+  return 0;
+}
+
+function splitTopComma(value: string): { head: string; tail: string } {
+  let quote = "";
+  let depth = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      if (ch === "\\" && next) {
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "(") {
+      depth += 1;
+      continue;
+    }
+    if (ch === ")" && depth > 0) {
+      depth -= 1;
+      continue;
+    }
+    if (ch === "," && depth === 0) return { head: value.slice(0, i), tail: value.slice(i + 1) };
+  }
+  return { head: value, tail: "" };
+}
+
+function varCalls(value: string): { name: string; fallback: string }[] {
+  const calls: { name: string; fallback: string }[] = [];
+  let i = 0;
+  let quote = "";
+  while (i < value.length) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      if (ch === "\\" && next) {
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      i += 1;
+      continue;
+    }
+    const paren = varNameParen(value, i);
+    if (!paren) {
+      i += 1;
+      continue;
+    }
+    const end = matchingParen(value, paren);
+    if (end < 0) {
+      i += 1;
+      continue;
+    }
+    const parts = splitTopComma(value.slice(paren + 1, end));
+    const name = parts.head.trim();
+    if (name.startsWith("--")) calls.push({ name, fallback: parts.tail.trim() });
+    i = end + 1;
+  }
+  return calls;
+}
+
+function valueCanHide(value: string, hidden: Set<string>, pred: (v: string) => boolean): boolean {
+  if (pred(value)) return true;
+  for (const call of varCalls(value)) {
+    if (hidden.has(call.name)) return true;
+    if (call.fallback && valueCanHide(call.fallback, hidden, pred)) return true;
+  }
+  return false;
+}
+
+function functionCallsNamed(value: string, names: string[]): string[] {
+  const wanted = [...names].sort((a, b) => b.length - a.length);
+  const found: string[] = [];
+  let i = 0;
+  let quote = "";
+  while (i < value.length) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      if (ch === "\\" && next) {
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      i += 1;
+      continue;
+    }
+    let matched = "";
+    if (i === 0 || !/[A-Za-z0-9_-]/.test(value[i - 1] ?? "")) {
+      for (const name of wanted) {
+        if (!value.slice(i, i + name.length).toLowerCase().startsWith(name)) continue;
+        const after = i + name.length;
+        if (/[A-Za-z0-9_-]/.test(value[after] ?? "")) continue;
+        matched = name;
+        break;
+      }
+    }
+    if (!matched) {
+      i += 1;
+      continue;
+    }
+    let j = i + matched.length;
+    while (value[j] === " " || value[j] === "\t" || value[j] === "\n" || value[j] === "\r" || value[j] === "\f") j += 1;
+    if (value[j] !== "(") {
+      i += 1;
+      continue;
+    }
+    const end = matchingParen(value, j);
+    if (end < 0) {
+      i += 1;
+      continue;
+    }
+    found.push(value.slice(j + 1, end));
+    i = end + 1;
+  }
+  return found;
+}
+
+function splitScaleParts(value: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let quote = "";
+  let depth = 0;
+  const flush = () => {
+    if (current.trim()) parts.push(current.trim());
+    current = "";
+  };
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      current += ch;
+      if (ch === "\\" && next) {
+        current += next;
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "(") {
+      depth += 1;
+      current += ch;
+      continue;
+    }
+    if (ch === ")" && depth > 0) {
+      depth -= 1;
+      current += ch;
+      continue;
+    }
+    if (depth === 0 && (ch === "," || /\s/.test(ch))) {
+      flush();
+      continue;
+    }
+    current += ch;
+  }
+  flush();
+  return parts;
+}
+
+function splitArgs(value: string): string[] {
+  const args: string[] = [];
+  let current = "";
+  let quote = "";
+  let depth = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      current += ch;
+      if (ch === "\\" && next) {
+        current += next;
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "(") {
+      depth += 1;
+      current += ch;
+      continue;
+    }
+    if (ch === ")" && depth > 0) {
+      depth -= 1;
+      current += ch;
+      continue;
+    }
+    if (ch === "," && depth === 0) {
+      args.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) args.push(current);
+  return args;
+}
+
+function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
+  const idx = piece.indexOf(":");
+  if (idx <= 0) return false;
+  const prop = piece.slice(0, idx).trim().toLowerCase().replace(/\s+/g, "");
+  const val = piece.slice(idx + 1).trim();
+  if (!prop || !val) return false;
+  if (prop === "display" || prop === "pointer-events") return valueCanHide(val, hidden, (v) => /\bnone\b/i.test(v));
+  if (prop === "visibility") return valueCanHide(val, hidden, (v) => /\b(?:hidden|collapse)\b/i.test(v));
+  if (prop === "content-visibility") return valueCanHide(val, hidden, (v) => /\bhidden\b/i.test(v));
+  if (prop === "opacity") return valueCanHide(val, hidden, isZeroAmount);
+  if (prop === "filter" || prop === "-webkit-filter") {
+    return functionCallsNamed(val, ["opacity"]).some((inner) => valueCanHide(inner, hidden, isZeroAmount));
+  }
+  if (prop === "scale") {
+    return splitScaleParts(val.replace(/!important/gi, "")).some((arg) => valueCanHide(arg, hidden, isZeroAmount));
+  }
+  if (prop === "transform" || prop === "-webkit-transform") {
+    return functionCallsNamed(val, ["scale3d", "scalex", "scaley", "scalez", "scale"]).some((inner) =>
+      splitArgs(inner).some((arg) => valueCanHide(arg, hidden, isZeroAmount)),
+    );
+  }
+  return false;
+}
+
+function collectHideVars(css: string): Set<string> {
+  const raw = new Map<string, string>();
+  for (const hit of css.matchAll(/--([A-Za-z_][\w-]*)\s*:\s*([^;}{]+)/g)) {
+    raw.set(`--${hit[1]}`, (hit[2] ?? "").trim());
+  }
+  const hidden = new Set<string>();
+  const hides = (value: string) =>
+    valueCanHide(value, hidden, (v) => {
+      const token = v.replace(/!important/gi, "").replace(/\s+/g, "").toLowerCase();
+      return token === "none" || token === "hidden" || token === "collapse" || isZeroAmount(v);
+    });
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [name, value] of raw) {
+      if (hidden.has(name)) continue;
+      if (hides(value)) {
+        hidden.add(name);
+        changed = true;
+      }
+    }
+  }
+  return hidden;
+}
+
+function scrubHideBody(body: string, hidden: Set<string>) {
+  return splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter((part) => part && !declarationHidesDesk(part, hidden))
+    .join("; ");
+}
+
+function hasUniversalArgument(inner: string): boolean {
+  return /(?:^|[\s,])\*(?![A-Za-z0-9_-])/.test(inner);
+}
+
+function scrubDeskHide(css: string, hidden: Set<string>) {
   let out = css.replace(/(?:html|body|:root)\b[^{]*\{[^}]*\}/gi, (block) => {
     const open = block.indexOf("{");
     if (open < 0) return block;
-    return `${block.slice(0, open + 1)}${scrubHideBody(block.slice(open + 1, -1))}}`;
+    return `${block.slice(0, open + 1)}${scrubHideBody(block.slice(open + 1, -1), hidden)}}`;
   });
   out = out.replace(
     /(^|[{},]\s*)(\*(?![A-Za-z0-9_-])(?:(?::[a-zA-Z-]+(?:\([^)]*\))?)*)\s*)\{([^}]*)\}/g,
-    (_all, pre: string, sel: string, body: string) => `${pre}${sel}{${scrubHideBody(body)}}`,
+    (_all, pre: string, sel: string, body: string) => `${pre}${sel}{${scrubHideBody(body, hidden)}}`,
+  );
+  out = out.replace(
+    /(^|[{},]\s*)((?::is|:where|:matches|:-webkit-any)\(([^()]*)\)(?:(?::[a-zA-Z-]+(?:\([^)]*\))?)*)\s*)\{([^}]*)\}/gi,
+    (all, pre: string, sel: string, inner: string, body: string) => {
+      if (!hasUniversalArgument(inner)) return all;
+      return `${pre}${sel}{${scrubHideBody(body, hidden)}}`;
+    },
   );
   return out;
 }
@@ -555,5 +877,6 @@ function scrubRemoteImageCalls(css: string) {
 /** Add-on CSS can restyle the desk. It cannot pull a remote sheet or image, or hide the desk. */
 export function sanitizePluginCss(css: string): string {
   const readable = stripCssComments(decodeCssEscapes(stripCssComments(css), false));
-  return scrubDeskHide(scrubAttrUrls(scrubRemoteImageCalls(scrubPluginCss(readable))));
+  const cleaned = scrubAttrUrls(scrubRemoteImageCalls(scrubPluginCss(readable)));
+  return scrubDeskHide(cleaned, collectHideVars(cleaned));
 }
