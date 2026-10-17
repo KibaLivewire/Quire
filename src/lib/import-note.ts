@@ -133,7 +133,7 @@ function rtfToText(rtf: string) {
   let out = "";
   let skip = 0;
   const skipDest =
-    /^(?:\\\*|\\(?:fonttbl|colortbl|stylesheet|info|pict|headerl|headerr|headerf|footerl|footerr|footerf|header|footer|ftnsep|ftnsepc|ftncn|aftnsep|aftnsepc|aftncn|object|datastore|themedata|colorschememapping|generator|title|author|operator|creatim|revtim|company|comment|doccomm|keywords|subject|category|manager|hlinkbase|filetbl|listtable|listoverridetable|revtbl|rsidtbl|latentstyles|xmlnstbl|mmathPr|userprops)\b)/;
+    /^(?:\\\*|\\(?:fonttbl|colortbl|stylesheet|info|pict|headerl|headerr|headerf|footerl|footerr|footerf|header|footer|ftnsep|ftnsepc|ftncn|aftnsep|aftnsepc|aftncn|object|datastore|themedata|colorschememapping|generator|title|author|operator|creatim|revtim|company|comment|doccomm|keywords|subject|category|manager|hlinkbase|filetbl|listtable|listoverridetable|revtbl|rsidtbl|latentstyles|xmlnstbl|mmathPr|userprops|sp|sn|sv|tcn|tc|xe)\b)/;
   const blockSkip =
     /^(?:\\\*\s*)?\\(?:headerl|headerr|headerf|footerl|footerr|footerf|ftnsep|ftnsepc|ftncn|aftnsep|aftnsepc|aftncn)\b/;
 

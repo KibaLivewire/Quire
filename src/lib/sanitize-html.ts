@@ -455,7 +455,7 @@ export function sanitizeHtml(html: string): string {
 }
 
 const VIEWPORT =
-  /(?:^|[\s,(])-?\d*\.?\d+(?:[dls])?v(?:min|max|h|w|i|b)\b|(?:^|[\s,(])-?\d*\.?\d+cq(?:min|max|h|w|i|b)\b/i;
+  /(?:^|[\s,(])[+-]?(?:\d*\.?\d+)(?:[eE][+-]?\d+)?(?:[dls])?v(?:min|max|h|w|i|b)\b|(?:^|[\s,(])[+-]?(?:\d*\.?\d+)(?:[eE][+-]?\d+)?cq(?:min|max|h|w|i|b)\b/i;
 
 /** Semicolons inside a quote or a function stay with that declaration. A data image uses one. */
 function splitCssDeclarations(value: string): string[] {
@@ -545,6 +545,70 @@ function scrubPluginCss(css: string): string {
 function isZeroAmount(value: string): boolean {
   const v = value.replace(/!important/gi, "").replace(/\s+/g, "").toLowerCase();
   return /^\+?(?:0+(?:\.0*)?|\.0+)%?$/.test(v);
+}
+
+/** calc(0), calc(0%), and calc(0 * 1) are still zero. Anything with a unit or a name is not. */
+function calcEvaluatesZero(value: string): boolean {
+  const compact = value.replace(/!important/gi, "").trim();
+  const wrapped = /^calc\(([\s\S]*)\)$/i.exec(compact);
+  if (!wrapped) return false;
+  const inner = (wrapped[1] ?? "").trim();
+  if (isZeroAmount(inner) || calcEvaluatesZero(inner)) return true;
+  const s = inner.replace(/%/g, "").replace(/\s+/g, "");
+  if (!s || !/^[\d+\-*/().]+$/.test(s)) return false;
+  let i = 0;
+  const parseExpr = (): number | null => {
+    let left = parseTerm();
+    if (left == null) return null;
+    while (s[i] === "+" || s[i] === "-") {
+      const op = s[i];
+      i += 1;
+      const right = parseTerm();
+      if (right == null) return null;
+      left = op === "+" ? left + right : left - right;
+    }
+    return left;
+  };
+  const parseTerm = (): number | null => {
+    let left = parseFactor();
+    if (left == null) return null;
+    while (s[i] === "*" || s[i] === "/") {
+      const op = s[i];
+      i += 1;
+      const right = parseFactor();
+      if (right == null) return null;
+      left = op === "*" ? left * right : right === 0 ? Number.NaN : left / right;
+    }
+    return left;
+  };
+  const parseFactor = (): number | null => {
+    if (s[i] === "+") {
+      i += 1;
+      return parseFactor();
+    }
+    if (s[i] === "-") {
+      i += 1;
+      const n = parseFactor();
+      return n == null ? null : -n;
+    }
+    if (s[i] === "(") {
+      i += 1;
+      const n = parseExpr();
+      if (s[i] !== ")") return null;
+      i += 1;
+      return n;
+    }
+    const m = /^(\d*\.?\d+)/.exec(s.slice(i));
+    if (!m?.[1] || m[1] === ".") return null;
+    i += m[1].length;
+    return Number(m[1]);
+  };
+  const n = parseExpr();
+  return n != null && i === s.length && n === 0;
+}
+
+function hidesAsZero(value: string): boolean {
+  return isZeroAmount(value) || calcEvaluatesZero(value);
 }
 
 function varNameParen(value: string, i: number): number {
@@ -790,18 +854,19 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "display" || prop === "pointer-events") return valueCanHide(val, hidden, (v) => /\bnone\b/i.test(v));
   if (prop === "visibility") return valueCanHide(val, hidden, (v) => /\b(?:hidden|collapse)\b/i.test(v));
   if (prop === "content-visibility") return valueCanHide(val, hidden, (v) => /\bhidden\b/i.test(v));
-  if (prop === "opacity") return valueCanHide(val, hidden, isZeroAmount);
+  if (prop === "opacity") return valueCanHide(val, hidden, hidesAsZero);
   if (prop === "filter" || prop === "-webkit-filter") {
-    return functionCallsNamed(val, ["opacity"]).some((inner) => valueCanHide(inner, hidden, isZeroAmount));
+    return functionCallsNamed(val, ["opacity"]).some((inner) => valueCanHide(inner, hidden, hidesAsZero));
   }
   if (prop === "scale") {
-    return splitScaleParts(val.replace(/!important/gi, "")).some((arg) => valueCanHide(arg, hidden, isZeroAmount));
+    return splitScaleParts(val.replace(/!important/gi, "")).some((arg) => valueCanHide(arg, hidden, hidesAsZero));
   }
   if (prop === "transform" || prop === "-webkit-transform") {
     return functionCallsNamed(val, ["scale3d", "scalex", "scaley", "scalez", "scale"]).some((inner) =>
-      splitArgs(inner).some((arg) => valueCanHide(arg, hidden, isZeroAmount)),
+      splitArgs(inner).some((arg) => valueCanHide(arg, hidden, hidesAsZero)),
     );
   }
+  if (prop === "zoom") return valueCanHide(val, hidden, hidesAsZero);
   return false;
 }
 
@@ -814,7 +879,7 @@ function collectHideVars(css: string): Set<string> {
   const hides = (value: string) =>
     valueCanHide(value, hidden, (v) => {
       const token = v.replace(/!important/gi, "").replace(/\s+/g, "").toLowerCase();
-      return token === "none" || token === "hidden" || token === "collapse" || isZeroAmount(v);
+      return token === "none" || token === "hidden" || token === "collapse" || hidesAsZero(v);
     });
   let changed = true;
   while (changed) {
@@ -841,6 +906,17 @@ function hasUniversalArgument(inner: string): boolean {
   return /(?:^|[\s,])\*(?![A-Za-z0-9_-])/.test(inner);
 }
 
+/** A star next to a star still matches every element. A star in front of a class does not. */
+function isStarPairSelector(selector: string) {
+  const bit =
+    /^(?:\*|(?::is|:where|:matches|:-webkit-any)\(\s*\*\s*\))(?:\s*(?:[+>~]\s*)?(?:\*|(?::is|:where|:matches|:-webkit-any)\(\s*\*\s*\)))+$/i;
+  const parts = selector
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length > 0 && parts.every((part) => bit.test(part.replace(/\s+/g, " ")));
+}
+
 function scrubDeskHide(css: string, hidden: Set<string>) {
   let out = css.replace(/(?:html|body|:root)\b[^{]*\{[^}]*\}/gi, (block) => {
     const open = block.indexOf("{");
@@ -858,6 +934,10 @@ function scrubDeskHide(css: string, hidden: Set<string>) {
       return `${pre}${sel}{${scrubHideBody(body, hidden)}}`;
     },
   );
+  out = out.replace(/(^|[{}])\s*([^{};]+)\{([^}]*)\}/g, (all, pre: string, selector: string, body: string) => {
+    if (!isStarPairSelector(selector)) return all;
+    return `${pre}${selector}{${scrubHideBody(body, hidden)}}`;
+  });
   return out;
 }
 

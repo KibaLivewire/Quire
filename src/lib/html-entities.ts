@@ -1079,6 +1079,7 @@ export const HTML_NAMED: Record<string, string> = {
   "natural": "♮",
   "naturals": "ℕ",
   "nbsp": " ",
+  "nnbsp": " ",
   "nbump": "≎̸",
   "nbumpe": "≏̸",
   "ncap": "⩃",

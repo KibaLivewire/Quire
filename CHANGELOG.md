@@ -1,3 +1,19 @@
+# Quire 1.9.15 — The size stays a size
+
+Released 17 October 2026.
+
+- **A calculated zero can no longer hide the desk.** `opacity: calc(0)`, `calc(0%)`, and `calc(0 * 1)` follow `opacity: 0`. A custom property set to that zero follows it too. `zoom: 0` follows `scale(0)`. `opacity: calc(0.5)` stays. `zoom: 1.1` stays. A turn stays.
+- **A star beside a star can no longer hide the desk.** `* *`, `*+*`, `*>*`, and `*~*` follow a bare `*`. A star in front of a class can still hide that class. A class rule can still use `display: none`.
+- **A scientific viewport size can no longer cover the desk.** `1e2vw`, `.5e2dvh`, `+100vh`, and `1e2cqw` follow `100vw`. `1e2px` stays. Colour and a relative offset stay. An add-on may still name a viewport size. Fixed placement in an add-on stays.
+- **A narrow no-break space written as a name is a space in the count.** `&nnbsp;` is that space. A written ampersand in front of the name is still the letters.
+- **An RTF shape's settings are not body text.** The words in the shape still come across. A contents entry and an index entry stay off the page, the same as a header. The body after them stays.
+
+Windows installer: Quire-Setup-1.9.15.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.14 — The desk stays on the desk
 
 Released 17 October 2026.
