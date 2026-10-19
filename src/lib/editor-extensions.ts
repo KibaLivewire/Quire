@@ -76,7 +76,7 @@ const QuireImage = Image.extend({
         default: "center",
         parseHTML: (element: HTMLElement) => element.getAttribute("data-align") || "center",
         renderHTML: (attributes: { align?: string | null }) =>
-          dataAttr("data-align", attributes.align, "center"),
+          dataAttr("data-align", attributes.align || "center"),
       },
       wrap: {
         default: null,
@@ -87,7 +87,7 @@ const QuireImage = Image.extend({
         default: "inline",
         parseHTML: (element: HTMLElement) => element.getAttribute("data-flow") || "inline",
         renderHTML: (attributes: { flow?: string | null }) =>
-          dataAttr("data-flow", attributes.flow, "inline"),
+          dataAttr("data-flow", attributes.flow || "inline"),
       },
       margin: {
         default: 12,
@@ -124,13 +124,12 @@ const QuireImage = Image.extend({
     const rest = { ...HTMLAttributes };
     delete rest.href;
     const mark = String(rest.watermark || rest["data-watermark"] || "");
+    const flow = String(rest.flow || rest["data-flow"] || "");
     const ox = Number(rest.ox || rest["data-ox"] || 0);
     const oy = Number(rest.oy || rest["data-oy"] || 0);
     const edit = safeEditStyle(String(rest.editStyle || rest["data-edit-style"] || ""));
-    const style = [
-      ox || oy ? `position:relative;left:${ox}px;top:${oy}px` : "",
-      edit,
-    ]
+    const overlay = flow === "behind" || flow === "front";
+    const style = [overlay && (ox || oy) ? `position:relative;left:${ox}px;top:${oy}px` : "", edit]
       .filter(Boolean)
       .join(";");
     if (style) rest.style = `${rest.style ? `${String(rest.style)};` : ""}${style}`;
@@ -163,9 +162,89 @@ const QuireImage = Image.extend({
       mark.className = "quire-watermark";
       figure.append(img, mark);
 
+      function px(value: unknown) {
+        const n = typeof value === "number" ? value : Number(value);
+        return Number.isFinite(n) ? n : 0;
+      }
+
+      function placePicture(box: HTMLElement, flow: string, align: string, ox: number, oy: number, margin: number) {
+        const overlay = flow === "behind" || flow === "front";
+        if (!overlay) {
+          box.style.position = "";
+          box.style.zIndex = "";
+          box.style.left = "";
+          box.style.right = "";
+          box.style.top = "";
+          box.style.transform = "";
+          box.style.margin = "";
+          reservePicture(box);
+          return;
+        }
+        box.style.position = "absolute";
+        box.style.zIndex = flow === "front" ? "2" : "-1";
+        box.style.margin = "0";
+        const inset = margin;
+        if (align === "right") {
+          box.style.left = "auto";
+          box.style.transform = "";
+          box.style.right = `${inset - ox}px`;
+          box.style.top = `${oy + inset}px`;
+        } else if (align === "center") {
+          box.style.right = "auto";
+          box.style.left = `calc(50% + ${ox}px)`;
+          box.style.transform = "translateX(-50%)";
+          box.style.top = `${oy + inset}px`;
+        } else {
+          box.style.right = "auto";
+          box.style.transform = "";
+          box.style.left = `${ox + inset}px`;
+          box.style.top = `${oy + inset}px`;
+        }
+        reservePicture(box);
+      }
+
+      function reservePicture(box: HTMLElement) {
+        const parent = box.parentElement;
+        if (!parent) return;
+        const overlays = parent.querySelectorAll<HTMLElement>(
+          ".quire-image-box[data-flow='behind'], .quire-image-box[data-flow='front']",
+        );
+        if (!overlays.length) {
+          if (parent.dataset.quireOverlay) {
+            parent.style.minHeight = "";
+            delete parent.dataset.quireOverlay;
+          }
+          return;
+        }
+        let max = 0;
+        overlays.forEach((el) => {
+          const top = Number.parseFloat(el.style.top) || 0;
+          max = Math.max(max, top + el.offsetHeight);
+        });
+        parent.dataset.quireOverlay = "1";
+        parent.style.minHeight = `${Math.max(64, Math.ceil(max))}px`;
+      }
+
       const applyAttrs = (attrs: Record<string, unknown>, box?: HTMLElement) => {
+        const skip = new Set([
+          "src",
+          "width",
+          "height",
+          "style",
+          "align",
+          "fit",
+          "size",
+          "wrap",
+          "flow",
+          "margin",
+          "ox",
+          "oy",
+          "watermark",
+          "editStyle",
+          "href",
+        ]);
         Object.entries(mergeAttributes(htmlAttrs, attrs)).forEach(([key, value]) => {
-          if (key === "src" || key === "width" || key === "height" || key === "style" || value == null) return;
+          if (skip.has(key) || value == null) return;
           img.setAttribute(key, String(value));
         });
         const src = attrs.src;
@@ -184,29 +263,53 @@ const QuireImage = Image.extend({
             img.style.setProperty(prop.trim(), rest.join(":").trim());
           });
         }
-        if (attrs.width) {
-          figure.style.width = `${attrs.width}px`;
+        const width = px(attrs.width);
+        const height = px(attrs.height);
+        if (width) {
+          figure.style.width = `${width}px`;
           img.style.width = "100%";
-          img.style.height = "auto";
-        }
-        if (box) {
-          const wrap = String(attrs.wrap ?? attrs["data-wrap"] ?? "");
-          const flow = String(attrs.flow ?? attrs["data-flow"] ?? (wrap === "left" || wrap === "right" ? "wrap" : "inline"));
-          const margin = Number(attrs.margin ?? attrs["data-margin"] ?? 12);
-          const ox = Number(attrs.ox || attrs["data-ox"] || 0);
-          const oy = Number(attrs.oy || attrs["data-oy"] || 0);
-          box.dataset.flow = flow;
-          box.style.setProperty("--img-margin", `${margin}px`);
-          if (flow === "behind" || flow === "front") {
-            box.style.position = "absolute";
-            box.style.zIndex = flow === "front" ? "6" : "0";
+          img.setAttribute("width", String(width));
+          if (height) {
+            figure.style.height = `${height}px`;
+            img.style.height = "100%";
+            img.style.objectFit = "contain";
+            img.setAttribute("height", String(height));
           } else {
-            box.style.position = "relative";
-            box.style.zIndex = "";
+            figure.style.height = "";
+            img.style.height = "auto";
+            img.style.objectFit = "";
+            img.removeAttribute("height");
           }
-          box.style.left = `${ox}px`;
-          box.style.top = `${oy}px`;
+        } else {
+          figure.style.width = "";
+          figure.style.height = "";
+          img.style.width = "";
+          img.style.height = "";
+          img.style.objectFit = "";
+          img.removeAttribute("width");
+          img.removeAttribute("height");
         }
+        const wrap = String(attrs.wrap ?? attrs["data-wrap"] ?? "");
+        const flow = String(attrs.flow ?? attrs["data-flow"] ?? (wrap === "left" || wrap === "right" ? "wrap" : "inline")) || "inline";
+        const align = String(attrs.align ?? attrs["data-align"] ?? "center") || "center";
+        const fit = String(attrs.fit ?? attrs["data-fit"] ?? "");
+        const size = String(attrs.size ?? attrs["data-size"] ?? "");
+        img.setAttribute("data-align", align);
+        img.setAttribute("data-flow", flow);
+        if (wrap) img.setAttribute("data-wrap", wrap);
+        else img.removeAttribute("data-wrap");
+        if (fit) img.setAttribute("data-fit", fit);
+        else img.removeAttribute("data-fit");
+        if (size) img.setAttribute("data-size", size);
+        else img.removeAttribute("data-size");
+        if (!box) return;
+        const marginRaw = Number(attrs.margin ?? attrs["data-margin"] ?? 12);
+        const margin = Number.isFinite(marginRaw) ? marginRaw : 12;
+        const ox = px(attrs.ox ?? attrs["data-ox"]);
+        const oy = px(attrs.oy ?? attrs["data-oy"]);
+        box.dataset.flow = flow;
+        box.style.setProperty("--img-margin", `${margin}px`);
+        placePicture(box, flow, align, ox, oy, margin);
       };
 
       applyAttrs(HTMLAttributes);
@@ -216,10 +319,12 @@ const QuireImage = Image.extend({
         editor,
         node,
         getPos,
-        onResize: (width) => {
+        onResize: (width, height) => {
           figure.style.width = `${width}px`;
+          figure.style.height = `${height}px`;
           img.style.width = "100%";
-          img.style.height = "auto";
+          img.style.height = "100%";
+          img.style.objectFit = "contain";
         },
         onCommit: (width, height) => {
           const pos = getPos();
@@ -262,6 +367,7 @@ const QuireImage = Image.extend({
         const target = event.target as HTMLElement;
         if (target.closest("[data-resize-handle], .quire-resize-handle")) return;
         selectSelf();
+        if (box.dataset.flow !== "behind" && box.dataset.flow !== "front") return;
         const pos = getPos();
         const attrs = pos !== undefined ? editor.state.doc.nodeAt(pos)?.attrs : null;
         drag = {
@@ -280,11 +386,8 @@ const QuireImage = Image.extend({
         if (!drag.moved && dx * dx + dy * dy < 36) return;
         drag.moved = true;
         event.preventDefault();
-        if (box.dataset.flow !== "behind" && box.dataset.flow !== "front") {
-          box.style.position = "relative";
-        }
-        box.style.left = `${drag.ox + dx}px`;
-        box.style.top = `${drag.oy + dy}px`;
+        const margin = Number.parseFloat(box.style.getPropertyValue("--img-margin")) || 0;
+        placePicture(box, box.dataset.flow || "front", img.getAttribute("data-align") || "center", drag.ox + dx, drag.oy + dy, margin);
         box.classList.add("is-dragging");
       }
 
@@ -302,9 +405,17 @@ const QuireImage = Image.extend({
         drag = null;
       }
 
+      const onLoad = () => {
+        if (box.dataset.flow === "behind" || box.dataset.flow === "front") reservePicture(box);
+      };
+
       box.addEventListener("pointerdown", onDown);
+      img.addEventListener("load", onLoad);
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
+      requestAnimationFrame(() => {
+        if (box.isConnected && (box.dataset.flow === "behind" || box.dataset.flow === "front")) reservePicture(box);
+      });
 
       const originalDestroy = nodeView.destroy.bind(nodeView);
       Object.assign(nodeView, {
@@ -319,8 +430,11 @@ const QuireImage = Image.extend({
         ignoreMutation: () => true,
         destroy() {
           box.removeEventListener("pointerdown", onDown);
+          img.removeEventListener("load", onLoad);
           window.removeEventListener("pointermove", onMove);
           window.removeEventListener("pointerup", onUp);
+          box.dataset.flow = "inline";
+          reservePicture(box);
           originalDestroy();
         },
       });

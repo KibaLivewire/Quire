@@ -1,3 +1,20 @@
+# Quire 1.9.16 — The picture stays where you put it
+
+Released 19 October 2026.
+
+- **Fit, Stretch, Fill, and S M L Full apply again after a corner drag.** Choosing one clears the pixel size that was covering it. A corner drag still keeps the width and the height you dragged to.
+- **Left, Center, and Right move the picture.** Center is written on the picture. Left and Right sit on that side of the page. Center leaves Wrap and sits on its own line. A picture you have not aligned stays in the line.
+- **Wrap text keeps Fit, Stretch, and Fill.**
+- **Behind text and In front of text keep their place.** The paragraph keeps the picture's height, so it does not collapse. Text in that paragraph can sit over or under the picture. The text margin insets it.
+- **The text margin applies to Inline as well as Wrap and Break.**
+- **Dragging a picture only moves Behind text and In front of text.** An inline picture no longer shifts off its gap and covers the words beside it.
+
+Windows installer: Quire-Setup-1.9.16.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.15 — The size stays a size
 
 Released 17 October 2026.

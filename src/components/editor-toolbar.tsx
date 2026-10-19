@@ -308,6 +308,33 @@ export function EditorToolbar({
     editor.chain().updateAttributes("image", patch).run();
   }
 
+  function clearPixels() {
+    return { width: null, height: null };
+  }
+
+  function alignPicture(side: "left" | "center" | "right") {
+    const flow = ui.imageFlow || "inline";
+    if (flow === "wrap") {
+      if (side === "center") {
+        setImageLayout({ align: "center", wrap: null, flow: "break", ox: 0, oy: 0 });
+        return;
+      }
+      setImageLayout({ align: side, wrap: side, flow: "wrap", ox: 0, oy: 0 });
+      return;
+    }
+    if (flow === "behind" || flow === "front") {
+      setImageLayout({ align: side, wrap: null });
+      return;
+    }
+    setImageLayout({
+      align: side,
+      wrap: null,
+      flow: flow === "inline" || side === "center" ? "break" : flow,
+      ox: 0,
+      oy: 0,
+    });
+  }
+
   function bumpIndent(delta: number) {
     if (delta > 0 && editor.can().sinkListItem("listItem")) {
       editor.chain().focus().sinkListItem("listItem").run();
@@ -1005,17 +1032,17 @@ export function EditorToolbar({
           <Chip
             label="Fit"
             active={ui.imageFit === "fit"}
-            onClick={() => setImageLayout({ fit: "fit", size: null, wrap: null })}
+            onClick={() => setImageLayout({ fit: "fit", size: null, ...clearPixels() })}
           />
           <Chip
             label="Stretch"
             active={ui.imageFit === "stretch"}
-            onClick={() => setImageLayout({ fit: "stretch", size: null, wrap: null })}
+            onClick={() => setImageLayout({ fit: "stretch", size: null, ...clearPixels() })}
           />
           <Chip
             label="Fill"
             active={ui.imageFit === "fill"}
-            onClick={() => setImageLayout({ fit: "fill", size: null, wrap: null })}
+            onClick={() => setImageLayout({ fit: "fill", size: null, ...clearPixels() })}
           />
           <Chip
             label="Watermark"
@@ -1026,6 +1053,7 @@ export function EditorToolbar({
                 size: null,
                 wrap: "left",
                 watermark: ui.imageWatermark || "Quire",
+                ...clearPixels(),
               })
             }
           />
@@ -1038,26 +1066,18 @@ export function EditorToolbar({
             onChange={(event) => setImageLayout({ watermark: event.target.value, fit: "watermark" })}
           />
           <Separator orientation="vertical" className="mx-1 h-5" />
-          <Chip label="S" active={ui.imageSize === "small"} onClick={() => setImageLayout({ size: "small", fit: null })} />
-          <Chip label="M" active={ui.imageSize === "medium"} onClick={() => setImageLayout({ size: "medium", fit: null })} />
-          <Chip label="L" active={ui.imageSize === "large"} onClick={() => setImageLayout({ size: "large", fit: null })} />
-          <Chip label="Full" active={ui.imageSize === "full"} onClick={() => setImageLayout({ size: "full", fit: null })} />
+          <Chip label="S" active={ui.imageSize === "small"} onClick={() => setImageLayout({ size: "small", fit: null, ...clearPixels() })} />
+          <Chip label="M" active={ui.imageSize === "medium"} onClick={() => setImageLayout({ size: "medium", fit: null, ...clearPixels() })} />
+          <Chip label="L" active={ui.imageSize === "large"} onClick={() => setImageLayout({ size: "large", fit: null, ...clearPixels() })} />
+          <Chip label="Full" active={ui.imageSize === "full"} onClick={() => setImageLayout({ size: "full", fit: null, ...clearPixels() })} />
           <Separator orientation="vertical" className="mx-1 h-5" />
-          <Chip
-            label="Left"
-            active={ui.imageAlign === "left"}
-            onClick={() => setImageLayout({ align: "left", wrap: ui.imageFlow === "wrap" ? "left" : null })}
-          />
+          <Chip label="Left" active={ui.imageAlign === "left"} onClick={() => alignPicture("left")} />
           <Chip
             label="Center"
             active={ui.imageAlign === "center" && ui.imageFlow !== "wrap"}
-            onClick={() => setImageLayout({ align: "center", wrap: null })}
+            onClick={() => alignPicture("center")}
           />
-          <Chip
-            label="Right"
-            active={ui.imageAlign === "right"}
-            onClick={() => setImageLayout({ align: "right", wrap: ui.imageFlow === "wrap" ? "right" : null })}
-          />
+          <Chip label="Right" active={ui.imageAlign === "right"} onClick={() => alignPicture("right")} />
         </div>
       ) : null}
       {ui.image ? (
@@ -1072,7 +1092,7 @@ export function EditorToolbar({
             kind="inline"
             label="Inline with text"
             active={(ui.imageFlow || "inline") === "inline" && !ui.imageWrap}
-            onClick={() => setImageLayout({ flow: "inline", wrap: null })}
+            onClick={() => setImageLayout({ flow: "inline", wrap: null, ox: 0, oy: 0 })}
           />
           <FlowPick
             kind="wrap"
@@ -1083,7 +1103,8 @@ export function EditorToolbar({
                 flow: "wrap",
                 wrap: ui.imageAlign === "right" ? "right" : "left",
                 align: ui.imageAlign === "right" ? "right" : "left",
-                fit: ui.imageFit === "fit" || ui.imageFit === "stretch" || ui.imageFit === "fill" ? null : ui.imageFit,
+                ox: 0,
+                oy: 0,
               })
             }
           />
@@ -1091,7 +1112,7 @@ export function EditorToolbar({
             kind="break"
             label="Break text"
             active={ui.imageFlow === "break"}
-            onClick={() => setImageLayout({ flow: "break", wrap: null })}
+            onClick={() => setImageLayout({ flow: "break", wrap: null, ox: 0, oy: 0 })}
           />
           <FlowPick
             kind="behind"
