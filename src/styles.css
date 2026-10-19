@@ -712,6 +712,83 @@ html[data-theme="rain"] {
   margin: var(--img-margin, 12px);
 }
 
+/* The facing page and print preview show the saved picture, not the editor frame. */
+.quire-doc:not(.tiptap) img.quire-image {
+  margin: attr(data-margin px, 12px);
+  vertical-align: middle;
+}
+.quire-doc:not(.tiptap) img.quire-image[data-size="small"]:not([width]) { width: 32%; }
+.quire-doc:not(.tiptap) img.quire-image[data-size="medium"]:not([width]),
+.quire-doc:not(.tiptap) img.quire-image[data-fit="watermark"]:not([width]) { width: 56%; }
+.quire-doc:not(.tiptap) img.quire-image[data-size="large"]:not([width]) { width: 80%; }
+.quire-doc:not(.tiptap) img.quire-image[data-fit="fit"]:not([width]),
+.quire-doc:not(.tiptap) img.quire-image[data-fit="stretch"]:not([width]),
+.quire-doc:not(.tiptap) img.quire-image[data-fit="fill"]:not([width]),
+.quire-doc:not(.tiptap) img.quire-image[data-size="full"]:not([width]) {
+  width: 100%;
+  height: auto;
+}
+.quire-doc:not(.tiptap) img.quire-image[data-flow="break"],
+.quire-doc:not(.tiptap) img.quire-image[data-flow="inline"][data-align="left"],
+.quire-doc:not(.tiptap) img.quire-image[data-flow="inline"][data-align="right"],
+.quire-doc:not(.tiptap) img.quire-image[data-flow="inline"][data-align="center"][data-fit],
+.quire-doc:not(.tiptap) img.quire-image[data-flow="inline"][data-align="center"][data-size] {
+  display: block;
+  max-width: 100%;
+}
+.quire-doc:not(.tiptap) img.quire-image[data-align="center"][data-flow="break"],
+.quire-doc:not(.tiptap) img.quire-image[data-flow="inline"][data-align="center"][data-fit],
+.quire-doc:not(.tiptap) img.quire-image[data-flow="inline"][data-align="center"][data-size] {
+  margin-left: auto;
+  margin-right: auto;
+}
+.quire-doc:not(.tiptap) img.quire-image[data-align="right"][data-flow="break"],
+.quire-doc:not(.tiptap) img.quire-image[data-flow="inline"][data-align="right"] {
+  margin-left: auto;
+  margin-right: 0;
+}
+.quire-doc:not(.tiptap) img.quire-image[data-flow="wrap"] {
+  float: left;
+  width: 46%;
+  max-width: 46%;
+  margin-left: 0;
+}
+.quire-doc:not(.tiptap) img.quire-image[data-flow="wrap"][data-align="right"],
+.quire-doc:not(.tiptap) img.quire-image[data-wrap="right"]:not([data-flow="break"]):not([data-flow="behind"]):not([data-flow="front"]) {
+  float: right;
+  width: 46%;
+  max-width: 46%;
+  margin-right: 0;
+  margin-left: attr(data-margin px, 12px);
+}
+.quire-doc:not(.tiptap) :is(p, h1, h2, h3, li):has(img.quire-image[data-flow="behind"]),
+.quire-doc:not(.tiptap) :is(p, h1, h2, h3, li):has(img.quire-image[data-flow="front"]) {
+  position: relative;
+  z-index: 1;
+  min-height: 8rem;
+}
+.quire-doc:not(.tiptap) img.quire-image[data-flow="behind"],
+.quire-doc:not(.tiptap) img.quire-image[data-flow="front"] {
+  position: absolute;
+  max-width: 70%;
+  top: 0.4rem;
+  left: 0.6rem;
+}
+.quire-doc:not(.tiptap) img.quire-image[data-flow="behind"] { z-index: -1; }
+.quire-doc:not(.tiptap) img.quire-image[data-flow="front"] { z-index: 2; }
+.quire-doc:not(.tiptap) img.quire-image[data-flow="behind"][data-align="right"],
+.quire-doc:not(.tiptap) img.quire-image[data-flow="front"][data-align="right"] {
+  left: auto;
+  right: 0.6rem;
+}
+.quire-doc:not(.tiptap) img.quire-image[data-flow="behind"][data-align="center"],
+.quire-doc:not(.tiptap) img.quire-image[data-flow="front"][data-align="center"] {
+  left: 0;
+  right: 0;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .quire-image-link {
   display: inline;
 }

@@ -77,6 +77,22 @@ const PRINT_CSS = `
     font-style: italic;
   }
   img { max-width: 100%; height: auto; {{imgFilter}} }
+  img.quire-image[data-flow="wrap"] { float: left; width: 46%; max-width: 46%; }
+  img.quire-image[data-flow="wrap"][data-align="right"],
+  img.quire-image[data-wrap="right"]:not([data-flow="break"]):not([data-flow="behind"]):not([data-flow="front"]) { float: right; }
+  img.quire-image[data-flow="break"],
+  img.quire-image[data-flow="inline"][data-align="left"],
+  img.quire-image[data-flow="inline"][data-align="right"] { display: block; }
+  img.quire-image[data-align="center"][data-flow="break"] { display: block; margin-left: auto; margin-right: auto; }
+  img.quire-image[data-size="small"]:not([width]) { width: 32%; }
+  img.quire-image[data-size="medium"]:not([width]) { width: 56%; }
+  img.quire-image[data-size="large"]:not([width]) { width: 80%; }
+  img.quire-image[data-fit="fit"]:not([width]),
+  img.quire-image[data-size="full"]:not([width]) { width: 100%; }
+  p:has(img.quire-image[data-flow="behind"]),
+  p:has(img.quire-image[data-flow="front"]) { position: relative; z-index: 1; min-height: 8rem; }
+  img.quire-image[data-flow="behind"] { position: absolute; z-index: -1; max-width: 70%; }
+  img.quire-image[data-flow="front"] { position: absolute; z-index: 2; max-width: 70%; }
   mark { background: #f3e2a0; color: #1c1917; padding: 0 0.12em; }
   .quire-note { border-bottom: 1px dotted currentColor; }
   .quire-note[data-note]::after { content: " [" attr(data-note) "]"; font-size: 0.85em; opacity: 0.8; }

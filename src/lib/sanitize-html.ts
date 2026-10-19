@@ -608,7 +608,7 @@ function calcEvaluatesZero(value: string): boolean {
 }
 
 function hidesAsZero(value: string): boolean {
-  return isZeroAmount(value) || calcEvaluatesZero(value);
+  return isZeroAmount(value) || calcEvaluatesZero(value) || mathEvaluatesZero(value);
 }
 
 function varNameParen(value: string, i: number): number {
@@ -856,15 +856,20 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "content-visibility") return valueCanHide(val, hidden, (v) => /\bhidden\b/i.test(v));
   if (prop === "opacity") return valueCanHide(val, hidden, hidesAsZero);
   if (prop === "filter" || prop === "-webkit-filter") {
-    return functionCallsNamed(val, ["opacity"]).some((inner) => valueCanHide(inner, hidden, hidesAsZero));
+    return functionCallsNamed(val, ["opacity", "brightness", "contrast"]).some((inner) => valueCanHide(inner, hidden, hidesAsZero));
   }
   if (prop === "scale") {
     return splitScaleParts(val.replace(/!important/gi, "")).some((arg) => valueCanHide(arg, hidden, hidesAsZero));
   }
   if (prop === "transform" || prop === "-webkit-transform") {
-    return functionCallsNamed(val, ["scale3d", "scalex", "scaley", "scalez", "scale"]).some((inner) =>
-      splitArgs(inner).some((arg) => valueCanHide(arg, hidden, hidesAsZero)),
-    );
+    if (
+      functionCallsNamed(val, ["scale3d", "scalex", "scaley", "scalez", "scale"]).some((inner) =>
+        splitArgs(inner).some((arg) => valueCanHide(arg, hidden, hidesAsZero)),
+      )
+    ) {
+      return true;
+    }
+    return matrixFlattens(val, hidden);
   }
   if (prop === "zoom") return valueCanHide(val, hidden, hidesAsZero);
   return false;
@@ -895,10 +900,10 @@ function collectHideVars(css: string): Set<string> {
   return hidden;
 }
 
-function scrubHideBody(body: string, hidden: Set<string>) {
+function scrubHideBody(body: string, hidden: Set<string>, anims: Set<string> = new Set()) {
   return splitCssDeclarations(body)
     .map((part) => part.trim())
-    .filter((part) => part && !declarationHidesDesk(part, hidden))
+    .filter((part) => part && !declarationHidesDesk(part, hidden) && !declarationUsesHidingAnim(part, anims))
     .join("; ");
 }
 
@@ -917,28 +922,679 @@ function isStarPairSelector(selector: string) {
   return parts.length > 0 && parts.every((part) => bit.test(part.replace(/\s+/g, " ")));
 }
 
+type MathQty = { n: number; u: Record<string, number>; i: number };
+
+function blankUnits(): Record<string, number> {
+  return {};
+}
+
+function unitsEqual(a: Record<string, number>, b: Record<string, number>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if ((a[key] || 0) !== (b[key] || 0)) return false;
+  }
+  return true;
+}
+
+function combineUnits(a: Record<string, number>, b: Record<string, number>, sign: 1 | -1): Record<string, number> {
+  const out: Record<string, number> = {};
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    const exp = (a[key] || 0) + sign * (b[key] || 0);
+    if (exp) out[key] = exp;
+  }
+  return out;
+}
+
+/** min, max, clamp, abs, and a calc whose units cancel. A plain 0.5 stays. */
+function mathEvaluatesZero(value: string): boolean {
+  const s = value.replace(/!important/gi, "").replace(/\s+/g, "");
+  if (!s || !/^(?:calc|min|max|clamp|abs)\(/i.test(s)) return false;
+  const parsed = parseMathSum(s, 0);
+  return Boolean(parsed && parsed.i === s.length && parsed.n === 0 && Number.isFinite(parsed.n));
+}
+
+function parseMathSum(s: string, i: number): MathQty | null {
+  let left = parseMathMul(s, i);
+  if (!left) return null;
+  while (s[left.i] === "+" || s[left.i] === "-") {
+    const minus = s[left.i] === "-";
+    const right = parseMathMul(s, left.i + 1);
+    if (!right) return null;
+    if (left.n === 0 && right.n === 0) {
+      left = { n: 0, u: blankUnits(), i: right.i };
+      continue;
+    }
+    if (left.n === 0) {
+      left = { n: minus ? -right.n : right.n, u: right.u, i: right.i };
+      continue;
+    }
+    if (right.n === 0) {
+      left = { n: left.n, u: left.u, i: right.i };
+      continue;
+    }
+    if (!unitsEqual(left.u, right.u)) return null;
+    left = { n: minus ? left.n - right.n : left.n + right.n, u: left.u, i: right.i };
+  }
+  return left;
+}
+
+function parseMathMul(s: string, i: number): MathQty | null {
+  let left = parseMathUnary(s, i);
+  if (!left) return null;
+  while (s[left.i] === "*" || s[left.i] === "/") {
+    const divide = s[left.i] === "/";
+    const right = parseMathUnary(s, left.i + 1);
+    if (!right) return null;
+    if (divide && right.n === 0) return null;
+    left = {
+      n: divide ? left.n / right.n : left.n * right.n,
+      u: combineUnits(left.u, right.u, divide ? -1 : 1),
+      i: right.i,
+    };
+  }
+  return left;
+}
+
+function parseMathUnary(s: string, i: number): MathQty | null {
+  if (s[i] === "+") return parseMathUnary(s, i + 1);
+  if (s[i] === "-") {
+    const next = parseMathUnary(s, i + 1);
+    if (!next) return null;
+    return { n: -next.n, u: next.u, i: next.i };
+  }
+  if (s[i] === "(") {
+    const inner = parseMathSum(s, i + 1);
+    if (!inner || s[inner.i] !== ")") return null;
+    return { n: inner.n, u: inner.u, i: inner.i + 1 };
+  }
+  const call = parseMathCall(s, i);
+  if (call) return call;
+  const m = /^(\d*\.?\d+)(?:e([+-]?\d+))?([a-z%]*)/i.exec(s.slice(i));
+  if (!m?.[1] || m[1] === ".") return null;
+  const n = Number(m[1]) * (m[2] ? 10 ** Number(m[2]) : 1);
+  if (!Number.isFinite(n)) return null;
+  const unit = (m[3] || "").toLowerCase();
+  if (unit && !/^(?:px|em|rem|pt|pc|in|cm|mm|vh|vw|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|deg|turn|rad|grad|s|ms|fr|ch|ex|%)$/.test(unit)) return null;
+  const u = unit ? { [unit]: 1 } : blankUnits();
+  return { n, u, i: i + m[0].length };
+}
+
+function parseMathCall(s: string, i: number): MathQty | null {
+  const names = ["clamp", "calc", "min", "max", "abs"];
+  for (const name of names) {
+    if (!s.slice(i, i + name.length).toLowerCase().startsWith(name)) continue;
+    if (s[i + name.length] !== "(") continue;
+    const args: MathQty[] = [];
+    let cursor = i + name.length + 1;
+    if (s[cursor] === ")") return { n: Number.NaN, u: blankUnits(), i: cursor + 1 };
+    while (cursor < s.length) {
+      const arg = parseMathSum(s, cursor);
+      if (!arg) return null;
+      args.push(arg);
+      cursor = arg.i;
+      if (s[cursor] === ",") {
+        cursor += 1;
+        continue;
+      }
+      if (s[cursor] === ")") {
+        cursor += 1;
+        break;
+      }
+      return null;
+    }
+    if (!args.length || args.some((arg) => !Number.isFinite(arg.n))) return null;
+    const unit = args.find((arg) => arg.n !== 0)?.u ?? blankUnits();
+    if (args.some((arg) => arg.n !== 0 && !unitsEqual(arg.u, unit))) return null;
+    let n = args[0]?.n ?? Number.NaN;
+    if (name === "min") n = Math.min(...args.map((arg) => arg.n));
+    else if (name === "max") n = Math.max(...args.map((arg) => arg.n));
+    else if (name === "abs") {
+      if (args.length !== 1) return null;
+      n = Math.abs(args[0]?.n ?? Number.NaN);
+    } else if (name === "clamp") {
+      if (args.length !== 3) return null;
+      const lo = args[0]?.n ?? Number.NaN;
+      const mid = args[1]?.n ?? Number.NaN;
+      const hi = args[2]?.n ?? Number.NaN;
+      if (lo > hi) return null;
+      n = Math.min(Math.max(mid, lo), hi);
+    } else if (args.length !== 1) return null;
+    else n = args[0]?.n ?? Number.NaN;
+    return { n, u: unit, i: cursor };
+  }
+  return null;
+}
+
+function coeffOf(arg: string, hidden: Set<string>): number | null {
+  const compact = arg.replace(/!important/gi, "").replace(/\s+/g, "");
+  if (!compact) return null;
+  if (hidesAsZero(compact)) return 0;
+  const parsed = parseMathSum(compact, 0);
+  if (parsed && parsed.i === compact.length && Number.isFinite(parsed.n)) return parsed.n;
+  if (valueCanHide(arg, hidden, hidesAsZero)) return 0;
+  return null;
+}
+
+/** matrix() that flattens the page is the same hide as scale(0). A turn written as rotate stays. */
+function matrixFlattens(value: string, hidden: Set<string>): boolean {
+  const found = namedFunctionCalls(value, ["matrix3d", "matrix"]);
+  return found.some((call) => {
+    const nums = splitArgs(call.inner).map((arg) => coeffOf(arg, hidden));
+    if (call.name === "matrix") {
+      if (nums.length < 4) return false;
+      const [a, b, c, d] = nums;
+      if (a == null || b == null || c == null || d == null) return false;
+      return a * d - b * c === 0;
+    }
+    if (nums.length < 16) return false;
+    const a1 = nums[0];
+    const b1 = nums[1];
+    const a2 = nums[4];
+    const b2 = nums[5];
+    if (a1 == null || b1 == null || a2 == null || b2 == null) return false;
+    return a1 * b2 - b1 * a2 === 0;
+  });
+}
+
+function namedFunctionCalls(value: string, names: string[]): { name: string; inner: string }[] {
+  const wanted = [...names].sort((a, b) => b.length - a.length);
+  const found: { name: string; inner: string }[] = [];
+  let i = 0;
+  let quote = "";
+  while (i < value.length) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      if (ch === "\\" && next) {
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      i += 1;
+      continue;
+    }
+    let matched = "";
+    if (i === 0 || !/[A-Za-z0-9_-]/.test(value[i - 1] ?? "")) {
+      for (const name of wanted) {
+        if (value.slice(i, i + name.length).toLowerCase() !== name) continue;
+        const after = i + name.length;
+        if (/[A-Za-z0-9_-]/.test(value[after] ?? "")) continue;
+        matched = name;
+        break;
+      }
+    }
+    if (!matched) {
+      i += 1;
+      continue;
+    }
+    let j = i + matched.length;
+    while (value[j] === " " || value[j] === "\t" || value[j] === "\n" || value[j] === "\r" || value[j] === "\f") j += 1;
+    if (value[j] !== "(") {
+      i += 1;
+      continue;
+    }
+    const end = matchingParen(value, j);
+    if (end < 0) {
+      i += 1;
+      continue;
+    }
+    found.push({ name: matched, inner: value.slice(j + 1, end) });
+    i = end + 1;
+  }
+  return found;
+}
+
+const ANIM_KEYWORDS = new Set([
+  "none",
+  "infinite",
+  "forwards",
+  "backwards",
+  "both",
+  "alternate",
+  "alternate-reverse",
+  "normal",
+  "linear",
+  "ease",
+  "ease-in",
+  "ease-out",
+  "ease-in-out",
+  "step-start",
+  "step-end",
+  "running",
+  "paused",
+  "initial",
+  "inherit",
+  "unset",
+  "reverse",
+  "scroll",
+  "auto",
+  "cubic-bezier",
+  "steps",
+]);
+
+function animationIdents(value: string): string[] {
+  const names: string[] = [];
+  for (const part of splitArgs(value)) {
+    const tokens = part.match(/[A-Za-z_][\w-]*/g) ?? [];
+    for (const token of tokens) {
+      if (ANIM_KEYWORDS.has(token.toLowerCase())) continue;
+      names.push(token);
+    }
+  }
+  return names;
+}
+
+function declarationUsesHidingAnim(piece: string, anims: Set<string>): boolean {
+  if (!anims.size) return false;
+  const idx = piece.indexOf(":");
+  if (idx <= 0) return false;
+  const prop = piece.slice(0, idx).trim().toLowerCase().replace(/\s+/g, "");
+  if (prop !== "animation" && prop !== "animation-name" && prop !== "-webkit-animation" && prop !== "-webkit-animation-name") return false;
+  return animationIdents(piece.slice(idx + 1)).some((name) => anims.has(name));
+}
+
+function matchingBrace(value: string, open: number): number {
+  let depth = 0;
+  let quote = "";
+  for (let i = open; i < value.length; i += 1) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      if (ch === "\\" && next) {
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function hidingKeyframeNames(css: string, hidden: Set<string>): Set<string> {
+  const names = new Set<string>();
+  const re = /@(?:-webkit-)?keyframes\s+([A-Za-z_][\w-]*)\s*\{/gi;
+  for (const hit of css.matchAll(re)) {
+    const name = hit[1] ?? "";
+    const open = (hit.index ?? 0) + hit[0].length - 1;
+    const close = matchingBrace(css, open);
+    if (!name || close < 0) continue;
+    const parts = css.slice(open + 1, close).split(/[{};]/);
+    if (parts.some((part) => declarationHidesDesk(part.trim(), hidden))) names.add(name);
+  }
+  return names;
+}
+
+type DeskEl = { tag: string; index: number; count: number; ofType: number; ofTypeCount: number };
+
+const HTML_EL: DeskEl = { tag: "html", index: 1, count: 1, ofType: 1, ofTypeCount: 1 };
+const BODY_EL: DeskEl = { tag: "body", index: 2, count: 2, ofType: 1, ofTypeCount: 1 };
+
+function nthHits(formula: string, index: number): boolean | null {
+  const f = formula.replace(/\s+/g, "").toLowerCase();
+  if (!f) return null;
+  let a = 0;
+  let b = 0;
+  if (f === "odd") {
+    a = 2;
+    b = 1;
+  } else if (f === "even") {
+    a = 2;
+    b = 0;
+  } else if (/^[+-]?\d+$/.test(f)) {
+    b = Number(f);
+  } else {
+    const m = /^([+-]?)(\d+)?n(.*)$/.exec(f);
+    if (!m) return null;
+    const sign = m[1] === "-" ? -1 : 1;
+    a = sign * (m[2] ? Number(m[2]) : 1);
+    const rest = m[3] || "";
+    if (rest) {
+      const bM = /^([+-])(\d+)$/.exec(rest);
+      if (!bM) return null;
+      b = Number(`${bM[1]}${bM[2]}`);
+    }
+  }
+  if (a === 0) return index === b;
+  const k = (index - b) / a;
+  return Number.isInteger(k) && k >= 0;
+}
+
+function splitSelectorList(value: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let depth = 0;
+  let quote = "";
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      current += ch;
+      if (ch === "\\" && next) {
+        current += next;
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "(") depth += 1;
+    if (ch === ")" && depth > 0) depth -= 1;
+    if (ch === "," && depth === 0) {
+      if (current.trim()) parts.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+
+const STATE_PSEUDO =
+  /^(?:hover|focus|focus-visible|focus-within|active|visited|link|any-link|target|scope|empty|checked|disabled|enabled|blank|fullscreen|modal|popover-open|playing|paused|user-valid|user-invalid|required|optional|read-only|read-write|indeterminate|default|valid|invalid|in-range|out-of-range|placeholder-shown|autofill|defined|host|host-context|current|past|future)$/i;
+
+function compoundMatches(compound: string, el: DeskEl): boolean {
+  let i = 0;
+  let sawType = false;
+  const text = compound.trim();
+  if (!text) return false;
+  while (i < text.length) {
+    const ch = text[i] ?? "";
+    if (ch === "*" && !sawType) {
+      sawType = true;
+      i += 1;
+      continue;
+    }
+    if (ch === "." || ch === "#" || ch === "[") return false;
+    if (ch === ":" && text[i + 1] === ":") return false;
+    if (/[A-Za-z*]/.test(ch) && !sawType && text[i] !== ":") {
+      const m = /^[A-Za-z*][\w-]*/.exec(text.slice(i));
+      if (!m) return false;
+      sawType = true;
+      if (m[0].toLowerCase() !== el.tag && m[0] !== "*") return false;
+      i += m[0].length;
+      continue;
+    }
+    if (ch !== ":") return false;
+    const pseudo = /^:([A-Za-z-]+|\*)/.exec(text.slice(i));
+    if (!pseudo) return false;
+    const name = (pseudo[1] ?? "").toLowerCase();
+    let j = i + pseudo[0].length;
+    let arg = "";
+    if (text[j] === "(") {
+      const end = matchingParen(text, j);
+      if (end < 0) return false;
+      arg = text.slice(j + 1, end);
+      j = end + 1;
+    }
+    i = j;
+    if (name === "root") {
+      if (el.tag !== "html") return false;
+      continue;
+    }
+    if (name === "first-child") {
+      if (el.index !== 1) return false;
+      continue;
+    }
+    if (name === "last-child") {
+      if (el.index !== el.count) return false;
+      continue;
+    }
+    if (name === "only-child") {
+      if (el.count !== 1) return false;
+      continue;
+    }
+    if (name === "first-of-type") {
+      if (el.ofType !== 1) return false;
+      continue;
+    }
+    if (name === "last-of-type") {
+      if (el.ofType !== el.ofTypeCount) return false;
+      continue;
+    }
+    if (name === "only-of-type") {
+      if (el.ofTypeCount !== 1) return false;
+      continue;
+    }
+    if (name === "nth-child" || name === "nth-last-child" || name === "nth-of-type" || name === "nth-last-of-type") {
+      const slot =
+        name === "nth-child"
+          ? el.index
+          : name === "nth-last-child"
+            ? el.count - el.index + 1
+            : name === "nth-of-type"
+              ? el.ofType
+              : el.ofTypeCount - el.ofType + 1;
+      const of = arg.split(/\s+of\s+/i)[0] ?? arg;
+      const hit = nthHits(of, slot);
+      if (hit !== true) return false;
+      continue;
+    }
+    if (name === "is" || name === "where" || name === "matches" || name === "-webkit-any") {
+      if (!splitSelectorList(arg).some((part) => selectorMatchesEl(part, el))) return false;
+      continue;
+    }
+    if (name === "not") {
+      if (splitSelectorList(arg).some((part) => selectorMatchesEl(part, el))) return false;
+      continue;
+    }
+    if (name === "lang") continue;
+    if (STATE_PSEUDO.test(name)) return false;
+    if (name === "before" || name === "after" || name === "first-line" || name === "first-letter" || name === "selection" || name === "placeholder" || name === "marker" || name === "backdrop") return false;
+  }
+  return sawType || text.startsWith(":");
+}
+
+function selectorMatchesEl(selector: string, el: DeskEl): boolean {
+  const trimmed = selector.trim().replace(/\s+/g, " ");
+  if (!trimmed || trimmed.includes("::")) return false;
+  const child = /^(.*)\s*>\s*([^*][^>]*)$/.exec(trimmed);
+  let left = "";
+  let compound = trimmed;
+  let combinator = "";
+  if (child) {
+    left = child[1]?.trim() ?? "";
+    compound = child[2]?.trim() ?? "";
+    combinator = ">";
+  } else if (trimmed.includes(" ")) {
+    const at = trimmed.lastIndexOf(" ");
+    left = trimmed.slice(0, at).trim();
+    compound = trimmed.slice(at + 1).trim();
+    combinator = " ";
+  }
+  if (!compoundMatches(compound, el)) return false;
+  if (!combinator) return true;
+  if (el.tag === "html") return false;
+  if (left === "*" || left === "html" || left === ":root") return true;
+  return selectorMatchesEl(left, HTML_EL);
+}
+
+function selectorMatchesDesk(selector: string): boolean {
+  return splitSelectorList(selector).some((part) => {
+    const sel = part.trim();
+    if (!sel || sel.includes("::")) return false;
+    return selectorMatchesEl(sel, HTML_EL) || selectorMatchesEl(sel, BODY_EL);
+  });
+}
+
+function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, desk: boolean): string {
+  if (!body.includes("{")) return desk ? scrubHideBody(body, hidden, anims) : body.trim();
+  let out = "";
+  let decl = "";
+  let i = 0;
+  let depth = 0;
+  let quote = "";
+  const keep = (piece: string) => {
+    const next = piece.trim();
+    if (!next) return;
+    if (!desk || (!declarationHidesDesk(next, hidden) && !declarationUsesHidingAnim(next, anims))) out += `${next}; `;
+  };
+  while (i < body.length) {
+    const ch = body[i] ?? "";
+    const next = body[i + 1] ?? "";
+    if (quote) {
+      decl += ch;
+      if (ch === "\\" && next) {
+        decl += next;
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      decl += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "(") {
+      depth += 1;
+      decl += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === ")" && depth > 0) {
+      depth -= 1;
+      decl += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "{" && depth === 0) {
+      const selector = decl.trim();
+      const close = matchingBrace(body, i);
+      if (close < 0) return `${out}${body.slice(i)}`;
+      const childDesk = selectorMatchesDesk(selector) || (desk && selector.replace(/\s+/g, "") === "&");
+      out += `${selector}{${scrubNestedBody(body.slice(i + 1, close), hidden, anims, childDesk)}}`;
+      decl = "";
+      i = close + 1;
+      continue;
+    }
+    if (ch === ";" && depth === 0) {
+      keep(decl);
+      decl = "";
+      i += 1;
+      continue;
+    }
+    decl += ch;
+    i += 1;
+  }
+  const tail = decl.trim();
+  if (tail && (!desk || (!declarationHidesDesk(tail, hidden) && !declarationUsesHidingAnim(tail, anims)))) out += tail;
+  return out.replace(/;\s*$/g, "").trim();
+}
+
+const RECURSE_AT = /^(?:media|supports|layer|container|scope|document)$/i;
+
+function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string>): string {
+  let out = "";
+  let i = 0;
+  while (i < css.length) {
+    if (css[i] === "@") {
+      const name = /^@(-?[\w-]+)/.exec(css.slice(i));
+      if (!name) {
+        out += css[i];
+        i += 1;
+        continue;
+      }
+      const kind = (name[1] ?? "").replace(/^-webkit-/, "");
+      let j = i + name[0].length;
+      if (/keyframes/i.test(kind) || /^(?:font-face|page|counter-style|property)$/i.test(kind)) {
+        const open = css.indexOf("{", j);
+        const semi = css.indexOf(";", j);
+        if (open < 0 || (semi >= 0 && semi < open)) {
+          const end = semi < 0 ? css.length : semi + 1;
+          out += css.slice(i, end);
+          i = end;
+          continue;
+        }
+        const close = matchingBrace(css, open);
+        const end = close < 0 ? css.length : close + 1;
+        out += css.slice(i, end);
+        i = end;
+        continue;
+      }
+      if (RECURSE_AT.test(kind)) {
+        const open = css.indexOf("{", j);
+        if (open < 0) {
+          out += css.slice(i);
+          break;
+        }
+        const close = matchingBrace(css, open);
+        if (close < 0) {
+          out += css.slice(i);
+          break;
+        }
+        out += css.slice(i, open + 1);
+        out += scrubLooseDeskRules(css.slice(open + 1, close), hidden, anims);
+        out += "}";
+        i = close + 1;
+        continue;
+      }
+    }
+    const open = css.indexOf("{", i);
+    if (open < 0) {
+      out += css.slice(i);
+      break;
+    }
+    const selector = css.slice(i, open);
+    const close = matchingBrace(css, open);
+    if (close < 0) {
+      out += css.slice(i);
+      break;
+    }
+    if (selectorMatchesDesk(selector)) out += `${selector}{${scrubNestedBody(css.slice(open + 1, close), hidden, anims, true)}}`;
+    else out += css.slice(i, close + 1);
+    i = close + 1;
+  }
+  return out;
+}
+
 function scrubDeskHide(css: string, hidden: Set<string>) {
+  const anims = hidingKeyframeNames(css, hidden);
   let out = css.replace(/(?:html|body|:root)\b[^{]*\{[^}]*\}/gi, (block) => {
     const open = block.indexOf("{");
     if (open < 0) return block;
-    return `${block.slice(0, open + 1)}${scrubHideBody(block.slice(open + 1, -1), hidden)}}`;
+    return `${block.slice(0, open + 1)}${scrubHideBody(block.slice(open + 1, -1), hidden, anims)}}`;
   });
   out = out.replace(
     /(^|[{},]\s*)(\*(?![A-Za-z0-9_-])(?:(?::[a-zA-Z-]+(?:\([^)]*\))?)*)\s*)\{([^}]*)\}/g,
-    (_all, pre: string, sel: string, body: string) => `${pre}${sel}{${scrubHideBody(body, hidden)}}`,
+    (_all, pre: string, sel: string, body: string) => `${pre}${sel}{${scrubHideBody(body, hidden, anims)}}`,
   );
   out = out.replace(
     /(^|[{},]\s*)((?::is|:where|:matches|:-webkit-any)\(([^()]*)\)(?:(?::[a-zA-Z-]+(?:\([^)]*\))?)*)\s*)\{([^}]*)\}/gi,
     (all, pre: string, sel: string, inner: string, body: string) => {
       if (!hasUniversalArgument(inner)) return all;
-      return `${pre}${sel}{${scrubHideBody(body, hidden)}}`;
+      return `${pre}${sel}{${scrubHideBody(body, hidden, anims)}}`;
     },
   );
   out = out.replace(/(^|[{}])\s*([^{};]+)\{([^}]*)\}/g, (all, pre: string, selector: string, body: string) => {
     if (!isStarPairSelector(selector)) return all;
-    return `${pre}${selector}{${scrubHideBody(body, hidden)}}`;
+    return `${pre}${selector}{${scrubHideBody(body, hidden, anims)}}`;
   });
-  return out;
+  return scrubLooseDeskRules(out, hidden, anims);
 }
 
 function scrubRemoteImageCalls(css: string) {

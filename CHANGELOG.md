@@ -1,3 +1,21 @@
+# Quire 1.9.17 — The desk stays visible
+
+Released 19 October 2026.
+
+- **A selector that still matches the desk can no longer hide it.** `:nth-child(n)`, `:nth-of-type(n)`, `:first-child` on the page itself, `:not(:not(*))`, and `:not(.note)` follow a bare `*`. A star written beside a class in the same rule follows it too. A class on its own can still use `display: none`. A star in front of a class can still hide that class.
+- **Another spelling of zero can no longer hide the desk.** `min(0, 1)`, `max(0, 0)`, `clamp(0, 0, 1)`, `abs(0)`, and `calc(0px / 1px)` follow `opacity: 0`. `brightness(0)` and `contrast(0)` follow `filter: opacity(0)`. A `matrix()` that flattens the page follows `scale(0)`. `min(0.5, 1)` stays. `calc(1px / 2px)` stays. A grayscale filter stays. `rotate()` and `rotateY()` stay.
+- **A keyframe can no longer hide the desk.** An animation that reaches `opacity: 0` or `display: none` is not applied to `html`, `body`, or every element. A turn animation stays. A class can still use that animation.
+- **A nested rule on the desk can no longer hide it.** `html { & { display: none } }` follows `html { display: none }`. Colour in that rule stays.
+- **A Word embedded part keeps the words apart.** `w:contentPart` is a space. The part is not invented.
+- **An RTF picture or object group keeps the words apart.** The group is still not body text. The words on either side stay apart.
+- **The facing page and print keep the picture layout.** Fit, size, Left, Center, Right, Wrap, Behind, and In front follow the editor. A corner drag still keeps the size you dragged to. The editor frame is unchanged.
+
+Windows installer: Quire-Setup-1.9.17.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.16 — The picture stays where you put it
 
 Released 19 October 2026.
