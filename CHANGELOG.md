@@ -1,3 +1,19 @@
+# Quire 1.9.18 — A zero is still zero
+
+Released 19 October 2026.
+
+- **A power of ten that is still zero can no longer hide the desk.** `0e0`, `0E+2`, `.0e1`, `-0`, and `0e-1` follow `opacity: 0`. `1e-1` stays. `zoom: 0e0` and `scale(0e0)` follow `scale(0)`.
+- **A math call that is still zero can no longer hide the desk.** `sign(0)`, `round(0, 1)`, `mod(0, 1)`, `rem(0, 1)`, `hypot(0, 0)`, `pow(0, 1)`, `log(1)`, `sqrt(0)`, `sin(0)`, `sin(180deg)`, `sin(pi)`, `cos(90deg)`, and `tan(0)` follow `opacity: 0`. `sin(90deg)` stays. `pow(0, 0)` stays. `log(10)` stays. `max(0, 1)` stays. A grayscale filter stays. A turn stays.
+- **A star in any namespace can no longer hide the desk.** `*|*`, `*|* *|*`, `*|* > *|*`, and `*|*+*|*` follow a bare `*`. A class can still use `display: none`. A star in front of a class can still hide that class.
+- **An RTF shape instruction keeps its words.** The words come across once. The words on either side stay apart. A bookmark stays off the page.
+- **A paragraph reset in the middle of a line is not a break.** `\pard` after `\par` still starts the next paragraph. The delimiter space is still not a word space.
+
+Windows installer: Quire-Setup-1.9.18.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.17 — The desk stays visible
 
 Released 19 October 2026.

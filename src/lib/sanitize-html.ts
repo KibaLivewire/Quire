@@ -544,7 +544,7 @@ function scrubPluginCss(css: string): string {
 /** html, body, :root, a bare *, and :is(*) can still hide the desk. A class rule stays. */
 function isZeroAmount(value: string): boolean {
   const v = value.replace(/!important/gi, "").replace(/\s+/g, "").toLowerCase();
-  return /^\+?(?:0+(?:\.0*)?|\.0+)%?$/.test(v);
+  return /^[+-]?(?:0+(?:\.0*)?|\.0+)(?:e[+-]?\d+)?%?$/.test(v);
 }
 
 /** calc(0), calc(0%), and calc(0 * 1) are still zero. Anything with a unit or a name is not. */
@@ -911,10 +911,10 @@ function hasUniversalArgument(inner: string): boolean {
   return /(?:^|[\s,])\*(?![A-Za-z0-9_-])/.test(inner);
 }
 
-/** A star next to a star still matches every element. A star in front of a class does not. */
+/** A star next to a star, including a star in any namespace, still matches every element. A star in front of a class does not. */
 function isStarPairSelector(selector: string) {
-  const bit =
-    /^(?:\*|(?::is|:where|:matches|:-webkit-any)\(\s*\*\s*\))(?:\s*(?:[+>~]\s*)?(?:\*|(?::is|:where|:matches|:-webkit-any)\(\s*\*\s*\)))+$/i;
+  const uni = String.raw`(?:\*(?:\|\*)?|(?::is|:where|:matches|:-webkit-any)\(\s*\*(?:\|\*)?\s*\))`;
+  const bit = new RegExp(`^(?:${uni})(?:\\s*(?:[+>~]\\s*)?(?:${uni}))+$`, "i");
   const parts = selector
     .split(",")
     .map((part) => part.trim())
@@ -946,10 +946,10 @@ function combineUnits(a: Record<string, number>, b: Record<string, number>, sign
   return out;
 }
 
-/** min, max, clamp, abs, and a calc whose units cancel. A plain 0.5 stays. */
+/** min, max, clamp, abs, and any other math call that is exactly zero. A plain 0.5 stays. */
 function mathEvaluatesZero(value: string): boolean {
   const s = value.replace(/!important/gi, "").replace(/\s+/g, "");
-  if (!s || !/^(?:calc|min|max|clamp|abs)\(/i.test(s)) return false;
+  if (!s || !/^[a-z-]+\(/i.test(s)) return false;
   const parsed = parseMathSum(s, 0);
   return Boolean(parsed && parsed.i === s.length && parsed.n === 0 && Number.isFinite(parsed.n));
 }
@@ -1010,6 +1010,7 @@ function parseMathUnary(s: string, i: number): MathQty | null {
   }
   const call = parseMathCall(s, i);
   if (call) return call;
+  if (/^pi(?![a-z0-9_-])/i.test(s.slice(i))) return { n: 1, u: { pi: 1 }, i: i + 2 };
   const m = /^(\d*\.?\d+)(?:e([+-]?\d+))?([a-z%]*)/i.exec(s.slice(i));
   if (!m?.[1] || m[1] === ".") return null;
   const n = Number(m[1]) * (m[2] ? 10 ** Number(m[2]) : 1);
@@ -1020,13 +1021,85 @@ function parseMathUnary(s: string, i: number): MathQty | null {
   return { n, u, i: i + m[0].length };
 }
 
+function cssRound(strategy: string, a: number, b: number): number {
+  if (b === 0 || !Number.isFinite(a) || !Number.isFinite(b)) return Number.NaN;
+  const q = a / b;
+  if (strategy === "to-zero") return b * Math.trunc(q);
+  const base = Math.floor(q);
+  const frac = q - base;
+  if (strategy === "down") return b * base;
+  if (strategy === "up") return b * (frac === 0 ? base : base + 1);
+  if (frac === 0) return b * base;
+  if (frac > 0.5 || Math.abs(frac - 0.5) < 1e-12) return b * (base + 1);
+  return b * base;
+}
+
+function cssMod(a: number, b: number): number {
+  if (b === 0 || !Number.isFinite(a) || !Number.isFinite(b)) return Number.NaN;
+  return a - b * Math.floor(a / b);
+}
+
+function cssRem(a: number, b: number): number {
+  if (b === 0 || !Number.isFinite(a) || !Number.isFinite(b)) return Number.NaN;
+  return a - b * Math.trunc(a / b);
+}
+
+function nearInt(q: number): boolean {
+  return Number.isFinite(q) && Math.abs(q) < 1e12 && Math.abs(q - Math.round(q)) < 1e-9;
+}
+
+/** Exact sine and cosine. An angle that is not an exact zero stays, including sin(90deg). */
+function angleSinCos(arg: MathQty): { sin: number; cos: number } | null {
+  const keys = Object.keys(arg.u);
+  if (keys.length > 1) return null;
+  const unit = keys[0] || "";
+  const n = arg.n;
+  if (!Number.isFinite(n)) return null;
+  if (!unit || unit === "rad") return n === 0 ? { sin: 0, cos: 1 } : null;
+  if (unit === "pi") {
+    if (nearInt(n)) {
+      const k = Math.round(n);
+      return { sin: 0, cos: k % 2 === 0 ? 1 : -1 };
+    }
+    if (nearInt(n * 2)) {
+      const half = Math.round(n * 2);
+      const positive = ((half % 4) + 4) % 4;
+      return { sin: positive === 1 ? 1 : -1, cos: 0 };
+    }
+    return null;
+  }
+  if (unit === "deg" || unit === "turn" || unit === "grad") {
+    const deg = unit === "deg" ? n : unit === "turn" ? n * 360 : n * 0.9;
+    if (nearInt(deg / 180)) {
+      const k = Math.round(deg / 180);
+      return { sin: 0, cos: k % 2 === 0 ? 1 : -1 };
+    }
+    if (nearInt((deg - 90) / 180)) {
+      const k = Math.round((deg - 90) / 180);
+      return { sin: k % 2 === 0 ? 1 : -1, cos: 0 };
+    }
+    return null;
+  }
+  return null;
+}
+
 function parseMathCall(s: string, i: number): MathQty | null {
-  const names = ["clamp", "calc", "min", "max", "abs"];
+  const names = ["clamp", "hypot", "round", "sqrt", "sign", "calc", "min", "max", "mod", "pow", "log", "abs", "rem", "sin", "cos", "tan"];
   for (const name of names) {
-    if (!s.slice(i, i + name.length).toLowerCase().startsWith(name)) continue;
+    if (s.slice(i, i + name.length).toLowerCase() !== name) continue;
     if (s[i + name.length] !== "(") continue;
-    const args: MathQty[] = [];
+    let strategy = "";
     let cursor = i + name.length + 1;
+    if (name === "round") {
+      const strat = /^(nearest|to-zero|down|up)(?![a-z0-9_-])/i.exec(s.slice(cursor));
+      if (strat) {
+        strategy = (strat[1] ?? "").toLowerCase();
+        cursor += strat[0].length;
+        if (s[cursor] !== ",") return null;
+        cursor += 1;
+      }
+    }
+    const args: MathQty[] = [];
     if (s[cursor] === ")") return { n: Number.NaN, u: blankUnits(), i: cursor + 1 };
     while (cursor < s.length) {
       const arg = parseMathSum(s, cursor);
@@ -1045,7 +1118,9 @@ function parseMathCall(s: string, i: number): MathQty | null {
     }
     if (!args.length || args.some((arg) => !Number.isFinite(arg.n))) return null;
     const unit = args.find((arg) => arg.n !== 0)?.u ?? blankUnits();
-    if (args.some((arg) => arg.n !== 0 && !unitsEqual(arg.u, unit))) return null;
+    if (name !== "sign" && name !== "sin" && name !== "cos" && name !== "tan" && name !== "log" && name !== "pow" && name !== "sqrt" && name !== "round" && name !== "mod" && name !== "rem" && name !== "hypot") {
+      if (args.some((arg) => arg.n !== 0 && !unitsEqual(arg.u, unit))) return null;
+    }
     let n = args[0]?.n ?? Number.NaN;
     if (name === "min") n = Math.min(...args.map((arg) => arg.n));
     else if (name === "max") n = Math.max(...args.map((arg) => arg.n));
@@ -1059,6 +1134,64 @@ function parseMathCall(s: string, i: number): MathQty | null {
       const hi = args[2]?.n ?? Number.NaN;
       if (lo > hi) return null;
       n = Math.min(Math.max(mid, lo), hi);
+    } else if (name === "sign") {
+      if (args.length !== 1) return null;
+      n = Math.sign(args[0]?.n ?? Number.NaN);
+      return { n, u: blankUnits(), i: cursor };
+    } else if (name === "sqrt") {
+      if (args.length !== 1 || Object.keys(args[0]?.u ?? {}).length) return null;
+      if ((args[0]?.n ?? 0) < 0) return { n: Number.NaN, u: blankUnits(), i: cursor };
+      n = Math.sqrt(args[0]?.n ?? Number.NaN);
+      return { n, u: blankUnits(), i: cursor };
+    } else if (name === "log") {
+      if ((args.length !== 1 && args.length !== 2) || args.some((arg) => Object.keys(arg.u).length)) return null;
+      const a = args[0]?.n ?? Number.NaN;
+      const b = args.length === 2 ? (args[1]?.n ?? Number.NaN) : Math.E;
+      if (a <= 0 || b <= 0 || b === 1) return { n: Number.NaN, u: blankUnits(), i: cursor };
+      n = Math.log(a) / Math.log(b);
+      return { n, u: blankUnits(), i: cursor };
+    } else if (name === "pow") {
+      if (args.length !== 2 || args.some((arg) => Object.keys(arg.u).length)) return null;
+      const base = args[0]?.n ?? Number.NaN;
+      const exp = args[1]?.n ?? Number.NaN;
+      if (base < 0 && !Number.isInteger(exp)) return { n: Number.NaN, u: blankUnits(), i: cursor };
+      n = Math.pow(base, exp);
+      return { n, u: blankUnits(), i: cursor };
+    } else if (name === "hypot") {
+      if (args.some((arg) => arg.n !== 0 && !unitsEqual(arg.u, unit))) return null;
+      n = Math.hypot(...args.map((arg) => arg.n));
+    } else if (name === "mod" || name === "rem") {
+      if (args.length !== 2) return null;
+      const a = args[0];
+      const b = args[1];
+      if (!a || !b) return null;
+      const aHas = Object.keys(a.u).length > 0;
+      const bHas = Object.keys(b.u).length > 0;
+      if (aHas !== bHas || (aHas && !unitsEqual(a.u, b.u))) return null;
+      n = name === "mod" ? cssMod(a.n, b.n) : cssRem(a.n, b.n);
+      return { n, u: aHas ? a.u : blankUnits(), i: cursor };
+    } else if (name === "round") {
+      if (args.length !== 1 && args.length !== 2) return null;
+      const a = args[0];
+      const b = args[1];
+      if (!a) return null;
+      if (!b && Object.keys(a.u).length) return null;
+      if (b) {
+        const aHas = Object.keys(a.u).length > 0;
+        const bHas = Object.keys(b.u).length > 0;
+        if (aHas !== bHas || (aHas && !unitsEqual(a.u, b.u))) return null;
+      }
+      n = cssRound(strategy || "nearest", a.n, b?.n ?? 1);
+      return { n, u: a.u, i: cursor };
+    } else if (name === "sin" || name === "cos" || name === "tan") {
+      if (args.length !== 1 || !args[0]) return null;
+      const sc = angleSinCos(args[0]);
+      if (!sc) return null;
+      if (name === "tan") {
+        if (sc.cos === 0) return { n: Number.NaN, u: blankUnits(), i: cursor };
+        n = sc.sin / sc.cos;
+      } else n = name === "sin" ? sc.sin : sc.cos;
+      return { n, u: blankUnits(), i: cursor };
     } else if (args.length !== 1) return null;
     else n = args[0]?.n ?? Number.NaN;
     return { n, u: unit, i: cursor };
@@ -1321,21 +1454,19 @@ function compoundMatches(compound: string, el: DeskEl): boolean {
   if (!text) return false;
   while (i < text.length) {
     const ch = text[i] ?? "";
-    if (ch === "*" && !sawType) {
+    if (!sawType && (ch === "*" || ch === "|" || /[A-Za-z_]/.test(ch))) {
+      const typed = /^((?:\*|[A-Za-z_][\w-]*)\|)?(\*|[A-Za-z_][\w-]*)/.exec(text.slice(i));
+      if (!typed) return false;
+      const prefix = typed[1] ?? "";
+      const type = (typed[2] ?? "").toLowerCase();
+      if (prefix && prefix !== "*|") return false;
+      if (type !== "*" && type !== el.tag) return false;
       sawType = true;
-      i += 1;
+      i += typed[0].length;
       continue;
     }
     if (ch === "." || ch === "#" || ch === "[") return false;
     if (ch === ":" && text[i + 1] === ":") return false;
-    if (/[A-Za-z*]/.test(ch) && !sawType && text[i] !== ":") {
-      const m = /^[A-Za-z*][\w-]*/.exec(text.slice(i));
-      if (!m) return false;
-      sawType = true;
-      if (m[0].toLowerCase() !== el.tag && m[0] !== "*") return false;
-      i += m[0].length;
-      continue;
-    }
     if (ch !== ":") return false;
     const pseudo = /^:([A-Za-z-]+|\*)/.exec(text.slice(i));
     if (!pseudo) return false;
@@ -1409,6 +1540,7 @@ function compoundMatches(compound: string, el: DeskEl): boolean {
 function selectorMatchesEl(selector: string, el: DeskEl): boolean {
   const trimmed = selector.trim().replace(/\s+/g, " ");
   if (!trimmed || trimmed.includes("::")) return false;
+  if (isStarPairSelector(trimmed)) return el.tag === "body";
   const child = /^(.*)\s*>\s*([^*][^>]*)$/.exec(trimmed);
   let left = "";
   let compound = trimmed;
@@ -1591,7 +1723,7 @@ function scrubDeskHide(css: string, hidden: Set<string>) {
     },
   );
   out = out.replace(/(^|[{}])\s*([^{};]+)\{([^}]*)\}/g, (all, pre: string, selector: string, body: string) => {
-    if (!isStarPairSelector(selector)) return all;
+    if (body.includes("{") || !isStarPairSelector(selector)) return all;
     return `${pre}${selector}{${scrubHideBody(body, hidden, anims)}}`;
   });
   return scrubLooseDeskRules(out, hidden, anims);

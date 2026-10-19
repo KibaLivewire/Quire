@@ -132,8 +132,10 @@ function rtfToText(rtf: string) {
   let i = 0;
   let out = "";
   let skip = 0;
+  const openedShape: boolean[] = [];
+  const shapeWrote: boolean[] = [];
   const skipDest =
-    /^(?:\\\*|\\(?:fonttbl|colortbl|stylesheet|info|pict|headerl|headerr|headerf|footerl|footerr|footerf|header|footer|ftnsep|ftnsepc|ftncn|aftnsep|aftnsepc|aftncn|object|datastore|themedata|colorschememapping|generator|title|author|operator|creatim|revtim|company|comment|doccomm|keywords|subject|category|manager|hlinkbase|filetbl|listtable|listoverridetable|revtbl|rsidtbl|latentstyles|xmlnstbl|mmathPr|userprops|sp|sn|sv|tcn|tc|xe)\b)/;
+    /^(?:\\\*(?!\s*\\shpinst\b)|\\(?:fonttbl|colortbl|stylesheet|info|pict|headerl|headerr|headerf|footerl|footerr|footerf|header|footer|ftnsep|ftnsepc|ftncn|aftnsep|aftnsepc|aftncn|object|datastore|themedata|colorschememapping|generator|title|author|operator|creatim|revtim|company|comment|doccomm|keywords|subject|category|manager|hlinkbase|filetbl|listtable|listoverridetable|revtbl|rsidtbl|latentstyles|xmlnstbl|mmathPr|userprops|sp|sn|sv|tcn|tc|xe)\b)/;
   const blockSkip =
     /^(?:\\\*\s*)?\\(?:headerl|headerr|headerf|footerl|footerr|footerf|ftnsep|ftnsepc|ftncn|aftnsep|aftnsepc|aftncn)\b/;
 
@@ -160,22 +162,43 @@ function rtfToText(rtf: string) {
     return true;
   }
 
+  function groupName(rest: string): string {
+    return (/^(?:\\\*\s*)?\\([A-Za-z]+)/.exec(rest)?.[1] ?? "").toLowerCase();
+  }
+
+  function emit(text: string) {
+    if (!text) return;
+    if (shapeWrote.length && shapeWrote[shapeWrote.length - 1] !== true && text !== "\n") {
+      if (out && !out.endsWith(" ") && !out.endsWith("\n")) out += " ";
+      shapeWrote[shapeWrote.length - 1] = true;
+    }
+    out += text;
+  }
+
   while (i < rtf.length) {
     const ch = rtf[i];
     if (ch === "{") {
       ucStack.push(ucStack[ucStack.length - 1] ?? 1);
       cpStack.push(cpStack[cpStack.length - 1] ?? 1252);
       const rest = rtf.slice(i + 1);
+      const name = groupName(rest);
+      const isShape = name === "shp" || name === "shpgrp";
+      openedShape.push(isShape);
+      if (isShape) shapeWrote.push(false);
+      const duplicateShapeText = (name === "shptxt" || name === "shprslt") && shapeWrote.at(-1) === true;
       if (skip === 0 && blockSkip.test(rest) && out && !out.endsWith("\n")) out += "\n";
-    if (skip === 0 && /^(?:\\\*\s*)?\\(?:object|pict|nonshppict|shppict)\b/.test(rest) && out && !out.endsWith(" ") && !out.endsWith("\n")) out += " ";
-      if (skip > 0 || skipDest.test(rest)) skip += 1;
+      if (skip === 0 && /^(?:\\\*\s*)?\\(?:object|pict|nonshppict|shppict)\b/.test(rest) && out && !out.endsWith(" ") && !out.endsWith("\n")) out += " ";
+      if (skip > 0 || duplicateShapeText || skipDest.test(rest)) skip += 1;
       i += 1;
       continue;
     }
     if (ch === "}") {
+      const wasShape = openedShape.pop() === true;
+      const wrote = wasShape ? shapeWrote.pop() === true : false;
       if (ucStack.length > 1) ucStack.pop();
       if (cpStack.length > 1) cpStack.pop();
       if (skip > 0) skip -= 1;
+      else if (wasShape && wrote && out && !out.endsWith(" ") && !out.endsWith("\n")) out += " ";
       i += 1;
       continue;
     }
@@ -192,33 +215,37 @@ function rtfToText(rtf: string) {
         i += 1;
         continue;
       }
-      out += ch;
+      emit(ch);
       i += 1;
       continue;
     }
     if (rtf[i + 1] === "\n" || rtf[i + 1] === "\r") {
-      out += "\n";
+      emit("\n");
       i += 2;
       continue;
     }
     if (rtf[i + 1] === "\\" || rtf[i + 1] === "{" || rtf[i + 1] === "}") {
-      out += rtf[i + 1];
+      emit(rtf[i + 1] ?? "");
+      i += 2;
+      continue;
+    }
+    if (rtf.startsWith("\\*", i) && /^\\\*(?:\s|\\)/.test(rtf.slice(i))) {
       i += 2;
       continue;
     }
     const mark = rtf[i + 1];
     if (mark === "~") {
-      out += "\u00a0";
+      emit("\u00a0");
       i += 2;
       continue;
     }
     if (mark === "-") {
-      out += "\u00ad";
+      emit("\u00ad");
       i += 2;
       continue;
     }
     if (mark === "_") {
-      out += "-";
+      emit("-");
       i += 2;
       continue;
     }
@@ -240,13 +267,13 @@ function rtfToText(rtf: string) {
           continue;
         }
         const glyph = new TextDecoder("utf-8", { fatal: false }).decode(Uint8Array.from(bytes)).replace(/\uFFFD/g, "");
-        if (glyph) out += glyph;
+        if (glyph) emit(glyph);
         continue;
       }
       const hex = rtf.slice(i + 2, i + 4);
       if (/^[0-9a-fA-F]{2}$/.test(hex)) {
         const glyph = rtfByteChar(parseInt(hex, 16), codePage);
-        if (glyph) out += glyph;
+        if (glyph) emit(glyph);
         i += 4;
         continue;
       }
@@ -258,7 +285,7 @@ function rtfToText(rtf: string) {
       let glyph = "";
       if (n > 0xffff) glyph = characterFromCode(n);
       else if ((n & 0xffff) !== 0) glyph = String.fromCharCode(n & 0xffff);
-      if (glyph) out += glyph;
+      if (glyph) emit(glyph);
       i += uni[0].length;
       let skipAnsi = ucStack[ucStack.length - 1] ?? 1;
       while (skipAnsi > 0 && i < rtf.length) {
@@ -283,13 +310,15 @@ function rtfToText(rtf: string) {
       else if (word[1] === "mac") cpStack[cpStack.length - 1] = 10000;
       else if (word[1] === "pc") cpStack[cpStack.length - 1] = 437;
       else if (word[1] === "pca") cpStack[cpStack.length - 1] = 850;
-      if (word[1] === "par" || word[1] === "pard" || word[1] === "line" || word[1] === "lbr" || word[1] === "page" || word[1] === "column" || word[1] === "sect" || word[1] === "cell" || word[1] === "nestcell" || word[1] === "row" || word[1] === "nestrow" || word[1] === "softline" || word[1] === "softpage" || word[1] === "softcol") out += "\n";
-      else if (word[1] === "tab") out += "\t";
+      if (word[1] === "pard") {
+        if (!out || out.endsWith("\n")) out += "\n";
+      } else if (word[1] === "par" || word[1] === "line" || word[1] === "lbr" || word[1] === "page" || word[1] === "column" || word[1] === "sect" || word[1] === "cell" || word[1] === "nestcell" || word[1] === "row" || word[1] === "nestrow" || word[1] === "softline" || word[1] === "softpage" || word[1] === "softcol") emit("\n");
+      else if (word[1] === "tab") emit("\t");
       else if (word[1] === "footnote" || word[1] === "annotation" || word[1] === "chftn" || word[1] === "chatn" || RTF_GAP.has(word[1])) {
-        if (!out.endsWith(" ") && !out.endsWith("\n")) out += " ";
+        if (!out.endsWith(" ") && !out.endsWith("\n")) emit(" ");
       } else {
         const glyph = rtfMark(word[1]);
-        if (glyph) out += glyph;
+        if (glyph) emit(glyph);
       }
       i += word[0].length;
       continue;
