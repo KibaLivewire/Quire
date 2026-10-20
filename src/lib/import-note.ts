@@ -104,6 +104,10 @@ function rtfByteChar(byte: number, codePage: number): string {
 
 const WINDOWS_PAGE: Record<number, string> = {
   874: "windows-874",
+  932: "shift_jis",
+  936: "gbk",
+  949: "euc-kr",
+  950: "big5",
   1250: "windows-1250",
   1251: "windows-1251",
   1253: "windows-1253",
@@ -112,6 +116,7 @@ const WINDOWS_PAGE: Record<number, string> = {
   1256: "windows-1256",
   1257: "windows-1257",
   1258: "windows-1258",
+  10000: "macintosh",
 };
 
 function decodeXml(value: string) {
@@ -251,7 +256,8 @@ function rtfToText(rtf: string) {
     }
     if (rtf.startsWith("\\'", i)) {
       const codePage = cpStack[cpStack.length - 1] ?? 1252;
-      if (codePage === 65001) {
+      const label = codePage === 65001 ? "utf-8" : codePage === 1252 ? "" : WINDOWS_PAGE[codePage];
+      if (label) {
         const bytes: number[] = [];
         while (i < rtf.length) {
           if (rtf[i] === "\n" || rtf[i] === "\r") {
@@ -266,7 +272,12 @@ function rtfToText(rtf: string) {
           i += 1;
           continue;
         }
-        const glyph = new TextDecoder("utf-8", { fatal: false }).decode(Uint8Array.from(bytes)).replace(/\uFFFD/g, "");
+        let glyph = "";
+        try {
+          glyph = new TextDecoder(label, { fatal: false }).decode(Uint8Array.from(bytes)).replace(/\uFFFD/g, "");
+        } catch {
+          glyph = "";
+        }
         if (glyph) emit(glyph);
         continue;
       }

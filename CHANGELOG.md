@@ -1,3 +1,18 @@
+# Quire 1.9.20 — The star under the desk
+
+Released 20 October 2026.
+
+- **A star under the desk can no longer hide the page.** `body > *`, `body *`, `body > * > *`, `:is(body > *)`, `:where(body > *)`, and a nested `& > *` on the desk follow a bare `*`. A star that only excludes a class follows it too. A class under the desk, `html .note`, can still hide that class. `.note-body` can still use `display: none`. `body.note` can still use `display: none`. A named element such as `div` may still use `display: none`. Colour stays.
+- **Sin of a half turn is still zero.** `sin(atan2(0, -1))` follows `opacity: 0`, including inside a filter, a scale, and a zoom. `cos(asin(0))` stays. `exp(0)` stays. A turn stays.
+- **A clip with no area can no longer hide the desk.** `polygon()` with no area, `xywh()` with a zero width or height, `rect()` with no width or height, and a `path()` that does not enclose an area follow `circle(0)`. A custom property set to that clip follows it. A triangle stays. `circle(40%)` stays. `inset(100px)` stays. A class may still clip.
+- **An RTF letter in a page this runtime can name is that letter.** Japanese, simplified Chinese, Korean, traditional Chinese, and Mac Roman come across. Windows-1252 is unchanged. A DOS page this runtime cannot name is still one byte.
+
+Windows installer: Quire-Setup-1.9.20.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.19 — The desk's own name
 
 Released 20 October 2026.

@@ -845,6 +845,36 @@ function splitArgs(value: string): string[] {
   return args;
 }
 
+/** A polygon with no area hides the element. A triangle stays. A calculation that is not a bare zero stays. */
+function polygonAreaZero(inner: string): boolean {
+  let body = inner.trim().replace(/^(?:evenodd|nonzero)\s*,\s*/i, "");
+  let prev = "";
+  while (body !== prev) {
+    prev = body;
+    body = body.replace(/calc\([^()]*\)/gi, (all) => (hidesAsZero(all) ? "0" : all));
+  }
+  if (/[a-z]/i.test(body.replace(/(?:%|px|em|rem)/gi, ""))) return false;
+  const nums = [...body.matchAll(/([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)(%|px|em|rem)?/gi)];
+  if (nums.length < 6 || nums.length % 2 !== 0) return false;
+  const unit = (nums[0]?.[2] ?? "").toLowerCase();
+  if (nums.some((item) => (item[2] ?? "").toLowerCase() !== unit)) return false;
+  const pts: [number, number][] = [];
+  for (let i = 0; i < nums.length; i += 2) {
+    const x = Number(nums[i]?.[1]);
+    const y = Number(nums[i + 1]?.[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    pts.push([x, y]);
+  }
+  let area = 0;
+  for (let i = 0; i < pts.length; i += 1) {
+    const next = pts[(i + 1) % pts.length] ?? pts[0];
+    const point = pts[i];
+    if (!point || !next) return false;
+    area += point[0] * next[1] - next[0] * point[1];
+  }
+  return area === 0;
+}
+
 function percentSum(value: string): number | null {
   const token = value.replace(/!important/gi, "").trim();
   const m = /^([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)%$/i.exec(token);
@@ -853,28 +883,143 @@ function percentSum(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** inset() or a zero circle covers the element. A class can still clip. A partial inset stays. */
+/** inset(), a zero circle, or a shape with no area covers the element. A class can still clip. A partial inset stays. */
 function clipHides(value: string, hidden: Set<string>): boolean {
-  const found = namedFunctionCalls(value, ["ellipse", "circle", "inset"]);
-  return found.some((call) => {
-    if (call.name === "circle") {
-      const radius = (call.inner.trim().match(/^[^\s]+/)?.[0] ?? "").trim();
-      return Boolean(radius) && valueCanHide(radius, hidden, hidesAsZero);
+  const found = namedFunctionCalls(value, ["ellipse", "circle", "polygon", "inset", "xywh", "rect", "path"]);
+  if (
+    found.some((call) => {
+      if (call.name === "circle") {
+        const radius = (call.inner.trim().match(/^[^\s]+/)?.[0] ?? "").trim();
+        return Boolean(radius) && valueCanHide(radius, hidden, hidesAsZero);
+      }
+      if (call.name === "xywh") {
+        const parts = splitArgs(call.inner)
+          .flatMap((part) => part.trim().split(/\s+/))
+          .filter(Boolean);
+        const width = parts[2] ?? "";
+        const height = parts[3] ?? "";
+        return (Boolean(width) && valueCanHide(width, hidden, hidesAsZero)) || (Boolean(height) && valueCanHide(height, hidden, hidesAsZero));
+      }
+      if (call.name === "rect") return rectHides(call.inner);
+      if (call.name === "polygon") return polygonAreaZero(call.inner);
+      if (call.name === "path") return pathHides(call.inner);
+      if (call.name === "ellipse") {
+        const parts = call.inner.trim().split(/\s+/);
+        return parts.slice(0, 2).some((part) => valueCanHide(part, hidden, hidesAsZero));
+      }
+      const raw = splitArgs(call.inner).map((part) => part.trim()).filter(Boolean);
+      const sides = raw.length <= 1 ? [raw[0] ?? "", raw[0] ?? "", raw[0] ?? "", raw[0] ?? ""] : raw.length === 2 ? [raw[0] ?? "", raw[1] ?? "", raw[0] ?? "", raw[1] ?? ""] : raw.length === 3 ? [raw[0] ?? "", raw[1] ?? "", raw[2] ?? "", raw[1] ?? ""] : [raw[0] ?? "", raw[1] ?? "", raw[2] ?? "", raw[3] ?? ""];
+      const pct = sides.map((side) => percentSum(side));
+      const top = pct[0];
+      const right = pct[1];
+      const bottom = pct[2];
+      const left = pct[3];
+      if (top == null || right == null || bottom == null || left == null) return false;
+      return top + bottom >= 100 || left + right >= 100;
+    })
+  ) {
+    return true;
+  }
+  const clips = (hidden as HideVars).clips;
+  if (!clips) return false;
+  return varCalls(value).some((call) => clips.has(call.name) || (Boolean(call.fallback) && clipHides(call.fallback, hidden)));
+}
+
+function edgeAmount(token: string): { n: number; unit: string } | null {
+  const m = /^([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)(%|px|em|rem)?$/i.exec(token.trim());
+  if (!m?.[1] || m[1] === "." || m[1] === "+" || m[1] === "-") return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n)) return null;
+  return { n, unit: (m[2] ?? "").toLowerCase() };
+}
+
+/** rect() with no width or no height is a zero box. A real rectangle stays. */
+function rectHides(inner: string): boolean {
+  const parts = splitArgs(inner)
+    .flatMap((part) => part.trim().split(/\s+/))
+    .filter(Boolean);
+  if (parts.length < 4) return false;
+  const edges = parts.slice(0, 4).map((part) => edgeAmount(part));
+  if (edges.some((edge) => !edge)) return false;
+  const top = edges[0];
+  const right = edges[1];
+  const bottom = edges[2];
+  const left = edges[3];
+  if (!top || !right || !bottom || !left) return false;
+  const unit = top.unit;
+  if (right.unit !== unit || bottom.unit !== unit || left.unit !== unit) return false;
+  return right.n - left.n === 0 || bottom.n - top.n === 0;
+}
+
+/** An empty path, or a path that only moves, has no area. A curve stays. A triangle stays. */
+function pathHides(inner: string): boolean {
+  const quoted = /(['"])([\s\S]*)\1/.exec(inner.trim());
+  if (!quoted) return inner.trim() === "" || /^(?:evenodd|nonzero)$/i.test(inner.trim());
+  const d = (quoted[2] ?? "").replace(/,/g, " ").trim();
+  if (!d) return true;
+  if (/[cqast]/i.test(d)) return false;
+  const tokens = d.match(/[a-zA-Z]|[+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?/gi);
+  if (!tokens) return false;
+  let i = 0;
+  let cx = 0;
+  let cy = 0;
+  let sx = 0;
+  let sy = 0;
+  const pts: [number, number][] = [];
+  const num = () => {
+    const token = tokens[i];
+    if (token == null || /[a-z]/i.test(token)) return null;
+    i += 1;
+    const n = Number(token);
+    return Number.isFinite(n) ? n : null;
+  };
+  while (i < tokens.length) {
+    const cmd = tokens[i];
+    if (!cmd || !/[a-z]/i.test(cmd)) return false;
+    i += 1;
+    const rel = cmd === cmd.toLowerCase();
+    const op = cmd.toLowerCase();
+    if (op === "z") {
+      cx = sx;
+      cy = sy;
+      continue;
     }
-    if (call.name === "ellipse") {
-      const parts = call.inner.trim().split(/\s+/);
-      return parts.slice(0, 2).some((part) => valueCanHide(part, hidden, hidesAsZero));
+    if (op !== "m" && op !== "l" && op !== "h" && op !== "v") return false;
+    let pair = 0;
+    while (i < tokens.length && !/[a-z]/i.test(tokens[i] ?? "")) {
+      if (op === "h") {
+        const x = num();
+        if (x == null) return false;
+        cx = rel ? cx + x : x;
+      } else if (op === "v") {
+        const y = num();
+        if (y == null) return false;
+        cy = rel ? cy + y : y;
+      } else {
+        const x = num();
+        const y = num();
+        if (x == null || y == null) return false;
+        cx = rel ? cx + x : x;
+        cy = rel ? cy + y : y;
+        if (op === "m" && pair === 0) {
+          sx = cx;
+          sy = cy;
+        }
+      }
+      pts.push([cx, cy]);
+      pair += 1;
     }
-    const raw = splitArgs(call.inner).map((part) => part.trim()).filter(Boolean);
-    const sides = raw.length <= 1 ? [raw[0] ?? "", raw[0] ?? "", raw[0] ?? "", raw[0] ?? ""] : raw.length === 2 ? [raw[0] ?? "", raw[1] ?? "", raw[0] ?? "", raw[1] ?? ""] : raw.length === 3 ? [raw[0] ?? "", raw[1] ?? "", raw[2] ?? "", raw[1] ?? ""] : [raw[0] ?? "", raw[1] ?? "", raw[2] ?? "", raw[3] ?? ""];
-    const pct = sides.map((side) => percentSum(side));
-    const top = pct[0];
-    const right = pct[1];
-    const bottom = pct[2];
-    const left = pct[3];
-    if (top == null || right == null || bottom == null || left == null) return false;
-    return top + bottom >= 100 || left + right >= 100;
-  });
+    if (pair === 0) return false;
+  }
+  if (pts.length < 3) return true;
+  let area = 0;
+  for (let p = 0; p < pts.length; p += 1) {
+    const next = pts[(p + 1) % pts.length] ?? pts[0];
+    const point = pts[p];
+    if (!point || !next) return false;
+    area += point[0] * next[1] - next[0] * point[1];
+  }
+  return area === 0;
 }
 
 function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
@@ -908,7 +1053,9 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   return false;
 }
 
-function collectHideVars(css: string): Set<string> {
+type HideVars = Set<string> & { clips?: Set<string> };
+
+function collectHideVars(css: string): HideVars {
   const raw = new Map<string, string>();
   const prop = /@property\s+(--[A-Za-z_][\w-]*)\s*\{/gi;
   for (const hit of css.matchAll(prop)) {
@@ -922,7 +1069,7 @@ function collectHideVars(css: string): Set<string> {
   for (const hit of css.matchAll(/--([A-Za-z_][\w-]*)\s*:\s*([^;}{]+)/g)) {
     raw.set(`--${hit[1]}`, (hit[2] ?? "").trim());
   }
-  const hidden = new Set<string>();
+  const hidden: HideVars = new Set();
   const hides = (value: string) =>
     valueCanHide(value, hidden, (v) => {
       const token = v.replace(/!important/gi, "").replace(/\s+/g, "").toLowerCase();
@@ -936,6 +1083,19 @@ function collectHideVars(css: string): Set<string> {
       if (hides(value)) {
         hidden.add(name);
         changed = true;
+      }
+    }
+  }
+  const clips = new Set<string>();
+  hidden.clips = clips;
+  let clipChanged = true;
+  while (clipChanged) {
+    clipChanged = false;
+    for (const [name, value] of raw) {
+      if (clips.has(name)) continue;
+      if (clipHides(value, hidden)) {
+        clips.add(name);
+        clipChanged = true;
       }
     }
   }
@@ -1099,7 +1259,15 @@ function angleSinCos(arg: MathQty): { sin: number; cos: number } | null {
   const unit = keys[0] || "";
   const n = arg.n;
   if (!Number.isFinite(n)) return null;
-  if (!unit || unit === "rad") return n === 0 ? { sin: 0, cos: 1 } : null;
+  if (!unit || unit === "rad") {
+    const half = n / (Math.PI / 2);
+    if (n !== 0 && !nearInt(half)) return null;
+    const k = n === 0 ? 0 : ((Math.round(half) % 4) + 4) % 4;
+    if (k === 0) return { sin: 0, cos: 1 };
+    if (k === 1) return { sin: 1, cos: 0 };
+    if (k === 2) return { sin: 0, cos: -1 };
+    return { sin: -1, cos: 0 };
+  }
   if (unit === "pi") {
     if (nearInt(n)) {
       const k = Math.round(n);
@@ -1783,11 +1951,64 @@ function selectorMatchesEl(selector: string, el: DeskEl): boolean {
 }
 
 function selectorMatchesDesk(selector: string): boolean {
-  return splitSelectorList(selector).some((part) => {
-    const sel = part.trim();
-    if (!sel || sel.includes("::")) return false;
-    return selectorMatchesEl(sel, HTML_EL) || selectorMatchesEl(sel, BODY_EL);
-  });
+  return splitSelectorList(selector).some((part) => branchHidesDesk(part.trim()));
+}
+
+function compoundIsUniversal(compound: string): boolean {
+  const text = compound.trim();
+  if (text === "*" || text === "*|*") return true;
+  return /^(?::is|:where|:matches|:-webkit-any)\(\s*\*(?:\|\*)?\s*\)$/i.test(text);
+}
+
+const CHILD_PROBES: DeskEl[] = [
+  { tag: "div", index: 1, count: 4, ofType: 1, ofTypeCount: 1 },
+  { tag: "section", index: 2, count: 4, ofType: 1, ofTypeCount: 1 },
+  { tag: "span", index: 3, count: 4, ofType: 1, ofTypeCount: 1 },
+  { tag: "article", index: 4, count: 4, ofType: 1, ofTypeCount: 1 },
+];
+
+/** A star, or a star that only excludes a class, matches every child. A named element does not. */
+function compoundCoversChildren(compound: string): boolean {
+  if (compoundIsUniversal(compound)) return true;
+  return CHILD_PROBES.every((el) => compoundMatches(compound, el));
+}
+
+/** A star under the desk hides every child, at any depth. A class under the desk does not. */
+function hidesDeskContents(selector: string): boolean {
+  return stepsHideContents(splitCombinators(selector.trim().replace(/\s+/g, " ")));
+}
+
+function stepsHideContents(steps: { combinator: string; compound: string }[]): boolean {
+  if (steps.length < 2) return false;
+  const last = steps[steps.length - 1];
+  if (!last || !compoundCoversChildren(last.compound)) return false;
+  if (last.combinator !== ">" && last.combinator !== " ") return false;
+  const left = steps.slice(0, -1);
+  if (matchSteps(left, left.length - 1, HTML_EL) || matchSteps(left, left.length - 1, BODY_EL)) return true;
+  if (stepsHideContents(left)) return true;
+  if (left.length === 1) {
+    const inner = functionalInner(left[0]?.compound ?? "");
+    if (inner?.some((part) => branchHidesDesk(part))) return true;
+  }
+  return false;
+}
+
+function functionalInner(compound: string): string[] | null {
+  const hit = /^(?::is|:where|:matches|:-webkit-any)\(([\s\S]*)\)$/i.exec(compound.trim());
+  if (!hit) return null;
+  return splitSelectorList(hit[1] ?? "");
+}
+
+function branchHidesDesk(selector: string): boolean {
+  const sel = selector.trim();
+  if (!sel || sel.includes("::")) return false;
+  if (selectorMatchesEl(sel, HTML_EL) || selectorMatchesEl(sel, BODY_EL)) return true;
+  if (hidesDeskContents(sel)) return true;
+  const steps = splitCombinators(sel.replace(/\s+/g, " "));
+  if (steps.length !== 1) return false;
+  const inner = functionalInner(steps[0]?.compound ?? "");
+  if (!inner) return false;
+  return inner.some((part) => branchHidesDesk(part));
 }
 
 function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, desk: boolean): string {
@@ -1838,7 +2059,8 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
       const selector = decl.trim();
       const close = matchingBrace(body, i);
       if (close < 0) return `${out}${body.slice(i)}`;
-      const childDesk = selectorMatchesDesk(selector) || (desk && selector.replace(/\s+/g, "") === "&");
+      const looking = desk ? selector.replace(/&/g, ":is(html, body)") : selector;
+      const childDesk = selectorMatchesDesk(looking) || (desk && selector.replace(/\s+/g, "") === "&");
       out += `${selector}{${scrubNestedBody(body.slice(i + 1, close), hidden, anims, childDesk)}}`;
       decl = "";
       i = close + 1;
