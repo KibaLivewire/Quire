@@ -544,7 +544,7 @@ function scrubPluginCss(css: string): string {
 /** html, body, :root, a bare *, and :is(*) can still hide the desk. A class rule stays. */
 function isZeroAmount(value: string): boolean {
   const v = value.replace(/!important/gi, "").replace(/\s+/g, "").toLowerCase();
-  return /^[+-]?(?:0+(?:\.0*)?|\.0+)(?:e[+-]?\d+)?%?$/.test(v);
+  return /^[+-]?(?:0+(?:\.0*)?|\.0+)(?:e[+-]?\d+)?(?:%|[a-z]+)?$/.test(v);
 }
 
 /** calc(0), calc(0%), and calc(0 * 1) are still zero. Anything with a unit or a name is not. */
@@ -845,6 +845,38 @@ function splitArgs(value: string): string[] {
   return args;
 }
 
+function percentSum(value: string): number | null {
+  const token = value.replace(/!important/gi, "").trim();
+  const m = /^([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)%$/i.exec(token);
+  if (!m?.[1] || m[1] === "." || m[1] === "+" || m[1] === "-") return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** inset() or a zero circle covers the element. A class can still clip. A partial inset stays. */
+function clipHides(value: string, hidden: Set<string>): boolean {
+  const found = namedFunctionCalls(value, ["ellipse", "circle", "inset"]);
+  return found.some((call) => {
+    if (call.name === "circle") {
+      const radius = (call.inner.trim().match(/^[^\s]+/)?.[0] ?? "").trim();
+      return Boolean(radius) && valueCanHide(radius, hidden, hidesAsZero);
+    }
+    if (call.name === "ellipse") {
+      const parts = call.inner.trim().split(/\s+/);
+      return parts.slice(0, 2).some((part) => valueCanHide(part, hidden, hidesAsZero));
+    }
+    const raw = splitArgs(call.inner).map((part) => part.trim()).filter(Boolean);
+    const sides = raw.length <= 1 ? [raw[0] ?? "", raw[0] ?? "", raw[0] ?? "", raw[0] ?? ""] : raw.length === 2 ? [raw[0] ?? "", raw[1] ?? "", raw[0] ?? "", raw[1] ?? ""] : raw.length === 3 ? [raw[0] ?? "", raw[1] ?? "", raw[2] ?? "", raw[1] ?? ""] : [raw[0] ?? "", raw[1] ?? "", raw[2] ?? "", raw[3] ?? ""];
+    const pct = sides.map((side) => percentSum(side));
+    const top = pct[0];
+    const right = pct[1];
+    const bottom = pct[2];
+    const left = pct[3];
+    if (top == null || right == null || bottom == null || left == null) return false;
+    return top + bottom >= 100 || left + right >= 100;
+  });
+}
+
 function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   const idx = piece.indexOf(":");
   if (idx <= 0) return false;
@@ -872,11 +904,21 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     return matrixFlattens(val, hidden);
   }
   if (prop === "zoom") return valueCanHide(val, hidden, hidesAsZero);
+  if (prop === "clip-path" || prop === "-webkit-clip-path") return clipHides(val, hidden);
   return false;
 }
 
 function collectHideVars(css: string): Set<string> {
   const raw = new Map<string, string>();
+  const prop = /@property\s+(--[A-Za-z_][\w-]*)\s*\{/gi;
+  for (const hit of css.matchAll(prop)) {
+    const name = hit[1] ?? "";
+    const open = (hit.index ?? 0) + hit[0].length - 1;
+    const close = matchingBrace(css, open);
+    if (!name || close < 0) continue;
+    const init = /initial-value\s*:\s*([^;}{]+)/i.exec(css.slice(open + 1, close));
+    if (init?.[1]) raw.set(name, init[1].trim());
+  }
   for (const hit of css.matchAll(/--([A-Za-z_][\w-]*)\s*:\s*([^;}{]+)/g)) {
     raw.set(`--${hit[1]}`, (hit[2] ?? "").trim());
   }
@@ -1010,7 +1052,9 @@ function parseMathUnary(s: string, i: number): MathQty | null {
   }
   const call = parseMathCall(s, i);
   if (call) return call;
-  if (/^pi(?![a-z0-9_-])/i.test(s.slice(i))) return { n: 1, u: { pi: 1 }, i: i + 2 };
+  if (/^infinity(?![a-z0-9_])/i.test(s.slice(i))) return { n: Infinity, u: blankUnits(), i: i + "infinity".length };
+  if (/^e(?![a-z0-9_])/i.test(s.slice(i))) return { n: Math.E, u: blankUnits(), i: i + 1 };
+  if (/^pi(?![a-z0-9_])/i.test(s.slice(i))) return { n: 1, u: { pi: 1 }, i: i + 2 };
   const m = /^(\d*\.?\d+)(?:e([+-]?\d+))?([a-z%]*)/i.exec(s.slice(i));
   if (!m?.[1] || m[1] === ".") return null;
   const n = Number(m[1]) * (m[2] ? 10 ** Number(m[2]) : 1);
@@ -1083,8 +1127,37 @@ function angleSinCos(arg: MathQty): { sin: number; cos: number } | null {
   return null;
 }
 
+function inverseAngle(name: string, args: MathQty[]): number | null {
+  if (!args.length || args.some((arg) => Object.keys(arg.u).length || !Number.isFinite(arg.n))) return null;
+  if (name === "asin" && args.length === 1) {
+    const x = args[0]?.n ?? Number.NaN;
+    if (x === 0) return 0;
+    if (x === 1) return Math.PI / 2;
+    if (x === -1) return -Math.PI / 2;
+    return null;
+  }
+  if (name === "acos" && args.length === 1) {
+    const x = args[0]?.n ?? Number.NaN;
+    if (x === 1) return 0;
+    if (x === 0) return Math.PI / 2;
+    if (x === -1) return Math.PI;
+    return null;
+  }
+  if (name === "atan" && args.length === 1) return args[0]?.n === 0 ? 0 : null;
+  if (name === "atan2" && args.length === 2) {
+    const y = args[0]?.n ?? Number.NaN;
+    const x = args[1]?.n ?? Number.NaN;
+    if (y === 0 && x > 0) return 0;
+    if (y === 0 && x < 0) return Math.PI;
+    if (x === 0 && y > 0) return Math.PI / 2;
+    if (x === 0 && y < 0) return -Math.PI / 2;
+    return null;
+  }
+  return null;
+}
+
 function parseMathCall(s: string, i: number): MathQty | null {
-  const names = ["clamp", "hypot", "round", "sqrt", "sign", "calc", "min", "max", "mod", "pow", "log", "abs", "rem", "sin", "cos", "tan"];
+  const names = ["clamp", "hypot", "round", "atan2", "sqrt", "sign", "calc", "asin", "acos", "atan", "min", "max", "mod", "pow", "log", "abs", "rem", "sin", "cos", "tan", "exp"];
   for (const name of names) {
     if (s.slice(i, i + name.length).toLowerCase() !== name) continue;
     if (s[i + name.length] !== "(") continue;
@@ -1116,7 +1189,8 @@ function parseMathCall(s: string, i: number): MathQty | null {
       }
       return null;
     }
-    if (!args.length || args.some((arg) => !Number.isFinite(arg.n))) return null;
+    if (!args.length) return null;
+    if (args.some((arg) => !Number.isFinite(arg.n)) && !/^(?:min|max|clamp|exp|abs|pow|hypot|calc)$/.test(name)) return null;
     const unit = args.find((arg) => arg.n !== 0)?.u ?? blankUnits();
     if (name !== "sign" && name !== "sin" && name !== "cos" && name !== "tan" && name !== "log" && name !== "pow" && name !== "sqrt" && name !== "round" && name !== "mod" && name !== "rem" && name !== "hypot") {
       if (args.some((arg) => arg.n !== 0 && !unitsEqual(arg.u, unit))) return null;
@@ -1192,6 +1266,14 @@ function parseMathCall(s: string, i: number): MathQty | null {
         n = sc.sin / sc.cos;
       } else n = name === "sin" ? sc.sin : sc.cos;
       return { n, u: blankUnits(), i: cursor };
+    } else if (name === "exp") {
+      if (args.length !== 1 || !args[0] || Object.keys(args[0].u).length) return null;
+      n = Math.exp(args[0].n);
+      return { n, u: blankUnits(), i: cursor };
+    } else if (name === "asin" || name === "acos" || name === "atan" || name === "atan2") {
+      const ang = inverseAngle(name, args);
+      if (ang == null) return null;
+      return { n: ang, u: ang === 0 ? blankUnits() : { rad: 1 }, i: cursor };
     } else if (args.length !== 1) return null;
     else n = args[0]?.n ?? Number.NaN;
     return { n, u: unit, i: cursor };
@@ -1377,6 +1459,26 @@ type DeskEl = { tag: string; index: number; count: number; ofType: number; ofTyp
 
 const HTML_EL: DeskEl = { tag: "html", index: 1, count: 1, ofType: 1, ofTypeCount: 1 };
 const BODY_EL: DeskEl = { tag: "body", index: 2, count: 2, ofType: 1, ofTypeCount: 1 };
+const HEAD_EL: DeskEl = { tag: "head", index: 1, count: 2, ofType: 1, ofTypeCount: 1 };
+
+function attrMatchesDesk(inner: string, el: DeskEl): boolean {
+  if (el.tag !== "html") return false;
+  const match = /^([a-zA-Z_][\w:.-]*)(?:\s*([~|^$*]?=)\s*(?:"([^"]*)"|'([^']*)'|([^\s]+)))?(?:\s+[iIsS])?\s*$/.exec(inner.trim());
+  if (!match) return false;
+  const name = (match[1] ?? "").toLowerCase();
+  const op = match[2] ?? "";
+  const value = (match[3] ?? match[4] ?? match[5] ?? "").toLowerCase();
+  if (name === "data-theme" || name === "data-device" || name === "data-native" || name === "data-orientation" || name === "data-ink-only" || name === "data-focus-mode") return true;
+  if (name !== "lang") return false;
+  if (!op) return true;
+  const want = "en";
+  if (op === "=" || op === "~=") return value === want;
+  if (op === "|=") return want === value || want.startsWith(`${value}-`);
+  if (op === "^=") return Boolean(value) && want.startsWith(value);
+  if (op === "$=") return Boolean(value) && want.endsWith(value);
+  if (op === "*=") return Boolean(value) && want.includes(value);
+  return false;
+}
 
 function nthHits(formula: string, index: number): boolean | null {
   const f = formula.replace(/\s+/g, "").toLowerCase();
@@ -1465,7 +1567,41 @@ function compoundMatches(compound: string, el: DeskEl): boolean {
       i += typed[0].length;
       continue;
     }
-    if (ch === "." || ch === "#" || ch === "[") return false;
+    if (ch === "#") return false;
+    if (ch === ".") {
+      const cls = /^\.([A-Za-z_][\w-]*)/.exec(text.slice(i));
+      if (!cls) return false;
+      if (el.tag !== "html" || (cls[1] ?? "").toLowerCase() !== "antialiased") return false;
+      sawType = true;
+      i += cls[0].length;
+      continue;
+    }
+    if (ch === "[") {
+      let quote = "";
+      let j = i + 1;
+      for (; j < text.length; j += 1) {
+        const c = text[j] ?? "";
+        const n = text[j + 1] ?? "";
+        if (quote) {
+          if (c === "\\" && n) {
+            j += 1;
+            continue;
+          }
+          if (c === quote) quote = "";
+          continue;
+        }
+        if (c === '"' || c === "'") {
+          quote = c;
+          continue;
+        }
+        if (c === "]") break;
+      }
+      if (text[j] !== "]") return false;
+      if (!attrMatchesDesk(text.slice(i + 1, j), el)) return false;
+      sawType = true;
+      i = j + 1;
+      continue;
+    }
     if (ch === ":" && text[i + 1] === ":") return false;
     if (ch !== ":") return false;
     const pseudo = /^:([A-Za-z-]+|\*)/.exec(text.slice(i));
@@ -1537,29 +1673,113 @@ function compoundMatches(compound: string, el: DeskEl): boolean {
   return sawType || text.startsWith(":");
 }
 
+function splitCombinators(selector: string): { combinator: string; compound: string }[] {
+  const steps: { combinator: string; compound: string }[] = [];
+  let current = "";
+  let combinator = "";
+  let depth = 0;
+  let quote = "";
+  const flush = (next: string) => {
+    const compound = current.trim();
+    if (compound) steps.push({ combinator, compound });
+    current = "";
+    combinator = next;
+  };
+  for (let i = 0; i < selector.length; i += 1) {
+    const ch = selector[i] ?? "";
+    const next = selector[i + 1] ?? "";
+    if (quote) {
+      current += ch;
+      if (ch === "\\" && next) {
+        current += next;
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "(") {
+      depth += 1;
+      current += ch;
+      continue;
+    }
+    if (ch === ")" && depth > 0) {
+      depth -= 1;
+      current += ch;
+      continue;
+    }
+    if (depth === 0 && (ch === ">" || ch === "+" || ch === "~")) {
+      flush(ch);
+      continue;
+    }
+    if (depth === 0 && /\s/.test(ch)) {
+      let j = i;
+      while (j < selector.length && /\s/.test(selector[j] ?? "")) j += 1;
+      const nxt = selector[j] ?? "";
+      if (nxt === ">" || nxt === "+" || nxt === "~") {
+        flush(nxt);
+        i = j;
+        continue;
+      }
+      if (current.trim()) flush(" ");
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) steps.push({ combinator, compound: current.trim() });
+  return steps;
+}
+
+function parentEl(el: DeskEl): DeskEl | null {
+  if (el.tag === "body" || el.tag === "head") return HTML_EL;
+  return null;
+}
+
+function prevEl(el: DeskEl): DeskEl | null {
+  if (el.tag === "body") return HEAD_EL;
+  return null;
+}
+
+function matchSteps(steps: { combinator: string; compound: string }[], index: number, el: DeskEl): boolean {
+  const step = steps[index];
+  if (!step || !compoundMatches(step.compound, el)) return false;
+  if (index === 0) return true;
+  const comb = step.combinator;
+  if (comb === ">") {
+    const parent = parentEl(el);
+    return Boolean(parent) && matchSteps(steps, index - 1, parent as DeskEl);
+  }
+  if (comb === " ") {
+    let ancestor = parentEl(el);
+    while (ancestor) {
+      if (matchSteps(steps, index - 1, ancestor)) return true;
+      ancestor = parentEl(ancestor);
+    }
+    return false;
+  }
+  if (comb === "+" || comb === "~") {
+    let sib = prevEl(el);
+    while (sib) {
+      if (matchSteps(steps, index - 1, sib)) return true;
+      if (comb === "+") return false;
+      sib = prevEl(sib);
+    }
+    return false;
+  }
+  return false;
+}
+
 function selectorMatchesEl(selector: string, el: DeskEl): boolean {
   const trimmed = selector.trim().replace(/\s+/g, " ");
   if (!trimmed || trimmed.includes("::")) return false;
-  if (isStarPairSelector(trimmed)) return el.tag === "body";
-  const child = /^(.*)\s*>\s*([^*][^>]*)$/.exec(trimmed);
-  let left = "";
-  let compound = trimmed;
-  let combinator = "";
-  if (child) {
-    left = child[1]?.trim() ?? "";
-    compound = child[2]?.trim() ?? "";
-    combinator = ">";
-  } else if (trimmed.includes(" ")) {
-    const at = trimmed.lastIndexOf(" ");
-    left = trimmed.slice(0, at).trim();
-    compound = trimmed.slice(at + 1).trim();
-    combinator = " ";
-  }
-  if (!compoundMatches(compound, el)) return false;
-  if (!combinator) return true;
-  if (el.tag === "html") return false;
-  if (left === "*" || left === "html" || left === ":root") return true;
-  return selectorMatchesEl(left, HTML_EL);
+  const steps = splitCombinators(trimmed);
+  if (!steps.length) return false;
+  return matchSteps(steps, steps.length - 1, el);
 }
 
 function selectorMatchesDesk(selector: string): boolean {
@@ -1706,11 +1926,7 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
 
 function scrubDeskHide(css: string, hidden: Set<string>) {
   const anims = hidingKeyframeNames(css, hidden);
-  let out = css.replace(/(?:html|body|:root)\b[^{]*\{[^}]*\}/gi, (block) => {
-    const open = block.indexOf("{");
-    if (open < 0) return block;
-    return `${block.slice(0, open + 1)}${scrubHideBody(block.slice(open + 1, -1), hidden, anims)}}`;
-  });
+  let out = css;
   out = out.replace(
     /(^|[{},]\s*)(\*(?![A-Za-z0-9_-])(?:(?::[a-zA-Z-]+(?:\([^)]*\))?)*)\s*)\{([^}]*)\}/g,
     (_all, pre: string, sel: string, body: string) => `${pre}${sel}{${scrubHideBody(body, hidden, anims)}}`,

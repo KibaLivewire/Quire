@@ -1,3 +1,18 @@
+# Quire 1.9.19 — The desk's own name
+
+Released 20 October 2026.
+
+- **A selector that still matches the desk can no longer hide it.** A space inside `:nth-child(2n + 1)` or `:nth-child(n of *)` is still that child. `head + body` and `html>*` follow `body`. `[data-theme]`, `[data-device]`, `[lang=en]`, and `.antialiased` are the desk itself. A class under the desk, `html .note`, keeps `display: none`. A star in front of a class still hides that class. `[contenteditable]` stays.
+- **A registered property can no longer hide the desk.** `@property` with `initial-value: 0` or `initial-value: none` follows `opacity: 0` and `display: none` when the desk reads that variable. An explicit `0.5` still wins.
+- **Another spelling of zero can no longer hide the desk.** `calc(1 / infinity)`, `min(infinity, 0)`, `exp(-infinity)`, `calc(e - e)`, `asin(0)`, and `calc(asin(0) / 1rad)` follow `opacity: 0`. `exp(0)` stays. `min(infinity, 1)` stays. `sin(90deg)` stays. `acos(0)` stays. `pow(0, 0)` stays. `log(10)` stays.
+- **A clip can no longer hide the desk.** `clip-path: inset(100%)`, `inset(50%)`, `circle(0)`, and `circle(0px)` are dropped on the desk. `inset(10%)` stays. `circle(40%)` stays. A class can still clip. A grayscale filter stays. A turn stays. Fixed placement in an add-on stays.
+
+Windows installer: Quire-Setup-1.9.19.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.18 — A zero is still zero
 
 Released 19 October 2026.
