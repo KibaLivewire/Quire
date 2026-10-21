@@ -883,9 +883,83 @@ function percentSum(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** shape() with no area hides the element. A curve or an arc stays. A triangle stays. */
+function shapeHides(inner: string): boolean {
+  const body = inner.trim().replace(/^(?:evenodd|nonzero)\s*,?\s*/i, "");
+  if (/\b(?:curve|arc|smooth)\b/i.test(body)) return false;
+  const tokens = body.match(/[a-zA-Z]+|[+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?(?:%|px|em|rem)?/gi);
+  if (!tokens) return false;
+  let i = 0;
+  let cx = 0;
+  let cy = 0;
+  let unit = "";
+  const pts: [number, number][] = [];
+  const num = (): { n: number; unit: string } | null => {
+    const token = tokens[i];
+    if (token == null || /^[a-z]/i.test(token)) return null;
+    i += 1;
+    const m = /^([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)(%|px|em|rem)?$/i.exec(token);
+    if (!m?.[1] || m[1] === "." || m[1] === "+" || m[1] === "-") return null;
+    const n = Number(m[1]);
+    if (!Number.isFinite(n)) return null;
+    return { n, unit: (m[2] ?? "").toLowerCase() };
+  };
+  const takePair = (rel: boolean): boolean => {
+    const x = num();
+    const y = num();
+    if (!x || !y || x.unit !== y.unit) return false;
+    if (!unit) unit = x.unit;
+    if (x.unit !== unit) return false;
+    cx = rel ? cx + x.n : x.n;
+    cy = rel ? cy + y.n : y.n;
+    pts.push([cx, cy]);
+    return true;
+  };
+  while (i < tokens.length) {
+    const word = (tokens[i] ?? "").toLowerCase();
+    if (!/^[a-z]/i.test(word)) return false;
+    i += 1;
+    if (word === "close") continue;
+    if (word === "from" || word === "move" || word === "line") {
+      const rel = word !== "from" && (tokens[i] ?? "").toLowerCase() === "by";
+      const abs = (tokens[i] ?? "").toLowerCase() === "to";
+      if (word !== "from") {
+        if (!rel && !abs) return false;
+        i += 1;
+      }
+      if (!takePair(rel)) return false;
+      continue;
+    }
+    if (word === "hline" || word === "vline") {
+      const rel = (tokens[i] ?? "").toLowerCase() === "by";
+      const abs = (tokens[i] ?? "").toLowerCase() === "to";
+      if (!rel && !abs) return false;
+      i += 1;
+      const axis = num();
+      if (!axis) return false;
+      if (!unit) unit = axis.unit;
+      if (axis.unit !== unit) return false;
+      if (word === "hline") cx = rel ? cx + axis.n : axis.n;
+      else cy = rel ? cy + axis.n : axis.n;
+      pts.push([cx, cy]);
+      continue;
+    }
+    return false;
+  }
+  if (pts.length < 3) return true;
+  let area = 0;
+  for (let p = 0; p < pts.length; p += 1) {
+    const next = pts[(p + 1) % pts.length] ?? pts[0];
+    const point = pts[p];
+    if (!point || !next) return false;
+    area += point[0] * next[1] - next[0] * point[1];
+  }
+  return area === 0;
+}
+
 /** inset(), a zero circle, or a shape with no area covers the element. A class can still clip. A partial inset stays. */
 function clipHides(value: string, hidden: Set<string>): boolean {
-  const found = namedFunctionCalls(value, ["ellipse", "circle", "polygon", "inset", "xywh", "rect", "path"]);
+  const found = namedFunctionCalls(value, ["ellipse", "circle", "polygon", "inset", "xywh", "rect", "path", "shape"]);
   if (
     found.some((call) => {
       if (call.name === "circle") {
@@ -903,6 +977,7 @@ function clipHides(value: string, hidden: Set<string>): boolean {
       if (call.name === "rect") return rectHides(call.inner);
       if (call.name === "polygon") return polygonAreaZero(call.inner);
       if (call.name === "path") return pathHides(call.inner);
+      if (call.name === "shape") return shapeHides(call.inner);
       if (call.name === "ellipse") {
         const parts = call.inner.trim().split(/\s+/);
         return parts.slice(0, 2).some((part) => valueCanHide(part, hidden, hidesAsZero));
@@ -1050,6 +1125,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   }
   if (prop === "zoom") return valueCanHide(val, hidden, hidesAsZero);
   if (prop === "clip-path" || prop === "-webkit-clip-path") return clipHides(val, hidden);
+  if (prop === "clip") return namedFunctionCalls(val, ["rect"]).some((call) => rectHides(call.inner));
   return false;
 }
 
@@ -1102,10 +1178,34 @@ function collectHideVars(css: string): HideVars {
   return hidden;
 }
 
+const BOX_SIZE = new Set(["height", "width", "max-height", "max-width", "block-size", "inline-size", "max-block-size", "max-inline-size"]);
+
+function isBoxClip(part: string): boolean {
+  const idx = part.indexOf(":");
+  if (idx <= 0) return false;
+  const prop = part.slice(0, idx).trim().toLowerCase().replace(/\s+/g, "");
+  return (prop === "overflow" || prop === "overflow-x" || prop === "overflow-y") && /\b(?:hidden|clip)\b/i.test(part.slice(idx + 1));
+}
+
+function isBoxZero(part: string, hidden: Set<string>): boolean {
+  const idx = part.indexOf(":");
+  if (idx <= 0) return false;
+  const prop = part.slice(0, idx).trim().toLowerCase().replace(/\s+/g, "");
+  return BOX_SIZE.has(prop) && valueCanHide(part.slice(idx + 1), hidden, hidesAsZero);
+}
+
+/** A zero width or height plus a clip overflow hides the desk. A full-height scroll stays. A class may still collapse. */
+function boxCollapses(parts: string[], hidden: Set<string>): boolean {
+  return parts.some((part) => isBoxClip(part)) && parts.some((part) => isBoxZero(part, hidden));
+}
+
 function scrubHideBody(body: string, hidden: Set<string>, anims: Set<string> = new Set()) {
-  return splitCssDeclarations(body)
+  const parts = splitCssDeclarations(body)
     .map((part) => part.trim())
-    .filter((part) => part && !declarationHidesDesk(part, hidden) && !declarationUsesHidingAnim(part, anims))
+    .filter(Boolean);
+  const flat = boxCollapses(parts, hidden);
+  return parts
+    .filter((part) => part && !declarationHidesDesk(part, hidden) && !declarationUsesHidingAnim(part, anims) && !(flat && (isBoxClip(part) || isBoxZero(part, hidden))))
     .join("; ");
 }
 
@@ -1181,6 +1281,17 @@ function parseMathSum(s: string, i: number): MathQty | null {
   return left;
 }
 
+/** pi times one radian is still that many turns of pi. Two units that are not that pair stay unread. */
+function foldPiRad(qty: MathQty): MathQty {
+  if (qty.u.pi !== 1 || qty.u.rad !== 1) return qty;
+  const u: Record<string, number> = {};
+  for (const [key, exp] of Object.entries(qty.u)) {
+    if (key === "rad" || !exp) continue;
+    u[key] = exp;
+  }
+  return { n: qty.n, u, i: qty.i };
+}
+
 function parseMathMul(s: string, i: number): MathQty | null {
   let left = parseMathUnary(s, i);
   if (!left) return null;
@@ -1189,11 +1300,11 @@ function parseMathMul(s: string, i: number): MathQty | null {
     const right = parseMathUnary(s, left.i + 1);
     if (!right) return null;
     if (divide && right.n === 0) return null;
-    left = {
+    left = foldPiRad({
       n: divide ? left.n / right.n : left.n * right.n,
       u: combineUnits(left.u, right.u, divide ? -1 : 1),
       i: right.i,
-    };
+    });
   }
   return left;
 }
@@ -1715,9 +1826,9 @@ function splitSelectorList(value: string): string[] {
 }
 
 const STATE_PSEUDO =
-  /^(?:hover|focus|focus-visible|focus-within|active|visited|link|any-link|target|scope|empty|checked|disabled|enabled|blank|fullscreen|modal|popover-open|playing|paused|user-valid|user-invalid|required|optional|read-only|read-write|indeterminate|default|valid|invalid|in-range|out-of-range|placeholder-shown|autofill|defined|host|host-context|current|past|future)$/i;
+  /^(?:hover|focus|focus-visible|focus-within|active|visited|link|any-link|target|empty|checked|disabled|enabled|blank|fullscreen|modal|popover-open|playing|paused|user-valid|user-invalid|required|optional|read-only|read-write|indeterminate|default|valid|invalid|in-range|out-of-range|placeholder-shown|autofill|defined|host|host-context|current|past|future)$/i;
 
-function compoundMatches(compound: string, el: DeskEl): boolean {
+function compoundMatches(compound: string, el: DeskEl, scopeSel: string | null = null): boolean {
   let i = 0;
   let sawType = false;
   const text = compound.trim();
@@ -1827,11 +1938,15 @@ function compoundMatches(compound: string, el: DeskEl): boolean {
       continue;
     }
     if (name === "is" || name === "where" || name === "matches" || name === "-webkit-any") {
-      if (!splitSelectorList(arg).some((part) => selectorMatchesEl(part, el))) return false;
+      if (!splitSelectorList(arg).some((part) => selectorMatchesEl(part, el, scopeSel))) return false;
       continue;
     }
     if (name === "not") {
-      if (splitSelectorList(arg).some((part) => selectorMatchesEl(part, el))) return false;
+      if (splitSelectorList(arg).some((part) => selectorMatchesEl(part, el, scopeSel))) return false;
+      continue;
+    }
+    if (name === "scope") {
+      if (!scopeSel || !splitSelectorList(scopeSel).some((part) => selectorMatchesEl(part, el, null))) return false;
       continue;
     }
     if (name === "lang") continue;
@@ -1913,19 +2028,19 @@ function prevEl(el: DeskEl): DeskEl | null {
   return null;
 }
 
-function matchSteps(steps: { combinator: string; compound: string }[], index: number, el: DeskEl): boolean {
+function matchSteps(steps: { combinator: string; compound: string }[], index: number, el: DeskEl, scopeSel: string | null = null): boolean {
   const step = steps[index];
-  if (!step || !compoundMatches(step.compound, el)) return false;
+  if (!step || !compoundMatches(step.compound, el, scopeSel)) return false;
   if (index === 0) return true;
   const comb = step.combinator;
   if (comb === ">") {
     const parent = parentEl(el);
-    return Boolean(parent) && matchSteps(steps, index - 1, parent as DeskEl);
+    return Boolean(parent) && matchSteps(steps, index - 1, parent as DeskEl, scopeSel);
   }
   if (comb === " ") {
     let ancestor = parentEl(el);
     while (ancestor) {
-      if (matchSteps(steps, index - 1, ancestor)) return true;
+      if (matchSteps(steps, index - 1, ancestor, scopeSel)) return true;
       ancestor = parentEl(ancestor);
     }
     return false;
@@ -1933,7 +2048,7 @@ function matchSteps(steps: { combinator: string; compound: string }[], index: nu
   if (comb === "+" || comb === "~") {
     let sib = prevEl(el);
     while (sib) {
-      if (matchSteps(steps, index - 1, sib)) return true;
+      if (matchSteps(steps, index - 1, sib, scopeSel)) return true;
       if (comb === "+") return false;
       sib = prevEl(sib);
     }
@@ -1942,16 +2057,16 @@ function matchSteps(steps: { combinator: string; compound: string }[], index: nu
   return false;
 }
 
-function selectorMatchesEl(selector: string, el: DeskEl): boolean {
+function selectorMatchesEl(selector: string, el: DeskEl, scopeSel: string | null = null): boolean {
   const trimmed = selector.trim().replace(/\s+/g, " ");
   if (!trimmed || trimmed.includes("::")) return false;
   const steps = splitCombinators(trimmed);
   if (!steps.length) return false;
-  return matchSteps(steps, steps.length - 1, el);
+  return matchSteps(steps, steps.length - 1, el, scopeSel);
 }
 
-function selectorMatchesDesk(selector: string): boolean {
-  return splitSelectorList(selector).some((part) => branchHidesDesk(part.trim()));
+function selectorMatchesDesk(selector: string, scopeSel: string | null = null): boolean {
+  return splitSelectorList(selector).some((part) => branchHidesDesk(part.trim(), scopeSel));
 }
 
 function compoundIsUniversal(compound: string): boolean {
@@ -1974,21 +2089,21 @@ function compoundCoversChildren(compound: string): boolean {
 }
 
 /** A star under the desk hides every child, at any depth. A class under the desk does not. */
-function hidesDeskContents(selector: string): boolean {
-  return stepsHideContents(splitCombinators(selector.trim().replace(/\s+/g, " ")));
+function hidesDeskContents(selector: string, scopeSel: string | null = null): boolean {
+  return stepsHideContents(splitCombinators(selector.trim().replace(/\s+/g, " ")), scopeSel);
 }
 
-function stepsHideContents(steps: { combinator: string; compound: string }[]): boolean {
+function stepsHideContents(steps: { combinator: string; compound: string }[], scopeSel: string | null = null): boolean {
   if (steps.length < 2) return false;
   const last = steps[steps.length - 1];
   if (!last || !compoundCoversChildren(last.compound)) return false;
   if (last.combinator !== ">" && last.combinator !== " ") return false;
   const left = steps.slice(0, -1);
-  if (matchSteps(left, left.length - 1, HTML_EL) || matchSteps(left, left.length - 1, BODY_EL)) return true;
-  if (stepsHideContents(left)) return true;
+  if (matchSteps(left, left.length - 1, HTML_EL, scopeSel) || matchSteps(left, left.length - 1, BODY_EL, scopeSel)) return true;
+  if (stepsHideContents(left, scopeSel)) return true;
   if (left.length === 1) {
     const inner = functionalInner(left[0]?.compound ?? "");
-    if (inner?.some((part) => branchHidesDesk(part))) return true;
+    if (inner?.some((part) => branchHidesDesk(part, scopeSel))) return true;
   }
   return false;
 }
@@ -1999,20 +2114,21 @@ function functionalInner(compound: string): string[] | null {
   return splitSelectorList(hit[1] ?? "");
 }
 
-function branchHidesDesk(selector: string): boolean {
+function branchHidesDesk(selector: string, scopeSel: string | null = null): boolean {
   const sel = selector.trim();
   if (!sel || sel.includes("::")) return false;
-  if (selectorMatchesEl(sel, HTML_EL) || selectorMatchesEl(sel, BODY_EL)) return true;
-  if (hidesDeskContents(sel)) return true;
+  if (selectorMatchesEl(sel, HTML_EL, scopeSel) || selectorMatchesEl(sel, BODY_EL, scopeSel)) return true;
+  if (hidesDeskContents(sel, scopeSel)) return true;
   const steps = splitCombinators(sel.replace(/\s+/g, " "));
   if (steps.length !== 1) return false;
   const inner = functionalInner(steps[0]?.compound ?? "");
   if (!inner) return false;
-  return inner.some((part) => branchHidesDesk(part));
+  return inner.some((part) => branchHidesDesk(part, scopeSel));
 }
 
-function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, desk: boolean): string {
+function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, desk: boolean, scopeSel: string | null = null): string {
   if (!body.includes("{")) return desk ? scrubHideBody(body, hidden, anims) : body.trim();
+  const flat = desk && boxCollapses(topLevelDeclarations(body), hidden);
   let out = "";
   let decl = "";
   let i = 0;
@@ -2021,7 +2137,9 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const keep = (piece: string) => {
     const next = piece.trim();
     if (!next) return;
-    if (!desk || (!declarationHidesDesk(next, hidden) && !declarationUsesHidingAnim(next, anims))) out += `${next}; `;
+    if (desk && (declarationHidesDesk(next, hidden) || declarationUsesHidingAnim(next, anims))) return;
+    if (flat && (isBoxClip(next) || isBoxZero(next, hidden))) return;
+    out += `${next}; `;
   };
   while (i < body.length) {
     const ch = body[i] ?? "";
@@ -2059,9 +2177,24 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
       const selector = decl.trim();
       const close = matchingBrace(body, i);
       if (close < 0) return `${out}${body.slice(i)}`;
+      const inner = body.slice(i + 1, close);
+      if (selector.startsWith("@")) {
+        const at = /^@(-?[\w-]+)/.exec(selector);
+        const kind = (at?.[1] ?? "").replace(/^-webkit-/, "");
+        const prelude = selector.slice(at?.[0].length ?? 0);
+        if (/^scope$/i.test(kind)) {
+          const root = scopeRootSelector(prelude);
+          const nextScope = root && selectorMatchesDesk(root, scopeSel) ? root : null;
+          out += `${selector}{${scrubLooseDeskRules(inner, hidden, anims, nextScope)}}`;
+        } else if (RECURSE_AT.test(kind)) out += `${selector}{${scrubNestedBody(inner, hidden, anims, desk, scopeSel)}}`;
+        else out += `${selector}{${inner}}`;
+        decl = "";
+        i = close + 1;
+        continue;
+      }
       const looking = desk ? selector.replace(/&/g, ":is(html, body)") : selector;
-      const childDesk = selectorMatchesDesk(looking) || (desk && selector.replace(/\s+/g, "") === "&");
-      out += `${selector}{${scrubNestedBody(body.slice(i + 1, close), hidden, anims, childDesk)}}`;
+      const childDesk = selectorMatchesDesk(looking, scopeSel) || (desk && selector.replace(/\s+/g, "") === "&");
+      out += `${selector}{${scrubNestedBody(inner, hidden, anims, childDesk, scopeSel)}}`;
       decl = "";
       i = close + 1;
       continue;
@@ -2076,13 +2209,76 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     i += 1;
   }
   const tail = decl.trim();
-  if (tail && (!desk || (!declarationHidesDesk(tail, hidden) && !declarationUsesHidingAnim(tail, anims)))) out += tail;
+  if (tail && !(desk && (declarationHidesDesk(tail, hidden) || declarationUsesHidingAnim(tail, anims))) && !(flat && (isBoxClip(tail) || isBoxZero(tail, hidden)))) out += tail;
   return out.replace(/;\s*$/g, "").trim();
 }
 
-const RECURSE_AT = /^(?:media|supports|layer|container|scope|document)$/i;
+function topLevelDeclarations(body: string): string[] {
+  const decls: string[] = [];
+  let current = "";
+  let depth = 0;
+  let quote = "";
+  let paren = 0;
+  for (let i = 0; i < body.length; i += 1) {
+    const ch = body[i] ?? "";
+    const next = body[i + 1] ?? "";
+    if (quote) {
+      if (depth === 0) current += ch;
+      if (ch === "\\" && next) {
+        if (depth === 0) current += next;
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      if (depth === 0) current += ch;
+      continue;
+    }
+    if (ch === "(") {
+      paren += 1;
+      if (depth === 0) current += ch;
+      continue;
+    }
+    if (ch === ")" && paren > 0) {
+      paren -= 1;
+      if (depth === 0) current += ch;
+      continue;
+    }
+    if (ch === "{" && paren === 0) {
+      depth += 1;
+      current = "";
+      continue;
+    }
+    if (ch === "}" && depth > 0) {
+      depth -= 1;
+      continue;
+    }
+    if (depth === 0 && ch === ";") {
+      if (current.trim()) decls.push(current.trim());
+      current = "";
+      continue;
+    }
+    if (depth === 0) current += ch;
+  }
+  if (depth === 0 && current.trim()) decls.push(current.trim());
+  return decls;
+}
 
-function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string>): string {
+function scopeRootSelector(prelude: string): string | null {
+  const open = prelude.indexOf("(");
+  if (open < 0) return null;
+  const close = matchingParen(prelude, open);
+  if (close < 0) return null;
+  const root = prelude.slice(open + 1, close).trim();
+  return root || null;
+}
+
+const RECURSE_AT = /^(?:media|supports|layer|container|document|starting-style)$/i;
+
+function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string>, scopeSel: string | null = null): string {
   let out = "";
   let i = 0;
   while (i < css.length) {
@@ -2094,7 +2290,7 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
         continue;
       }
       const kind = (name[1] ?? "").replace(/^-webkit-/, "");
-      let j = i + name[0].length;
+      const j = i + name[0].length;
       if (/keyframes/i.test(kind) || /^(?:font-face|page|counter-style|property)$/i.test(kind)) {
         const open = css.indexOf("{", j);
         const semi = css.indexOf(";", j);
@@ -2110,7 +2306,7 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
         i = end;
         continue;
       }
-      if (RECURSE_AT.test(kind)) {
+      if (/^scope$/i.test(kind) || RECURSE_AT.test(kind)) {
         const open = css.indexOf("{", j);
         if (open < 0) {
           out += css.slice(i);
@@ -2121,8 +2317,14 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
           out += css.slice(i);
           break;
         }
+        const nextScope = /^scope$/i.test(kind)
+          ? (() => {
+              const root = scopeRootSelector(css.slice(j, open));
+              return root && selectorMatchesDesk(root, scopeSel) ? root : null;
+            })()
+          : scopeSel;
         out += css.slice(i, open + 1);
-        out += scrubLooseDeskRules(css.slice(open + 1, close), hidden, anims);
+        out += scrubLooseDeskRules(css.slice(open + 1, close), hidden, anims, nextScope);
         out += "}";
         i = close + 1;
         continue;
@@ -2139,7 +2341,7 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
       out += css.slice(i);
       break;
     }
-    if (selectorMatchesDesk(selector)) out += `${selector}{${scrubNestedBody(css.slice(open + 1, close), hidden, anims, true)}}`;
+    if (selectorMatchesDesk(selector, scopeSel)) out += `${selector}{${scrubNestedBody(css.slice(open + 1, close), hidden, anims, true, scopeSel)}}`;
     else out += css.slice(i, close + 1);
     i = close + 1;
   }

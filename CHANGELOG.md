@@ -1,3 +1,20 @@
+# Quire 1.9.21 — The scope is still the desk
+
+Released 21 October 2026.
+
+- **A scope whose root is the desk can no longer hide it.** `@scope (html)`, `@scope (body)`, `@scope (:root)`, and `@scope (*)` follow `html` when the rule is `:scope`. A scope on a class, `@scope (.note)`, can still hide that class. A class inside a desk scope can still hide that class. Colour stays.
+- **A starting style can no longer hide the desk.** `@starting-style` on `html`, and the same hide nested on the desk, follow `opacity: 0`. A nested query on the desk follows it. A starting style on a class can still hide that class. Colour stays.
+- **Pi times one radian is still zero.** `sin(pi * 1rad)`, `cos(pi * 1rad / 2)`, and `sin(2 * pi * 1rad)` follow `opacity: 0`, including inside a filter and a zoom. `sin(90deg)` stays. `exp(0)` stays. `cos(asin(0))` stays. A class may still use that zero.
+- **A clip with no area can no longer hide the desk.** `clip: rect(0, 0, 0, 0)` and `shape()` with no area follow `circle(0)`. A rectangle stays. A triangle stays. A curve stays. A class may still clip. Fixed placement stays.
+- **A zero box can no longer hide the desk.** `height: 0` or `width: 0` together with `overflow: hidden` or `overflow: clip` follows `display: none`. `height: 100%` with overflow hidden stays. A class may still collapse. Colour stays.
+- **An RTF letter follows the font.** Japanese, Cyrillic, and the other charsets this runtime can name come across when the font says so, even if the document page is Windows-1252. Switching back to an ANSI font is that page again. Windows-1252 is unchanged. A Johab font, and a DOS charset, are still one byte.
+
+Windows installer: Quire-Setup-1.9.21.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.20 — The star under the desk
 
 Released 20 October 2026.

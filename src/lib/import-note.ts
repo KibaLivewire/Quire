@@ -119,6 +119,24 @@ const WINDOWS_PAGE: Record<number, string> = {
   10000: "macintosh",
 };
 
+/** A font charset this runtime can name. Johab and the DOS charsets stay on the document page. */
+const CHARSET_PAGE: Record<number, number> = {
+  77: 10000,
+  128: 932,
+  129: 949,
+  134: 936,
+  136: 950,
+  161: 1253,
+  162: 1254,
+  163: 1258,
+  177: 1255,
+  178: 1256,
+  186: 1257,
+  204: 1251,
+  222: 874,
+  238: 1250,
+};
+
 function decodeXml(value: string) {
   const amp = String.fromCharCode(38);
   return value
@@ -134,6 +152,10 @@ function decodeXml(value: string) {
 function rtfToText(rtf: string) {
   const ucStack = [1];
   const cpStack = [1252];
+  const fontStack = [0];
+  const fontPages = new Map<number, number>();
+  let fontSlot = -1;
+  let fonttblDepth = 0;
   let i = 0;
   let out = "";
   let skip = 0;
@@ -171,6 +193,24 @@ function rtfToText(rtf: string) {
     return (/^(?:\\\*\s*)?\\([A-Za-z]+)/.exec(rest)?.[1] ?? "").toLowerCase();
   }
 
+  function noteFontWord(name: string, num: string | undefined) {
+    if (fonttblDepth > 0) {
+      if (name === "f" && num) fontSlot = Number(num);
+      if (name === "fcharset" && num && fontSlot >= 0) {
+        const page = CHARSET_PAGE[Number(num)];
+        if (page) fontPages.set(fontSlot, page);
+        else fontPages.delete(fontSlot);
+      }
+      return;
+    }
+    if (name === "f" && num) fontStack[fontStack.length - 1] = Number(num);
+  }
+
+  function activeCodePage(): number {
+    const mapped = fontPages.get(fontStack[fontStack.length - 1] ?? 0);
+    return mapped || cpStack[cpStack.length - 1] || 1252;
+  }
+
   function emit(text: string) {
     if (!text) return;
     if (shapeWrote.length && shapeWrote[shapeWrote.length - 1] !== true && text !== "\n") {
@@ -185,8 +225,11 @@ function rtfToText(rtf: string) {
     if (ch === "{") {
       ucStack.push(ucStack[ucStack.length - 1] ?? 1);
       cpStack.push(cpStack[cpStack.length - 1] ?? 1252);
+      fontStack.push(fontStack[fontStack.length - 1] ?? 0);
       const rest = rtf.slice(i + 1);
       const name = groupName(rest);
+      if (fonttblDepth > 0) fonttblDepth += 1;
+      else if (name === "fonttbl") fonttblDepth = 1;
       const isShape = name === "shp" || name === "shpgrp";
       openedShape.push(isShape);
       if (isShape) shapeWrote.push(false);
@@ -202,6 +245,8 @@ function rtfToText(rtf: string) {
       const wrote = wasShape ? shapeWrote.pop() === true : false;
       if (ucStack.length > 1) ucStack.pop();
       if (cpStack.length > 1) cpStack.pop();
+      if (fontStack.length > 1) fontStack.pop();
+      if (fonttblDepth > 0) fonttblDepth -= 1;
       if (skip > 0) skip -= 1;
       else if (wasShape && wrote && out && !out.endsWith(" ") && !out.endsWith("\n")) out += " ";
       i += 1;
@@ -211,8 +256,17 @@ function rtfToText(rtf: string) {
       if (consumeBin()) continue;
     }
     if (skip > 0) {
-      if (ch === "\\") skipControl();
-      else i += 1;
+      if (ch === "\\") {
+        if (fonttblDepth > 0) {
+          const noted = /^\\([a-zA-Z]+)(-?\d+)? ?/.exec(rtf.slice(i));
+          if (noted) {
+            noteFontWord(noted[1] ?? "", noted[2]);
+            i += noted[0].length;
+            continue;
+          }
+        }
+        skipControl();
+      } else i += 1;
       continue;
     }
     if (ch !== "\\") {
@@ -255,7 +309,7 @@ function rtfToText(rtf: string) {
       continue;
     }
     if (rtf.startsWith("\\'", i)) {
-      const codePage = cpStack[cpStack.length - 1] ?? 1252;
+      const codePage = activeCodePage();
       const label = codePage === 65001 ? "utf-8" : codePage === 1252 ? "" : WINDOWS_PAGE[codePage];
       if (label) {
         const bytes: number[] = [];
@@ -313,6 +367,7 @@ function rtfToText(rtf: string) {
     }
     const word = /^\\([a-zA-Z]+)(-?\d+)? ?/.exec(rtf.slice(i));
     if (word) {
+      noteFontWord(word[1] ?? "", word[2]);
       if (word[1] === "uc") ucStack[ucStack.length - 1] = Math.max(0, Number(word[2] || 0));
       if (word[1] === "ansicpg") {
         const page = Number(word[2] || 0);
