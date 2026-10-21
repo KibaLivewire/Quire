@@ -1,3 +1,18 @@
+# Quire 1.9.22 — A quiet match is still the desk
+
+Released 21 October 2026.
+
+- **A quiet match can no longer hide the desk.** A bare `:scope`, and `html:scope`, follow `:root`. `:defined` and `:read-only` follow `html`. `div:defined` and `div:read-only` can still use `display: none`. `:read-write` stays. `@scope (.note)` can still hide that class. A class inside a desk scope can still hide that class. Colour stays.
+- **A filter that still names the page can no longer hide it.** `body:nth-child(1 of body)` and `body:nth-child(odd of body)` follow `body`. `:nth-child(n of *)` still does. `html:has(body)`, `body:has(div)`, `html:not(:has(#quire-missing))`, `html:lang(en)`, and `html:not(:lang(fr))` follow the desk. `html:not(:lang(en))` does not match this page, so that rule stays. `html .note` can still use `display: none`. Colour stays.
+- **A taken branch that is still zero can no longer hide the desk.** `if(media(min-width: 0px): 0; else: 1)`, `if(supports(display: flex): 0; else: 1)`, and `if(else: 0)` follow `opacity: 0`. A branch that is not taken stays. A taken `0.5` stays. `sibling-index() - sibling-index()`, `sibling-count() - sibling-count()`, and `min(sibling-index(), 0)` follow `opacity: 0`. `sibling-index() / sibling-index()` is one and stays. Colour stays.
+- **A cover that is still a cover can no longer hide the desk.** `clip-path: inset(100% 0)` and `inset(0 100%)` follow `inset(100%)`. `inset(10% 0)` stays. `inset(100px)` stays. A mask that is only transparent follows `opacity: 0`, including `#0000`. A gradient that still has black stays. A class may still use that mask. Colour stays.
+
+Windows installer: Quire-Setup-1.9.22.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.21 — The scope is still the desk
 
 Released 21 October 2026.
