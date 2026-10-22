@@ -1,3 +1,19 @@
+# Quire 1.9.24 — A negative is still zero
+
+Released 22 October 2026.
+
+- **A language list that still names the page can no longer hide the desk.** `html:lang(en, fr)` and `html:lang("en", "fr")` follow `html:lang(en)`. `html:lang(fr, de)` does not match this page, so that rule stays. `html:not(:lang(en))` stays. Colour stays.
+- **A negative opacity is still zero.** `opacity: -1`, `opacity: -1%`, `calc(0 - 1)`, `sign(-1)`, and `cos(atan2(0, -1))` follow `opacity: 0`, including a custom property set to that negative. `filter: opacity(-1)`, `brightness(-1)`, and `contrast(-1%)` follow it. `brightness(1)` stays. `scale(-1)` stays. `zoom: -1` stays. A class may still use a negative opacity.
+- **The last child's index is still zero.** `sibling-index() - sibling-count()` is zero on `html` and on `body`. `sibling-index() - 1` is zero on `html`. `body { opacity: calc(sibling-index() - 1) }` stays. A class stays. A star under the desk that is not the desk itself stays. `height: calc(sibling-index() - 1)` with overflow hidden follows a zero box on `html`. The same pair on `body` stays. Colour stays.
+- **A support the page already has can no longer hide the desk.** `supports(display: inline-flex)`, `supports(display: inline-grid)`, `supports(color: color(srgb 1 0 0))`, and `supports(color: oklch(0.5 0.1 30))` follow a taken `if()` of zero. A colour this page does not know stays. A taken `0.5` stays. Colour stays.
+- **A clear colour written as none can no longer hide the desk.** `rgb(0 0 0 / none)` and `color(srgb 0 0 0 / none)` follow a clear mask. A gradient that still has black stays. A class may still use that mask. Colour stays.
+
+Windows installer: Quire-Setup-1.9.24.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.23 — The page is still the page
 
 Released 22 October 2026.

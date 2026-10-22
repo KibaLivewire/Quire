@@ -611,6 +611,17 @@ function hidesAsZero(value: string): boolean {
   return isZeroAmount(value) || calcEvaluatesZero(value) || mathEvaluatesZero(value);
 }
 
+/** A negative opacity, brightness, or contrast is clamped to zero. A negative scale is a flip and is not. */
+function clampsToZero(value: string): boolean {
+  if (hidesAsZero(value)) return true;
+  const s = value.replace(/!important/gi, "").replace(/\s+/g, "");
+  if (!s) return false;
+  const parsed = parseMathSum(s, 0);
+  if (!parsed || parsed.i !== s.length || !Number.isFinite(parsed.n) || parsed.n >= 0) return false;
+  const units = Object.keys(parsed.u).filter((key) => parsed.u[key]);
+  return units.length === 0 || (units.length === 1 && units[0] === "%");
+}
+
 function varNameParen(value: string, i: number): number {
   if (i > 0 && /[A-Za-z0-9_-]/.test(value[i - 1] ?? "")) return 0;
   if (value.slice(i, i + 3).toLowerCase() !== "var") return 0;
@@ -692,12 +703,20 @@ function varCalls(value: string): { name: string; fallback: string }[] {
   return calls;
 }
 
-function valueCanHide(value: string, hidden: Set<string>, pred: (v: string) => boolean): boolean {
+function valueCanHide(value: string, hidden: Set<string>, pred: (v: string) => boolean, seen?: Set<string>): boolean {
   if (pred(value)) return true;
-  if (ifCanHide(value, hidden, pred)) return true;
+  if (ifCanHide(value, hidden, pred, seen)) return true;
+  const trail = seen ?? new Set<string>();
+  const defined = (hidden as HideVars).defined;
   for (const call of varCalls(value)) {
     if (hidden.has(call.name)) return true;
-    if (call.fallback && valueCanHide(call.fallback, hidden, pred)) return true;
+    const raw = defined?.get(call.name);
+    if (raw && !trail.has(call.name)) {
+      const next = new Set(trail);
+      next.add(call.name);
+      if (valueCanHide(raw, hidden, pred, next)) return true;
+    }
+    if (call.fallback && valueCanHide(call.fallback, hidden, pred, trail)) return true;
   }
   return false;
 }
@@ -926,13 +945,17 @@ function insetPairCovers(a: InsetSide, b: InsetSide): boolean {
   return false;
 }
 
+function alphaIsClear(token: string): boolean {
+  return /^none$/i.test(token.trim()) || hidesAsZero(token);
+}
+
 function fnAlphaClear(name: string, inner: string): boolean {
   const slash = inner.lastIndexOf("/");
-  if (slash >= 0) return hidesAsZero(inner.slice(slash + 1));
+  if (slash >= 0) return alphaIsClear(inner.slice(slash + 1));
   if (name === "rgba" || name === "hsla") {
     const parts = splitArgs(inner).map((part) => part.trim()).filter(Boolean);
     const last = parts[parts.length - 1] ?? "";
-    return parts.length >= 4 && hidesAsZero(last);
+    return parts.length >= 4 && alphaIsClear(last);
   }
   return false;
 }
@@ -984,7 +1007,7 @@ function colorCallIsClear(name: string, inner: string): boolean {
   if (n === "color" || n === "oklch" || n === "oklab" || n === "lab" || n === "lch") {
     const slash = inner.lastIndexOf("/");
     if (slash < 0) return false;
-    return hidesAsZero(inner.slice(slash + 1));
+    return alphaIsClear(inner.slice(slash + 1));
   }
   if (n === "light-dark") {
     const parts = splitArgs(inner).map((part) => part.trim()).filter(Boolean);
@@ -1087,6 +1110,20 @@ function supportsColor(cond: string): boolean {
   return /^(?:rgba?|hsla?)\((?:[0-9.]+%?,)*[0-9.]+%?\)$/.test(value);
 }
 
+/** A colour this page can already paint, including a modern function the compacted check misses. */
+function supportsModernColor(cond: string): boolean {
+  const m = /^supports\(\s*color\s*:\s*([\s\S]+)\)$/i.exec(cond.trim());
+  if (!m) return false;
+  const value = (m[1] ?? "").trim().toLowerCase();
+  const flat = value.replace(/\s+/g, "");
+  if (CSS_COLORS.has(flat) || /^#[0-9a-f]{3,8}$/.test(flat)) return true;
+  const num = "none|-?\\d*\\.?\\d+%?";
+  if (new RegExp(`^(?:rgba?|hsla?|hwb)\\(\\s*(?:${num})(?:[\\s,]+(?:${num})){2,3}\\s*\\)$`).test(value)) return true;
+  if (new RegExp(`^color\\(\\s*(?:srgb|srgb-linear|display-p3|a98-rgb|prophoto-rgb|rec2020|xyz(?:-d(?:50|65))?)\\s+(?:${num})(?:\\s+(?:${num})){2}(?:\\s*\\/\\s*(?:${num}))?\\s*\\)$`).test(value)) return true;
+  if (new RegExp(`^(?:oklch|oklab|lab|lch)\\(\\s*(?:${num})(?:\\s+(?:${num})){2}(?:\\s*\\/\\s*(?:${num}))?\\s*\\)$`).test(value)) return true;
+  return false;
+}
+
 function definedMatches(defined: Map<string, string> | undefined, name: string, want: string): boolean {
   if (!defined) return false;
   const have = defined.get(name);
@@ -1102,16 +1139,16 @@ function ifConditionState(cond: string, defined?: Map<string, string>): "yes" | 
   if (/^media\(min-height:0(?:px)?\)$/.test(c)) return "yes";
   if (/^media\(width>=0(?:px)?\)$/.test(c)) return "yes";
   if (/^media\(height>=0(?:px)?\)$/.test(c)) return "yes";
-  if (/^supports\(display:(?:block|flex|grid|flow-root|inline|inline-block|contents)\)$/.test(c)) return "yes";
+  if (/^supports\(display:(?:block|flex|inline-flex|grid|inline-grid|flow-root|inline|inline-block|contents|list-item|table)\)$/.test(c)) return "yes";
   if (/^supports\(opacity:(?:0|1|0?\.\d+)\)$/.test(c)) return "yes";
-  if (supportsColor(c)) return "yes";
+  if (supportsColor(c) || supportsModernColor(cond)) return "yes";
   const style = /^style\((--[A-Za-z_][\w-]*)\s*:\s*([\s\S]+)\)$/i.exec(cond.trim());
   if (style) return definedMatches(defined, style[1] ?? "", style[2] ?? "") ? "yes" : "no";
   if (/^style\(/i.test(cond.trim())) return "no";
   return "maybe";
 }
 
-function ifCanHide(value: string, hidden: Set<string>, pred: (v: string) => boolean): boolean {
+function ifCanHide(value: string, hidden: Set<string>, pred: (v: string) => boolean, seen?: Set<string>): boolean {
   const trimmed = value.trim();
   const calls = namedFunctionCalls(trimmed, ["if"]);
   if (calls.length !== 1) return false;
@@ -1148,11 +1185,11 @@ function ifCanHide(value: string, hidden: Set<string>, pred: (v: string) => bool
   const defined = (hidden as HideVars).defined;
   for (const part of parts) {
     const state = ifConditionState(part.cond, defined);
-    if (state === "yes") return valueCanHide(part.value, hidden, pred);
+    if (state === "yes") return valueCanHide(part.value, hidden, pred, seen);
     if (state === "no") continue;
     break;
   }
-  return parts.every((part) => valueCanHide(part.value, hidden, pred));
+  return parts.every((part) => valueCanHide(part.value, hidden, pred, seen));
 }
 
 /** shape() with no area hides the element. A curve or an arc stays. A triangle stays. */
@@ -1419,9 +1456,9 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "display" || prop === "pointer-events") return valueCanHide(val, hidden, (v) => /\bnone\b/i.test(v));
   if (prop === "visibility") return valueCanHide(val, hidden, (v) => /\b(?:hidden|collapse)\b/i.test(v));
   if (prop === "content-visibility") return valueCanHide(val, hidden, (v) => /\bhidden\b/i.test(v));
-  if (prop === "opacity") return valueCanHide(val, hidden, hidesAsZero);
+  if (prop === "opacity") return valueCanHide(val, hidden, clampsToZero);
   if (prop === "filter" || prop === "-webkit-filter") {
-    return functionCallsNamed(val, ["opacity", "brightness", "contrast"]).some((inner) => valueCanHide(inner, hidden, hidesAsZero));
+    return functionCallsNamed(val, ["opacity", "brightness", "contrast"]).some((inner) => valueCanHide(inner, hidden, clampsToZero));
   }
   if (prop === "scale") {
     return splitScaleParts(val.replace(/!important/gi, "")).some((arg) => valueCanHide(arg, hidden, hidesAsZero));
@@ -1485,6 +1522,7 @@ function collectHideVars(css: string): HideVars {
     raw.set(`--${hit[1]}`, (hit[2] ?? "").trim());
   }
   const hidden: HideVars = new Set();
+  hidden.defined = raw;
   const hides = (value: string) =>
     valueCanHide(value, hidden, (v) => {
       const token = v.replace(/!important/gi, "").replace(/\s+/g, "").toLowerCase();
@@ -1503,7 +1541,6 @@ function collectHideVars(css: string): HideVars {
   }
   const clips = new Set<string>();
   hidden.clips = clips;
-  hidden.defined = raw;
   let clipChanged = true;
   while (clipChanged) {
     clipChanged = false;
@@ -1519,6 +1556,26 @@ function collectHideVars(css: string): HideVars {
 }
 
 const BOX_SIZE = new Set(["height", "width", "max-height", "max-width", "block-size", "inline-size", "max-block-size", "max-inline-size"]);
+
+type Sib = { index: number; count: number };
+const HTML_SIB: Sib = { index: 1, count: 1 };
+const BODY_SIB: Sib = { index: 2, count: 2 };
+let activeSib: Sib | null = null;
+
+function withSib<T>(sib: Sib, fn: () => T): T {
+  const prev = activeSib;
+  activeSib = sib;
+  try {
+    return fn();
+  } finally {
+    activeSib = prev;
+  }
+}
+
+function declarationHidesFor(piece: string, hidden: Set<string>, profiles: Sib[]): boolean {
+  if (declarationHidesDesk(piece, hidden)) return true;
+  return profiles.some((sib) => withSib(sib, () => declarationHidesDesk(piece, hidden)));
+}
 
 function isBoxClip(part: string): boolean {
   const idx = part.indexOf(":");
@@ -1539,13 +1596,23 @@ function boxCollapses(parts: string[], hidden: Set<string>): boolean {
   return parts.some((part) => isBoxClip(part)) && parts.some((part) => isBoxZero(part, hidden));
 }
 
-function scrubHideBody(body: string, hidden: Set<string>, anims: Set<string> = new Set()) {
+function boxCollapsesFor(parts: string[], hidden: Set<string>, profiles: Sib[]): boolean {
+  if (boxCollapses(parts, hidden)) return true;
+  return profiles.some((sib) => withSib(sib, () => boxCollapses(parts, hidden)));
+}
+
+function isBoxZeroFor(part: string, hidden: Set<string>, profiles: Sib[]): boolean {
+  if (isBoxZero(part, hidden)) return true;
+  return profiles.some((sib) => withSib(sib, () => isBoxZero(part, hidden)));
+}
+
+function scrubHideBody(body: string, hidden: Set<string>, anims: Set<string> = new Set(), profiles: Sib[] = [HTML_SIB, BODY_SIB]) {
   const parts = splitCssDeclarations(body)
     .map((part) => part.trim())
     .filter(Boolean);
-  const flat = boxCollapses(parts, hidden);
+  const flat = boxCollapsesFor(parts, hidden, profiles);
   return parts
-    .filter((part) => part && !declarationHidesDesk(part, hidden) && !declarationUsesHidingAnim(part, anims) && !(flat && (isBoxClip(part) || isBoxZero(part, hidden))))
+    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles))))
     .join("; ");
 }
 
@@ -1600,7 +1667,7 @@ function parseMathSum(s: string, i: number): MathQty | null {
   let left = parseMathMul(s, i);
   if (!left) return null;
   while (s[left.i] === "+" || s[left.i] === "-") {
-    const minus = s[left.i] === "-";
+    const minus: boolean = s[left.i] === "-";
     const right = parseMathMul(s, left.i + 1);
     if (!right) return null;
     if (left.n === 0 && right.n === 0) {
@@ -1793,6 +1860,10 @@ function parseMathCall(s: string, i: number): MathQty | null {
     }
     const args: MathQty[] = [];
     if ((name === "sibling-index" || name === "sibling-count") && s[cursor] === ")") {
+      if (activeSib) {
+        const n = name === "sibling-index" ? activeSib.index : activeSib.count;
+        return { n, u: blankUnits(), i: cursor + 1 };
+      }
       return { n: 1, u: { [name]: 1 }, i: cursor + 1 };
     }
     if (s[cursor] === ")") return { n: Number.NaN, u: blankUnits(), i: cursor + 1 };
@@ -2075,9 +2146,15 @@ function hidingKeyframeNames(css: string, hidden: Set<string>): Set<string> {
     const close = matchingBrace(css, open);
     if (!name || close < 0) continue;
     const parts = css.slice(open + 1, close).split(/[{};]/);
-    if (parts.some((part) => declarationHidesDesk(part.trim(), hidden))) names.add(name);
+    if (parts.some((part) => keyframeHides(part.trim(), hidden))) names.add(name);
   }
   return names;
+}
+
+function keyframeHides(part: string, hidden: Set<string>): boolean {
+  if (!part.includes(":")) return false;
+  if (declarationHidesDesk(part, hidden)) return true;
+  return withSib(HTML_SIB, () => declarationHidesDesk(part, hidden)) && withSib(BODY_SIB, () => declarationHidesDesk(part, hidden));
 }
 
 type DeskEl = { tag: string; index: number; count: number; ofType: number; ofTypeCount: number };
@@ -2318,9 +2395,12 @@ function compoundMatches(compound: string, el: DeskEl, scopeSel: string | null =
       continue;
     }
     if (name === "lang") {
-      const want = arg.trim().replace(/^["']|["']$/g, "").toLowerCase();
       const doc = "en";
-      if (!want || !(doc === want || doc.startsWith(`${want}-`))) return false;
+      const wants = arg
+        .split(",")
+        .map((part) => part.trim().replace(/^["']+|["']+$/g, "").toLowerCase())
+        .filter(Boolean);
+      if (!wants.some((want) => doc === want || doc.startsWith(`${want}-`))) return false;
       continue;
     }
     if (name === "dir") {
@@ -2578,9 +2658,22 @@ function rewriteAmp(selector: string, into: string | null): string {
   return out;
 }
 
-function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, desk: boolean, scopeSel: string | null = null, nestingSel: string | null = null): string {
-  if (!body.includes("{")) return desk ? scrubHideBody(body, hidden, anims) : body.trim();
-  const flat = desk && boxCollapses(topLevelDeclarations(body), hidden);
+function hideProfiles(selector: string, scopeSel: string | null): Sib[] {
+  const profiles: Sib[] = [];
+  let html = false;
+  let body = false;
+  for (const part of splitSelectorList(selector)) {
+    if (selectorMatchesEl(part, HTML_EL, scopeSel)) html = true;
+    if (selectorMatchesEl(part, BODY_EL, scopeSel)) body = true;
+  }
+  if (html) profiles.push(HTML_SIB);
+  if (body) profiles.push(BODY_SIB);
+  return profiles;
+}
+
+function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, desk: boolean, scopeSel: string | null = null, nestingSel: string | null = null, profiles: Sib[] = []): string {
+  if (!body.includes("{")) return desk ? scrubHideBody(body, hidden, anims, profiles) : body.trim();
+  const flat = desk && boxCollapsesFor(topLevelDeclarations(body), hidden, profiles);
   let out = "";
   let decl = "";
   let i = 0;
@@ -2589,8 +2682,8 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const keep = (piece: string) => {
     const next = piece.trim();
     if (!next) return;
-    if (desk && (declarationHidesDesk(next, hidden) || declarationUsesHidingAnim(next, anims))) return;
-    if (flat && (isBoxClip(next) || isBoxZero(next, hidden))) return;
+    if (desk && (declarationHidesFor(next, hidden, profiles) || declarationUsesHidingAnim(next, anims))) return;
+    if (flat && (isBoxClip(next) || isBoxZeroFor(next, hidden, profiles))) return;
     out += `${next}; `;
   };
   while (i < body.length) {
@@ -2639,15 +2732,17 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
           if (root) root = rewriteAmp(root, nestingSel);
           const nextScope = root ?? null;
           out += `${selector}{${scrubLooseDeskRules(inner, hidden, anims, nextScope, nextScope)}}`;
-        } else if (RECURSE_AT.test(kind)) out += `${selector}{${scrubNestedBody(inner, hidden, anims, desk, scopeSel, nestingSel)}}`;
+        } else if (RECURSE_AT.test(kind)) out += `${selector}{${scrubNestedBody(inner, hidden, anims, desk, scopeSel, nestingSel, profiles)}}`;
         else out += `${selector}{${inner}}`;
         decl = "";
         i = close + 1;
         continue;
       }
       const looking = desk ? selector.replace(/&/g, ":is(html, body)") : selector;
-      const childDesk = selectorMatchesDesk(looking, scopeSel) || (desk && selector.replace(/\s+/g, "") === "&");
-      out += `${selector}{${scrubNestedBody(inner, hidden, anims, childDesk, scopeSel, looking)}}`;
+      const bareAmp = selector.replace(/\s+/g, "") === "&";
+      const childDesk = selectorMatchesDesk(looking, scopeSel) || (desk && bareAmp);
+      const childProfiles = !childDesk ? [] : bareAmp && desk ? profiles : hideProfiles(looking, scopeSel);
+      out += `${selector}{${scrubNestedBody(inner, hidden, anims, childDesk, scopeSel, looking, childProfiles)}}`;
       decl = "";
       i = close + 1;
       continue;
@@ -2662,7 +2757,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     i += 1;
   }
   const tail = decl.trim();
-  if (tail && !(desk && (declarationHidesDesk(tail, hidden) || declarationUsesHidingAnim(tail, anims))) && !(flat && (isBoxClip(tail) || isBoxZero(tail, hidden)))) out += tail;
+  if (tail && !(desk && (declarationHidesFor(tail, hidden, profiles) || declarationUsesHidingAnim(tail, anims))) && !(flat && (isBoxClip(tail) || isBoxZeroFor(tail, hidden, profiles)))) out += tail;
   return out.replace(/;\s*$/g, "").trim();
 }
 
@@ -2793,7 +2888,7 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
       break;
     }
     const opened = rewriteAmp(selector, scopeSel);
-    if (selectorMatchesDesk(opened, scopeSel)) out += `${selector}{${scrubNestedBody(css.slice(open + 1, close), hidden, anims, true, scopeSel, opened)}}`;
+    if (selectorMatchesDesk(opened, scopeSel)) out += `${selector}{${scrubNestedBody(css.slice(open + 1, close), hidden, anims, true, scopeSel, opened, hideProfiles(opened, scopeSel))}}`;
     else out += css.slice(i, close + 1);
     i = close + 1;
   }
