@@ -857,8 +857,20 @@ function polygonAreaZero(inner: string): boolean {
   if (/[a-z]/i.test(body.replace(/(?:%|px|em|rem)/gi, ""))) return false;
   const nums = [...body.matchAll(/([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)(%|px|em|rem)?/gi)];
   if (nums.length < 6 || nums.length % 2 !== 0) return false;
-  const unit = (nums[0]?.[2] ?? "").toLowerCase();
-  if (nums.some((item) => (item[2] ?? "").toLowerCase() !== unit)) return false;
+  let unit = "";
+  let bareNonZero = false;
+  for (const item of nums) {
+    const u = (item[2] ?? "").toLowerCase();
+    const n = Number(item[1]);
+    if (!Number.isFinite(n)) return false;
+    if (!u) {
+      if (n !== 0) bareNonZero = true;
+      continue;
+    }
+    if (!unit) unit = u;
+    else if (u !== unit) return false;
+  }
+  if (bareNonZero && unit) return false;
   const pts: [number, number][] = [];
   for (let i = 0; i < nums.length; i += 2) {
     const x = Number(nums[i]?.[1]);
@@ -876,12 +888,19 @@ function polygonAreaZero(inner: string): boolean {
   return area === 0;
 }
 
-function percentSum(value: string): number | null {
-  const token = value.replace(/!important/gi, "").trim();
-  const m = /^([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)%$/i.exec(token);
-  if (!m?.[1] || m[1] === "." || m[1] === "+" || m[1] === "-") return null;
-  const n = Number(m[1]);
-  return Number.isFinite(n) ? n : null;
+function resolvedSide(token: string): { n: number; unit: string } | null {
+  const t = token.replace(/!important/gi, "").replace(/\s+/g, "");
+  if (!t || !/^[-+0-9.(a-z]/i.test(t)) return null;
+  const parsed = parseMathSum(t, 0);
+  if (!parsed || parsed.i !== t.length || !Number.isFinite(parsed.n)) return null;
+  const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+  if (units.length > 1) return null;
+  if (!units.length) return { n: parsed.n, unit: "" };
+  const unit = units[0]?.[0] ?? "";
+  const exp = units[0]?.[1] ?? 0;
+  if (exp !== 1) return null;
+  if (unit !== "%" && unit !== "px" && unit !== "em" && unit !== "rem") return null;
+  return { n: parsed.n, unit };
 }
 
 type InsetSide = { kind: "pct" | "zero" | "len"; n: number };
@@ -890,13 +909,12 @@ function insetSide(token: string, hidden: Set<string>): InsetSide | null {
   const t = token.replace(/!important/gi, "").trim();
   if (!t) return null;
   if (valueCanHide(t, hidden, hidesAsZero)) return { kind: "zero", n: 0 };
-  const pct = percentSum(t);
-  if (pct != null) return { kind: "pct", n: pct };
-  const edge = edgeAmount(t);
-  if (!edge) return null;
-  if (edge.unit === "%") return { kind: "pct", n: edge.n };
-  if (edge.n === 0) return { kind: "zero", n: 0 };
-  return { kind: "len", n: edge.n };
+  const resolved = resolvedSide(t);
+  if (!resolved) return null;
+  if (resolved.unit === "%") return { kind: "pct", n: resolved.n };
+  if (resolved.n === 0) return { kind: "zero", n: 0 };
+  if (!resolved.unit) return null;
+  return { kind: "len", n: resolved.n };
 }
 
 function insetPairCovers(a: InsetSide, b: InsetSide): boolean {
@@ -923,7 +941,7 @@ function blankColorFns(value: string): string {
   let out = "";
   let i = 0;
   while (i < value.length) {
-    const m = /^(?:rgba|rgb|hsla|hsl|hwb)\b/i.exec(value.slice(i));
+    const m = /^(?:color-mix|light-dark|oklch|oklab|rgba|hsla|hwb|rgb|hsl|lab|lch|color)\b/i.exec(value.slice(i));
     if (m && (i === 0 || !/[A-Za-z0-9_-]/.test(value[i - 1] ?? ""))) {
       let j = i + m[0].length;
       while (/\s/.test(value[j] ?? "")) j += 1;
@@ -942,11 +960,55 @@ function blankColorFns(value: string): string {
   return out;
 }
 
+const COLOR_FNS = ["color-mix", "light-dark", "oklch", "oklab", "rgba", "hsla", "hwb", "rgb", "hsl", "lab", "lch", "color"];
+
+function pieceIsClearColor(value: string): boolean {
+  const token = value.trim();
+  if (!token) return false;
+  if (/^transparent$/i.test(token)) return true;
+  const hex = token.toLowerCase();
+  if (/^#[0-9a-f]{3,8}$/.test(hex)) {
+    return (/^#[0-9a-f]{4}$/.test(hex) && hex[4] === "0") || (/^#[0-9a-f]{8}$/.test(hex) && hex.slice(7) === "00");
+  }
+  const calls = namedFunctionCalls(token, COLOR_FNS);
+  if (calls.length !== 1) return false;
+  const call = calls[0];
+  if (!call) return false;
+  if (token.replace(/\s+/g, "").toLowerCase() !== `${call.name}(${call.inner.replace(/\s+/g, "")})`.toLowerCase()) return false;
+  return colorCallIsClear(call.name, call.inner);
+}
+
+function colorCallIsClear(name: string, inner: string): boolean {
+  const n = name.toLowerCase();
+  if (n === "rgb" || n === "rgba" || n === "hsl" || n === "hsla" || n === "hwb") return fnAlphaClear(n, inner);
+  if (n === "color" || n === "oklch" || n === "oklab" || n === "lab" || n === "lch") {
+    const slash = inner.lastIndexOf("/");
+    if (slash < 0) return false;
+    return hidesAsZero(inner.slice(slash + 1));
+  }
+  if (n === "light-dark") {
+    const parts = splitArgs(inner).map((part) => part.trim()).filter(Boolean);
+    return parts.length === 2 && parts.every((part) => pieceIsClearColor(part));
+  }
+  if (n === "color-mix") {
+    let body = inner.trim();
+    if (/^in\b/i.test(body)) {
+      const split = splitTopComma(body);
+      if (!split.tail.trim()) return false;
+      body = split.tail;
+    }
+    const colors = splitArgs(body).map((part) => part.trim()).filter(Boolean);
+    if (colors.length < 2) return false;
+    return colors.every((part) => pieceIsClearColor(part.replace(/\s+\d*\.?\d+%$/, "").trim()));
+  }
+  return false;
+}
+
 const MASK_SKIP = new Set(["to", "top", "bottom", "left", "right", "center", "at", "circle", "ellipse", "closest-side", "farthest-side", "closest-corner", "farthest-corner", "from", "deg", "rad", "turn", "grad", "in", "srgb"]);
 
 function gradientIsClear(inner: string): boolean {
-  const fns = namedFunctionCalls(inner, ["rgba", "rgb", "hsla", "hsl", "hwb"]);
-  if (fns.some((fn) => !fnAlphaClear(fn.name, fn.inner))) return false;
+  const fns = namedFunctionCalls(inner, COLOR_FNS);
+  if (fns.some((fn) => !colorCallIsClear(fn.name, fn.inner))) return false;
   const tokens = blankColorFns(inner).match(/#[0-9a-fA-F]{3,8}|[A-Za-z]+/g) ?? [];
   let saw = fns.length > 0;
   for (const token of tokens) {
@@ -1010,16 +1072,43 @@ function splitTopSemi(value: string): string[] {
   return parts;
 }
 
-function ifConditionTrue(cond: string): boolean {
+const CSS_COLORS = new Set(
+  "transparent currentcolor black silver gray grey white maroon red purple fuchsia green lime olive yellow navy blue teal aqua aliceblue antiquewhite aqua aquamarine azure beige bisque blanchedalmond blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgrey darkgreen darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen gainsboro ghostwhite gold goldenrod greenyellow honeydew hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgrey lightgreen lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow limegreen linen magenta mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite oldlace olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue rebeccapurple rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna skyblue slateblue slategray slategrey snow springgreen steelblue tan thistle tomato turquoise violet wheat whitesmoke yellowgreen".split(
+    " ",
+  ),
+);
+
+function supportsColor(cond: string): boolean {
+  const m = /^supports\(color:(.+)\)$/.exec(cond);
+  if (!m) return false;
+  const value = m[1] ?? "";
+  if (CSS_COLORS.has(value)) return true;
+  if (/^#[0-9a-f]{3,8}$/.test(value)) return true;
+  return /^(?:rgba?|hsla?)\((?:[0-9.]+%?,)*[0-9.]+%?\)$/.test(value);
+}
+
+function definedMatches(defined: Map<string, string> | undefined, name: string, want: string): boolean {
+  if (!defined) return false;
+  const have = defined.get(name);
+  if (have == null) return false;
+  const norm = (value: string) => value.replace(/!important/gi, "").replace(/\s+/g, "").toLowerCase();
+  return norm(have) === norm(want);
+}
+
+function ifConditionState(cond: string, defined?: Map<string, string>): "yes" | "no" | "maybe" {
   const c = cond.replace(/\s+/g, "").toLowerCase();
-  if (c === "else") return true;
-  if (/^media\(min-width:0(?:px)?\)$/.test(c)) return true;
-  if (/^media\(min-height:0(?:px)?\)$/.test(c)) return true;
-  if (/^media\(width>=0(?:px)?\)$/.test(c)) return true;
-  if (/^media\(height>=0(?:px)?\)$/.test(c)) return true;
-  if (/^supports\(display:(?:block|flex|grid|flow-root|inline|inline-block|contents)\)$/.test(c)) return true;
-  if (/^supports\(opacity:1\)$/.test(c)) return true;
-  return false;
+  if (c === "else") return "yes";
+  if (/^media\(min-width:0(?:px)?\)$/.test(c)) return "yes";
+  if (/^media\(min-height:0(?:px)?\)$/.test(c)) return "yes";
+  if (/^media\(width>=0(?:px)?\)$/.test(c)) return "yes";
+  if (/^media\(height>=0(?:px)?\)$/.test(c)) return "yes";
+  if (/^supports\(display:(?:block|flex|grid|flow-root|inline|inline-block|contents)\)$/.test(c)) return "yes";
+  if (/^supports\(opacity:(?:0|1|0?\.\d+)\)$/.test(c)) return "yes";
+  if (supportsColor(c)) return "yes";
+  const style = /^style\((--[A-Za-z_][\w-]*)\s*:\s*([\s\S]+)\)$/i.exec(cond.trim());
+  if (style) return definedMatches(defined, style[1] ?? "", style[2] ?? "") ? "yes" : "no";
+  if (/^style\(/i.test(cond.trim())) return "no";
+  return "maybe";
 }
 
 function ifCanHide(value: string, hidden: Set<string>, pred: (v: string) => boolean): boolean {
@@ -1056,8 +1145,11 @@ function ifCanHide(value: string, hidden: Set<string>, pred: (v: string) => bool
     })
     .filter((part): part is { cond: string; value: string } => Boolean(part?.value));
   if (!parts.length) return false;
+  const defined = (hidden as HideVars).defined;
   for (const part of parts) {
-    if (part.cond.toLowerCase() === "else" || ifConditionTrue(part.cond)) return valueCanHide(part.value, hidden, pred);
+    const state = ifConditionState(part.cond, defined);
+    if (state === "yes") return valueCanHide(part.value, hidden, pred);
+    if (state === "no") continue;
     break;
   }
   return parts.every((part) => valueCanHide(part.value, hidden, pred));
@@ -1138,6 +1230,45 @@ function shapeHides(inner: string): boolean {
 }
 
 /** inset(), a zero circle, or a shape with no area covers the element. A class can still clip. A partial inset stays. */
+function splitTopWords(value: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let depth = 0;
+  let quote = "";
+  const flush = () => {
+    if (current.trim()) tokens.push(current.trim());
+    current = "";
+  };
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      current += ch;
+      if (ch === "\\" && next) {
+        current += next;
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "(") depth += 1;
+    else if (ch === ")" && depth > 0) depth -= 1;
+    if (depth === 0 && /\s/.test(ch)) {
+      flush();
+      continue;
+    }
+    current += ch;
+  }
+  flush();
+  return tokens;
+}
+
 function clipHides(value: string, hidden: Set<string>): boolean {
   const found = namedFunctionCalls(value, ["ellipse", "circle", "polygon", "inset", "xywh", "rect", "path", "shape"]);
   if (
@@ -1162,9 +1293,7 @@ function clipHides(value: string, hidden: Set<string>): boolean {
         const parts = call.inner.trim().split(/\s+/);
         return parts.slice(0, 2).some((part) => valueCanHide(part, hidden, hidesAsZero));
       }
-      const rawTokens = splitArgs(call.inner)
-        .flatMap((part) => part.trim().split(/\s+/))
-        .filter(Boolean);
+      const rawTokens = splitArgs(call.inner).flatMap((part) => splitTopWords(part));
       const roundAt = rawTokens.findIndex((token) => /^round$/i.test(token));
       const raw = roundAt >= 0 ? rawTokens.slice(0, roundAt) : rawTokens;
       const sides = raw.length <= 1 ? [raw[0] ?? "", raw[0] ?? "", raw[0] ?? "", raw[0] ?? ""] : raw.length === 2 ? [raw[0] ?? "", raw[1] ?? "", raw[0] ?? "", raw[1] ?? ""] : raw.length === 3 ? [raw[0] ?? "", raw[1] ?? "", raw[2] ?? "", raw[1] ?? ""] : [raw[0] ?? "", raw[1] ?? "", raw[2] ?? "", raw[3] ?? ""];
@@ -1314,7 +1443,31 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   return false;
 }
 
-type HideVars = Set<string> & { clips?: Set<string> };
+type HideVars = Set<string> & { clips?: Set<string>; defined?: Map<string, string> };
+
+function parenDepthAt(value: string, index: number): number {
+  let depth = 0;
+  let quote = "";
+  for (let i = 0; i < index && i < value.length; i += 1) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      if (ch === "\\" && next) {
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "(") depth += 1;
+    else if (ch === ")" && depth > 0) depth -= 1;
+  }
+  return depth;
+}
 
 function collectHideVars(css: string): HideVars {
   const raw = new Map<string, string>();
@@ -1328,6 +1481,7 @@ function collectHideVars(css: string): HideVars {
     if (init?.[1]) raw.set(name, init[1].trim());
   }
   for (const hit of css.matchAll(/--([A-Za-z_][\w-]*)\s*:\s*([^;}{]+)/g)) {
+    if (parenDepthAt(css, hit.index ?? 0) > 0) continue;
     raw.set(`--${hit[1]}`, (hit[2] ?? "").trim());
   }
   const hidden: HideVars = new Set();
@@ -1349,6 +1503,7 @@ function collectHideVars(css: string): HideVars {
   }
   const clips = new Set<string>();
   hidden.clips = clips;
+  hidden.defined = raw;
   let clipChanged = true;
   while (clipChanged) {
     clipChanged = false;
@@ -1933,11 +2088,13 @@ const HEAD_EL: DeskEl = { tag: "head", index: 1, count: 2, ofType: 1, ofTypeCoun
 
 function attrMatchesDesk(inner: string, el: DeskEl): boolean {
   if (el.tag !== "html") return false;
-  const match = /^([a-zA-Z_][\w:.-]*)(?:\s*([~|^$*]?=)\s*(?:"([^"]*)"|'([^']*)'|([^\s]+)))?(?:\s+[iIsS])?\s*$/.exec(inner.trim());
+  const match = /^([a-zA-Z_][\w:.-]*)(?:\s*([~|^$*]?=)\s*(?:"([^"]*)"|'([^']*)'|([^\s]+)))?(?:\s+([iIsS]))?\s*$/.exec(inner.trim());
   if (!match) return false;
   const name = (match[1] ?? "").toLowerCase();
   const op = match[2] ?? "";
-  const value = (match[3] ?? match[4] ?? match[5] ?? "").toLowerCase();
+  const rawValue = match[3] ?? match[4] ?? match[5] ?? "";
+  const flag = (match[6] ?? "").toLowerCase();
+  const value = flag === "i" ? rawValue.toLowerCase() : rawValue;
   if (name === "data-theme" || name === "data-device" || name === "data-native" || name === "data-orientation" || name === "data-ink-only" || name === "data-focus-mode") return true;
   if (name !== "lang") return false;
   if (!op) return true;
@@ -2166,6 +2323,11 @@ function compoundMatches(compound: string, el: DeskEl, scopeSel: string | null =
       if (!want || !(doc === want || doc.startsWith(`${want}-`))) return false;
       continue;
     }
+    if (name === "dir") {
+      const want = arg.trim().replace(/^["']|["']$/g, "").toLowerCase();
+      if (want !== "ltr") return false;
+      continue;
+    }
     if (name === "defined" || name === "read-only") continue;
     if (STATE_PSEUDO.test(name)) return false;
     if (name === "before" || name === "after" || name === "first-line" || name === "first-letter" || name === "selection" || name === "placeholder" || name === "marker" || name === "backdrop") return false;
@@ -2179,6 +2341,7 @@ function splitCombinators(selector: string): { combinator: string; compound: str
   let current = "";
   let combinator = "";
   let depth = 0;
+  let bracket = 0;
   let quote = "";
   const flush = (next: string) => {
     const compound = current.trim();
@@ -2214,11 +2377,21 @@ function splitCombinators(selector: string): { combinator: string; compound: str
       current += ch;
       continue;
     }
-    if (depth === 0 && (ch === ">" || ch === "+" || ch === "~")) {
+    if (ch === "[") {
+      bracket += 1;
+      current += ch;
+      continue;
+    }
+    if (ch === "]" && bracket > 0) {
+      bracket -= 1;
+      current += ch;
+      continue;
+    }
+    if (depth === 0 && bracket === 0 && (ch === ">" || ch === "+" || ch === "~")) {
       flush(ch);
       continue;
     }
-    if (depth === 0 && /\s/.test(ch)) {
+    if (depth === 0 && bracket === 0 && /\s/.test(ch)) {
       let j = i;
       while (j < selector.length && /\s/.test(selector[j] ?? "")) j += 1;
       const nxt = selector[j] ?? "";
@@ -2374,7 +2547,38 @@ function branchHidesDesk(selector: string, scopeSel: string | null = null): bool
   return inner.some((part) => branchHidesDesk(part, scopeSel));
 }
 
-function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, desk: boolean, scopeSel: string | null = null): string {
+function rewriteAmp(selector: string, into: string | null): string {
+  if (!into || !selector.includes("&")) return selector;
+  let out = "";
+  let quote = "";
+  for (let i = 0; i < selector.length; i += 1) {
+    const ch = selector[i] ?? "";
+    const next = selector[i + 1] ?? "";
+    if (quote) {
+      out += ch;
+      if (ch === "\\" && next) {
+        out += next;
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      out += ch;
+      continue;
+    }
+    if (ch === "&") {
+      out += `:is(${into})`;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, desk: boolean, scopeSel: string | null = null, nestingSel: string | null = null): string {
   if (!body.includes("{")) return desk ? scrubHideBody(body, hidden, anims) : body.trim();
   const flat = desk && boxCollapses(topLevelDeclarations(body), hidden);
   let out = "";
@@ -2431,10 +2635,11 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
         const kind = (at?.[1] ?? "").replace(/^-webkit-/, "");
         const prelude = selector.slice(at?.[0].length ?? 0);
         if (/^scope$/i.test(kind)) {
-          const root = scopeRootSelector(prelude);
+          let root = scopeRootSelector(prelude);
+          if (root) root = rewriteAmp(root, nestingSel);
           const nextScope = root ?? null;
-          out += `${selector}{${scrubLooseDeskRules(inner, hidden, anims, nextScope)}}`;
-        } else if (RECURSE_AT.test(kind)) out += `${selector}{${scrubNestedBody(inner, hidden, anims, desk, scopeSel)}}`;
+          out += `${selector}{${scrubLooseDeskRules(inner, hidden, anims, nextScope, nextScope)}}`;
+        } else if (RECURSE_AT.test(kind)) out += `${selector}{${scrubNestedBody(inner, hidden, anims, desk, scopeSel, nestingSel)}}`;
         else out += `${selector}{${inner}}`;
         decl = "";
         i = close + 1;
@@ -2442,7 +2647,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
       }
       const looking = desk ? selector.replace(/&/g, ":is(html, body)") : selector;
       const childDesk = selectorMatchesDesk(looking, scopeSel) || (desk && selector.replace(/\s+/g, "") === "&");
-      out += `${selector}{${scrubNestedBody(inner, hidden, anims, childDesk, scopeSel)}}`;
+      out += `${selector}{${scrubNestedBody(inner, hidden, anims, childDesk, scopeSel, looking)}}`;
       decl = "";
       i = close + 1;
       continue;
@@ -2526,7 +2731,7 @@ function scopeRootSelector(prelude: string): string | null {
 
 const RECURSE_AT = /^(?:media|supports|layer|container|document|starting-style)$/i;
 
-function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string>, scopeSel: string | null = null): string {
+function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string>, scopeSel: string | null = null, nestingSel: string | null = null): string {
   let out = "";
   let i = 0;
   while (i < css.length) {
@@ -2568,8 +2773,9 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
         const nextScope = /^scope$/i.test(kind)
           ? (scopeRootSelector(css.slice(j, open)) ?? null)
           : scopeSel;
+        const resolvedScope = nextScope ? rewriteAmp(nextScope, nestingSel) : nextScope;
         out += css.slice(i, open + 1);
-        out += scrubLooseDeskRules(css.slice(open + 1, close), hidden, anims, nextScope);
+        out += scrubLooseDeskRules(css.slice(open + 1, close), hidden, anims, resolvedScope, resolvedScope ?? nestingSel);
         out += "}";
         i = close + 1;
         continue;
@@ -2586,7 +2792,8 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
       out += css.slice(i);
       break;
     }
-    if (selectorMatchesDesk(selector, scopeSel)) out += `${selector}{${scrubNestedBody(css.slice(open + 1, close), hidden, anims, true, scopeSel)}}`;
+    const opened = rewriteAmp(selector, scopeSel);
+    if (selectorMatchesDesk(opened, scopeSel)) out += `${selector}{${scrubNestedBody(css.slice(open + 1, close), hidden, anims, true, scopeSel, opened)}}`;
     else out += css.slice(i, close + 1);
     i = close + 1;
   }

@@ -1,3 +1,19 @@
+# Quire 1.9.23 — The page is still the page
+
+Released 22 October 2026.
+
+- **A direction that is still the page can no longer hide the desk.** `:dir(ltr)` follows `html` and `body`, including inside `:is()`, `:nth-child(1 of :dir(ltr))`, and a query. `:dir(rtl)` does not match this page, so that rule stays. A class may still use `:dir(ltr)`. `[lang="EN" i]` follows `[lang=en]`. `[lang=EN]` and `[lang=EN s]` stay. Colour stays.
+- **A scope written as the parent can no longer hide the desk.** `html { @scope (&) { :scope { display: none } } }` follows `html`. `@scope (html) { & { display: none } }` and `@scope (html) { & > * { display: none } }` follow it. `@scope (.note) { & { display: none } }` can still hide that class. Colour stays.
+- **A taken support or style that is still zero can no longer hide the desk.** `if(supports(color: red): 0; else: 1)` follows `opacity: 0`. `if(style(--x: 1): 1; else: 0)` follows it when `--x` is not 1. `if(style(--x: 1): 0; else: 1)` follows it when `--x` is 1. A taken `0.5` stays. `if(media(max-width: 0px): 0; else: 1)` stays. Colour stays.
+- **A clear colour written another way can no longer hide the desk.** `color()`, `oklch()`, `lab()`, `lch()`, `color-mix()`, and `light-dark()` that are only transparent follow a clear mask. A colour that still has black stays. `light-dark(black, transparent)` stays. A class may still use a clear mask. Colour stays.
+- **A calculated cover can no longer hide the desk.** `inset(calc(100%))`, `inset(calc(50% + 50%) 0)`, and `inset(calc(100% + 0px))` follow `inset(100%)`. `inset(calc(10%))` stays. `inset(calc(100px))` stays. A polygon of zero area still hides when a unitless zero sits beside a length. A triangle stays. Colour stays.
+
+Windows installer: Quire-Setup-1.9.23.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.22 — A quiet match is still the desk
 
 Released 21 October 2026.
