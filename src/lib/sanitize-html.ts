@@ -952,8 +952,10 @@ function alphaIsClear(token: string): boolean {
 function fnAlphaClear(name: string, inner: string): boolean {
   const slash = inner.lastIndexOf("/");
   if (slash >= 0) return alphaIsClear(inner.slice(slash + 1));
-  if (name === "rgba" || name === "hsla") {
-    const parts = splitArgs(inner).map((part) => part.trim()).filter(Boolean);
+  if (name === "rgb" || name === "rgba" || name === "hsl" || name === "hsla" || name === "hwb") {
+    const parts = splitArgs(inner)
+      .map((part) => part.trim())
+      .filter(Boolean);
     const last = parts[parts.length - 1] ?? "";
     return parts.length >= 4 && alphaIsClear(last);
   }
@@ -1059,6 +1061,14 @@ function maskIsClear(value: string): boolean {
   return grads.every((grad) => gradientIsClear(grad.inner));
 }
 
+/** A custom property set to a clear mask follows that mask. A gradient that still has black stays. */
+function maskHides(value: string, hidden: Set<string>): boolean {
+  if (maskIsClear(value)) return true;
+  const masks = (hidden as HideVars).masks;
+  if (!masks) return false;
+  return varCalls(value).some((call) => masks.has(call.name) || (Boolean(call.fallback) && maskHides(call.fallback, hidden)));
+}
+
 function splitTopSemi(value: string): string[] {
   const parts: string[] = [];
   let current = "";
@@ -1132,19 +1142,201 @@ function definedMatches(defined: Map<string, string> | undefined, name: string, 
   return norm(have) === norm(want);
 }
 
+const DISPLAY_YES = /^(?:block|flex|inline-flex|grid|inline-grid|flow-root|inline|inline-block|contents|list-item|table|inline-table|table-row|table-cell|table-column|table-column-group|table-caption|table-header-group|table-row-group|table-footer-group|ruby|ruby-base|ruby-text)$/;
+const POSITION_YES = /^(?:static|relative|absolute|fixed|sticky)$/;
+const OVERFLOW_YES = /^(?:visible|hidden|clip|scroll|auto)$/;
+const SYSTEM_COLORS = new Set("canvas canvastext linktext visitedtext activetext buttonface buttontext buttonborder field fieldtext highlight highlighttext mark marktext graytext selecteditem selecteditemtext accentcolor accentcolortext".split(" "));
+
+function unwrapMatchedParens(value: string): string {
+  let v = value.trim();
+  while (v.startsWith("(")) {
+    const end = matchingParen(v, 0);
+    if (end !== v.length - 1) break;
+    v = v.slice(1, -1).trim();
+  }
+  return v;
+}
+
+function splitTopKeyword(value: string, keyword: string): string[] | null {
+  const parts: string[] = [];
+  let current = "";
+  let depth = 0;
+  let quote = "";
+  const kw = keyword.toLowerCase();
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      current += ch;
+      if (ch === "\\" && next) {
+        current += next;
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "(") {
+      depth += 1;
+      current += ch;
+      continue;
+    }
+    if (ch === ")" && depth > 0) {
+      depth -= 1;
+      current += ch;
+      continue;
+    }
+    if (depth === 0 && value.slice(i, i + kw.length).toLowerCase() === kw) {
+      const before = i === 0 ? "" : (value[i - 1] ?? "");
+      const after = value[i + kw.length] ?? "";
+      if (!/[A-Za-z0-9_-]/.test(before) && !/[A-Za-z0-9_-]/.test(after)) {
+        if (current.trim()) parts.push(current.trim());
+        current = "";
+        i += kw.length - 1;
+        continue;
+      }
+    }
+    current += ch;
+  }
+  if (!parts.length) return null;
+  if (current.trim()) parts.push(current.trim());
+  return parts.length > 1 ? parts : null;
+}
+
+function combineBool(states: ("yes" | "no" | "maybe")[], op: "and" | "or"): "yes" | "no" | "maybe" {
+  if (op === "or") {
+    if (states.some((state) => state === "yes")) return "yes";
+    if (states.every((state) => state === "no")) return "no";
+    return "maybe";
+  }
+  if (states.some((state) => state === "no")) return "no";
+  if (states.every((state) => state === "yes")) return "yes";
+  return "maybe";
+}
+
+function flipState(state: "yes" | "no" | "maybe"): "yes" | "no" | "maybe" {
+  if (state === "yes") return "no";
+  if (state === "no") return "yes";
+  return "maybe";
+}
+
+function mediaLengthIsZero(token: string): boolean {
+  return /^(?:0+(?:\.0*)?|\.0+)(?:px|em|rem|pt|pc|in|cm|mm|q|ch|ex|%|(?:[dls])?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))?$/.test(token);
+}
+
+function mediaLeaf(inner: string): "yes" | "no" | "maybe" {
+  if (inner === "all" || inner === "scripting:enabled" || inner === "grid:0" || inner === "min-color:0" || inner === "color") return "yes";
+  if (inner === "scripting:none" || inner === "scripting:initial-only" || inner === "grid:1") return "no";
+  let hit = /^(min-width|min-height):(.+)$/.exec(inner);
+  if (hit) return mediaLengthIsZero(hit[2] ?? "") ? "yes" : "maybe";
+  hit = /^(max-width|max-height):(.+)$/.exec(inner);
+  if (hit) return mediaLengthIsZero(hit[2] ?? "") ? "no" : "maybe";
+  hit = /^(width|height)>=(.+)$/.exec(inner);
+  if (hit) return mediaLengthIsZero(hit[2] ?? "") ? "yes" : "maybe";
+  hit = /^(width|height)<=(.+)$/.exec(inner);
+  if (hit) return mediaLengthIsZero(hit[2] ?? "") ? "no" : "maybe";
+  hit = /^(.+)<=(width|height)$/.exec(inner);
+  if (hit) return mediaLengthIsZero(hit[1] ?? "") ? "yes" : "maybe";
+  hit = /^(.+)>=(width|height)$/.exec(inner);
+  if (hit) return mediaLengthIsZero(hit[1] ?? "") ? "no" : "maybe";
+  if (/^min-resolution:0(?:dpi|dppx|dpcm|x)?$/.test(inner)) return "yes";
+  if (/^max-resolution:0(?:dpi|dppx|dpcm|x)?$/.test(inner)) return "no";
+  if (/^resolution>=0(?:dpi|dppx|dpcm|x)?$/.test(inner)) return "yes";
+  if (/^resolution<=0(?:dpi|dppx|dpcm|x)?$/.test(inner)) return "no";
+  return "maybe";
+}
+
+function mediaBodyState(inner: string): "yes" | "no" | "maybe" {
+  const raw = unwrapMatchedParens(inner);
+  const ors = splitTopKeyword(raw, "or");
+  if (ors) return combineBool(ors.map((part) => mediaBodyState(part)), "or");
+  const ands = splitTopKeyword(raw, "and");
+  if (ands) return combineBool(ands.map((part) => mediaBodyState(part)), "and");
+  if (raw.startsWith("not") && !/[a-z0-9_-]/i.test(raw[3] ?? "")) return flipState(mediaBodyState(raw.slice(3)));
+  return mediaLeaf(unwrapMatchedParens(raw).replace(/\s+/g, "").toLowerCase());
+}
+
+function mediaState(test: string): "yes" | "no" | "maybe" {
+  const compact = test.replace(/\s+/g, "").toLowerCase();
+  const wrapped = /^media\((.*)\)$/.exec(compact);
+  if (!wrapped) return "maybe";
+  return mediaBodyState(wrapped[1] ?? "");
+}
+
+function selectorSyntaxOk(sel: string): boolean {
+  if (!sel || sel.length > 240) return false;
+  if (/[^a-z0-9_#.:[\]()>*+~=|"',^-]/i.test(sel)) return false;
+  let depth = 0;
+  let bracket = 0;
+  for (const ch of sel) {
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth < 0) return false;
+    } else if (ch === "[") bracket += 1;
+    else if (ch === "]") {
+      bracket -= 1;
+      if (bracket < 0) return false;
+    }
+  }
+  if (depth !== 0 || bracket !== 0) return false;
+  if (!/^[.#:\[*a-z_]/i.test(sel)) return false;
+  if (/\(\)/.test(sel) || sel.includes(":::") || /:$/.test(sel)) return false;
+  if (/::(?!before|after|first-line|first-letter|placeholder|marker|selection|backdrop|cue)/.test(sel)) return false;
+  return true;
+}
+
+function supportsFeatureState(body: string, raw: string): "yes" | "no" | "maybe" {
+  const feature = unwrapMatchedParens(body);
+  const ors = splitTopKeyword(feature, "or");
+  if (ors) return combineBool(ors.map((part) => supportsFeatureState(part.replace(/\s+/g, "").toLowerCase(), `supports(${part.trim()})`)), "or");
+  const ands = splitTopKeyword(feature, "and");
+  if (ands) return combineBool(ands.map((part) => supportsFeatureState(part.replace(/\s+/g, "").toLowerCase(), `supports(${part.trim()})`)), "and");
+  const flat = feature.replace(/\s+/g, "").toLowerCase();
+  if (flat.startsWith("display:")) return DISPLAY_YES.test(flat.slice("display:".length)) ? "yes" : "maybe";
+  if (flat.startsWith("position:")) return POSITION_YES.test(flat.slice("position:".length)) ? "yes" : "maybe";
+  if (/^(?:overflow|overflow-x|overflow-y):/.test(flat)) return OVERFLOW_YES.test(flat.slice(flat.indexOf(":") + 1)) ? "yes" : "maybe";
+  if (/^opacity:(?:0|1|0?\.\d+)$/.test(flat)) return "yes";
+  if (/^(?:width|height|inline-size|block-size|font-size|gap|margin|padding|top|left|right|bottom|inset):(?:auto|none|(?:0|[1-9]\d*)(?:\.\d+)?(?:px|em|rem|pt|pc|in|cm|mm|%)?)$/.test(flat)) return "yes";
+  if (/^aspect-ratio:(?:auto|\d+(?:\.\d+)?\/\d+(?:\.\d+)?)$/.test(flat)) return "yes";
+  if (flat.startsWith("selector(") && flat.endsWith(")")) return selectorSyntaxOk(flat.slice("selector(".length, -1)) ? "yes" : "maybe";
+  if (flat.startsWith("color:")) {
+    if (supportsColor(`supports(${flat})`) || SYSTEM_COLORS.has(flat.slice("color:".length))) return "yes";
+    if (supportsModernColor(raw)) return "yes";
+    const loosened = raw.replace(/^supports\(\s*\(/i, "supports(").replace(/\)\s*\)$/, ")");
+    if (loosened !== raw && supportsModernColor(loosened)) return "yes";
+    return "maybe";
+  }
+  return "maybe";
+}
+
+function supportsTestState(test: string): "yes" | "no" | "maybe" {
+  const compact = test.replace(/\s+/g, "").toLowerCase();
+  const wrapped = /^supports\((.*)\)$/.exec(compact);
+  if (!wrapped) return "maybe";
+  return supportsFeatureState(unwrapMatchedParens(wrapped[1] ?? ""), test.trim());
+}
+
 function ifConditionState(cond: string, defined?: Map<string, string>): "yes" | "no" | "maybe" {
-  const c = cond.replace(/\s+/g, "").toLowerCase();
-  if (c === "else") return "yes";
-  if (/^media\(min-width:0(?:px)?\)$/.test(c)) return "yes";
-  if (/^media\(min-height:0(?:px)?\)$/.test(c)) return "yes";
-  if (/^media\(width>=0(?:px)?\)$/.test(c)) return "yes";
-  if (/^media\(height>=0(?:px)?\)$/.test(c)) return "yes";
-  if (/^supports\(display:(?:block|flex|inline-flex|grid|inline-grid|flow-root|inline|inline-block|contents|list-item|table)\)$/.test(c)) return "yes";
-  if (/^supports\(opacity:(?:0|1|0?\.\d+)\)$/.test(c)) return "yes";
-  if (supportsColor(c) || supportsModernColor(cond)) return "yes";
-  const style = /^style\((--[A-Za-z_][\w-]*)\s*:\s*([\s\S]+)\)$/i.exec(cond.trim());
+  const raw = unwrapMatchedParens(cond.trim());
+  if (!raw) return "maybe";
+  const ors = splitTopKeyword(raw, "or");
+  if (ors) return combineBool(ors.map((part) => ifConditionState(part, defined)), "or");
+  const ands = splitTopKeyword(raw, "and");
+  if (ands) return combineBool(ands.map((part) => ifConditionState(part, defined)), "and");
+  const notted = /^not\b([\s\S]+)$/i.exec(raw);
+  if (notted) return flipState(ifConditionState((notted[1] ?? "").trim(), defined));
+  if (/^else$/i.test(raw)) return "yes";
+  const style = /^style\((--[A-Za-z_][\w-]*)\s*:\s*([\s\S]+)\)$/i.exec(raw);
   if (style) return definedMatches(defined, style[1] ?? "", style[2] ?? "") ? "yes" : "no";
-  if (/^style\(/i.test(cond.trim())) return "no";
+  if (/^style\(/i.test(raw)) return "no";
+  if (/^media\(/i.test(raw)) return mediaState(raw);
+  if (/^supports\(/i.test(raw)) return supportsTestState(raw);
   return "maybe";
 }
 
@@ -1202,7 +1394,17 @@ function shapeHides(inner: string): boolean {
   let cx = 0;
   let cy = 0;
   let unit = "";
+  let bareNonZero = false;
   const pts: [number, number][] = [];
+  const acceptUnit = (n: number, next: string): boolean => {
+    if (!next) {
+      if (n !== 0) bareNonZero = true;
+      return !(bareNonZero && unit);
+    }
+    if (bareNonZero) return false;
+    if (!unit) unit = next;
+    return next === unit;
+  };
   const num = (): { n: number; unit: string } | null => {
     const token = tokens[i];
     if (token == null || /^[a-z]/i.test(token)) return null;
@@ -1216,9 +1418,7 @@ function shapeHides(inner: string): boolean {
   const takePair = (rel: boolean): boolean => {
     const x = num();
     const y = num();
-    if (!x || !y || x.unit !== y.unit) return false;
-    if (!unit) unit = x.unit;
-    if (x.unit !== unit) return false;
+    if (!x || !y || !acceptUnit(x.n, x.unit) || !acceptUnit(y.n, y.unit)) return false;
     cx = rel ? cx + x.n : x.n;
     cy = rel ? cy + y.n : y.n;
     pts.push([cx, cy]);
@@ -1245,9 +1445,7 @@ function shapeHides(inner: string): boolean {
       if (!rel && !abs) return false;
       i += 1;
       const axis = num();
-      if (!axis) return false;
-      if (!unit) unit = axis.unit;
-      if (axis.unit !== unit) return false;
+      if (!axis || !acceptUnit(axis.n, axis.unit)) return false;
       if (word === "hline") cx = rel ? cx + axis.n : axis.n;
       else cy = rel ? cy + axis.n : axis.n;
       pts.push([cx, cy]);
@@ -1471,16 +1669,20 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     ) {
       return true;
     }
-    return matrixFlattens(val, hidden);
+    return matrixFlattens(val, hidden) || translateHides(val, hidden);
   }
   if (prop === "zoom") return valueCanHide(val, hidden, hidesAsZero);
   if (prop === "clip-path" || prop === "-webkit-clip-path") return clipHides(val, hidden);
   if (prop === "clip") return namedFunctionCalls(val, ["rect"]).some((call) => rectHides(call.inner));
-  if (prop === "mask" || prop === "mask-image" || prop === "-webkit-mask" || prop === "-webkit-mask-image") return maskIsClear(val);
+  if (prop === "mask" || prop === "mask-image" || prop === "-webkit-mask" || prop === "-webkit-mask-image") return maskHides(val, hidden);
+  if (prop === "translate") {
+    const args = splitTopWords(val.replace(/!important/gi, ""));
+    return args.slice(0, 2).some((arg) => shiftTokenCovers(arg, hidden));
+  }
   return false;
 }
 
-type HideVars = Set<string> & { clips?: Set<string>; defined?: Map<string, string> };
+type HideVars = Set<string> & { clips?: Set<string>; masks?: Set<string>; defined?: Map<string, string> };
 
 function parenDepthAt(value: string, index: number): number {
   let depth = 0;
@@ -1549,6 +1751,19 @@ function collectHideVars(css: string): HideVars {
       if (clipHides(value, hidden)) {
         clips.add(name);
         clipChanged = true;
+      }
+    }
+  }
+  const masks = new Set<string>();
+  hidden.masks = masks;
+  let maskChanged = true;
+  while (maskChanged) {
+    maskChanged = false;
+    for (const [name, value] of raw) {
+      if (masks.has(name)) continue;
+      if (maskHides(value, hidden)) {
+        masks.add(name);
+        maskChanged = true;
       }
     }
   }
@@ -1843,7 +2058,7 @@ function inverseAngle(name: string, args: MathQty[]): number | null {
 }
 
 function parseMathCall(s: string, i: number): MathQty | null {
-  const names = ["sibling-index", "sibling-count", "clamp", "hypot", "round", "atan2", "sqrt", "sign", "calc", "asin", "acos", "atan", "min", "max", "mod", "pow", "log", "abs", "rem", "sin", "cos", "tan", "exp"];
+  const names = ["sibling-index", "sibling-count", "clamp", "hypot", "round", "atan2", "sqrt", "sign", "calc", "asin", "acos", "atan", "min", "max", "mod", "pow", "log", "abs", "rem", "sin", "cos", "tan", "exp", "progress"];
   for (const name of names) {
     if (s.slice(i, i + name.length).toLowerCase() !== name) continue;
     if (s[i + name.length] !== "(") continue;
@@ -1970,6 +2185,15 @@ function parseMathCall(s: string, i: number): MathQty | null {
       const ang = inverseAngle(name, args);
       if (ang == null) return null;
       return { n: ang, u: ang === 0 ? blankUnits() : { rad: 1 }, i: cursor };
+    } else if (name === "progress") {
+      if (args.length !== 3) return null;
+      const value = args[0];
+      const start = args[1];
+      const end = args[2];
+      if (!value || !start || !end || [value, start, end].some((arg) => !Number.isFinite(arg.n))) return null;
+      const span = end.n - start.n;
+      if (span === 0) return { n: Number.NaN, u: blankUnits(), i: cursor };
+      return { n: (value.n - start.n) / span, u: blankUnits(), i: cursor };
     } else if (args.length !== 1) return null;
     else n = args[0]?.n ?? Number.NaN;
     return { n, u: unit, i: cursor };
@@ -2005,6 +2229,47 @@ function matrixFlattens(value: string, hidden: Set<string>): boolean {
     const b2 = nums[5];
     if (a1 == null || b1 == null || a2 == null || b2 == null) return false;
     return a1 * b2 - b1 * a2 === 0;
+  });
+}
+
+function shiftAxisCovers(value: string): boolean {
+  const t = value.replace(/!important/gi, "").replace(/\s+/g, "");
+  if (!t) return false;
+  const parsed = parseMathSum(t, 0);
+  if (!parsed || parsed.i !== t.length || !Number.isFinite(parsed.n)) return false;
+  const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+  if (units.length !== 1 || units[0]?.[1] !== 1) return false;
+  const unit = units[0]?.[0] ?? "";
+  if (unit !== "%" && !/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) && !/^cq(?:w|h|i|b|min|max)$/.test(unit)) return false;
+  return Math.abs(parsed.n) >= 100;
+}
+
+function shiftTokenCovers(token: string, hidden: Set<string>, seen?: Set<string>): boolean {
+  if (shiftAxisCovers(token)) return true;
+  const trail = seen ?? new Set<string>();
+  const defined = (hidden as HideVars).defined;
+  for (const call of varCalls(token)) {
+    const raw = defined?.get(call.name);
+    if (raw && !trail.has(call.name)) {
+      const next = new Set(trail);
+      next.add(call.name);
+      if (shiftTokenCovers(raw, hidden, next)) return true;
+    }
+    if (call.fallback && shiftTokenCovers(call.fallback, hidden, trail)) return true;
+  }
+  return false;
+}
+
+/** A shift of the whole desk moves it off the page. A few pixels stay. A turn stays. */
+function translateHides(value: string, hidden: Set<string>): boolean {
+  const found = namedFunctionCalls(value, ["translate3d", "translatex", "translatey", "translate"]);
+  if (!found.length) return false;
+  return found.some((call) => {
+    const args = splitArgs(call.inner)
+      .flatMap((part) => splitTopWords(part))
+      .filter(Boolean);
+    const axes = call.name === "translatex" || call.name === "translatey" ? args : args.slice(0, 2);
+    return axes.some((arg) => shiftTokenCovers(arg, hidden));
   });
 }
 

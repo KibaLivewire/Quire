@@ -1,3 +1,22 @@
+# Quire 1.9.25 — A query the page already answers
+
+Released 23 October 2026.
+
+- **A support the page already has, written another way, can no longer hide the desk.** `supports(display: table-cell)`, `supports(position: relative)`, `supports(overflow: hidden)`, `supports((display: flex))`, `supports(selector(:root))`, `supports(width: 2px)`, `supports(font-size: 16px)`, `supports(color: Canvas)`, `supports(aspect-ratio: 1 / 1)`, and `supports(display: flex) and supports(display: grid)` follow a taken `if()` of zero. `supports(display: no-such)` stays. A colour this page does not know stays. A taken `0.5` stays. Colour stays.
+- **A media query that is still the page can no longer hide the desk.** `media(min-width: 0em)`, `media(min-width: 0vw)`, `media((min-width: 0px))`, `media(all)`, `media(min-width: 0px) and media(min-height: 0px)`, `media(0px <= width)`, `media(scripting: enabled)`, `media(grid: 0)`, `media(min-color: 0)`, and `media(min-resolution: 0dpi)` follow a taken `if()` of zero. `not media(max-width: 0px)` follows it. `media(max-width: 0px)` is not this page, so `else: 0` follows `opacity: 0` and `else: 1` stays. `media(min-width: 10px)` stays. Colour stays.
+- **progress() of zero is still zero.** `progress(0, 0, 1)` follows `opacity: 0`, including a filter, a zoom, and a custom property set to it. `progress(1, 0, 2)` stays. A class may still use a zero progress. Colour stays.
+- **A clear colour written with commas can no longer hide the desk.** `rgb(0, 0, 0, 0)` and `hsl(0, 0%, 0%, 0)` follow a clear mask. `rgb(0, 0, 0)` stays. A class may still use that mask. Colour stays.
+- **A custom property set to a clear mask can no longer hide the desk.** `mask-image: var(--c)` follows the gradient when `--c` is only transparent. A gradient that still has black stays. A class may still use that mask. Colour stays.
+- **A shape written with commas can no longer hide the desk.** `shape(from 0 0, line to 10px 0, line to 20px 0, close)` follows a polygon with no area. A triangle stays. Colour stays.
+- **A full shift can no longer hide the desk.** `translate(-100%, 0)`, `translateX(-100%)`, `translate3d(-100%, 0, 0)`, `translate: -100% 0`, and `translateX(-100vw)` follow a move off the page. `translateX(4px)` stays. A turn stays. `scale(-1)` stays. A class may still shift. Colour stays.
+- **A Word field mark is a space.** `w:fldChar` between two runs no longer glues the words. The field code stays off the page. The result, when it is real text, stays.
+
+Windows installer: Quire-Setup-1.9.25.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.24 — A negative is still zero
 
 Released 22 October 2026.
