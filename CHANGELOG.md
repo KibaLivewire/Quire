@@ -1,3 +1,18 @@
+# Quire 1.9.26 — The screen is still the page
+
+Released 23 October 2026.
+
+- **A media type that is still the page can no longer hide the desk.** `media(screen)`, `media(only screen)`, `media(not print)`, and `media(not speech)` follow a taken `if()` of zero. `media(print)` and `media(speech)` are not this page, so a zero only in that branch stays and the else zero is dropped. `media(screen and (min-width: 0px))`, `media(0px < width)`, `media(width > 0px)`, and `media(min-monochrome: 0)` follow it. `media(min-width: 10px)` stays. Colour stays.
+- **A support written with a keyword or an important flag can no longer hide the desk.** `supports(display: initial)`, `inherit`, `unset`, `revert`, and `revert-layer` follow a taken `if()` of zero. `supports(display: block !important)`, `supports(font-size: medium)`, `supports(width: fit-content)`, `supports(min-width: 0)`, and `supports(max-width: none)` follow it. `supports(display: no-such)` stays. A taken `0.5` stays. Colour stays.
+- **An if() that is not a hide is no longer read as one.** `display: if(media(print): none; else: block)` stays, because print is not this page. `display: if(media(screen): none; else: block)` is dropped. The same reading applies to scale, zoom, a filter, a clip, and a shift. Colour stays.
+- **A matrix shift, or a container size, can no longer hide the desk.** `matrix(1, 0, 0, 1, -100%, 0)` and the same shift in `matrix3d()` follow `translate(-100%)`. `translateX(-100cqi)` and `translateY(100cqb)` follow `translateX(-100vw)`. `matrix(1, 0, 0, 1, 4px, 0)` stays. `translateX(4px)` stays. A turn stays. `scale(-1)` stays. A class may still shift. Colour stays.
+
+Windows installer: Quire-Setup-1.9.26.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.25 — A query the page already answers
 
 Released 23 October 2026.

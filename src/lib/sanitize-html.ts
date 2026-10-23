@@ -703,7 +703,15 @@ function varCalls(value: string): { name: string; fallback: string }[] {
   return calls;
 }
 
+function wholeFunction(value: string, name: string): boolean {
+  const trimmed = value.trim();
+  const calls = namedFunctionCalls(trimmed, [name]);
+  if (calls.length !== 1 || !calls[0]) return false;
+  return trimmed.replace(/\s+/g, "").toLowerCase() === `${name}(${calls[0].inner})`.replace(/\s+/g, "").toLowerCase();
+}
+
 function valueCanHide(value: string, hidden: Set<string>, pred: (v: string) => boolean, seen?: Set<string>): boolean {
+  if (wholeFunction(value, "if")) return ifCanHide(value, hidden, pred, seen);
   if (pred(value)) return true;
   if (ifCanHide(value, hidden, pred, seen)) return true;
   const trail = seen ?? new Set<string>();
@@ -1244,6 +1252,11 @@ function mediaLeaf(inner: string): "yes" | "no" | "maybe" {
   if (hit) return mediaLengthIsZero(hit[1] ?? "") ? "yes" : "maybe";
   hit = /^(.+)>=(width|height)$/.exec(inner);
   if (hit) return mediaLengthIsZero(hit[1] ?? "") ? "no" : "maybe";
+  hit = /^(width|height)>(.+)$/.exec(inner);
+  if (hit) return mediaLengthIsZero(hit[2] ?? "") ? "yes" : "maybe";
+  hit = /^(.+)<(width|height)$/.exec(inner);
+  if (hit) return mediaLengthIsZero(hit[1] ?? "") ? "yes" : "maybe";
+  if (/^min-monochrome:0+(?:\.0+)?$/.test(inner)) return "yes";
   if (/^min-resolution:0(?:dpi|dppx|dpcm|x)?$/.test(inner)) return "yes";
   if (/^max-resolution:0(?:dpi|dppx|dpcm|x)?$/.test(inner)) return "no";
   if (/^resolution>=0(?:dpi|dppx|dpcm|x)?$/.test(inner)) return "yes";
@@ -1258,14 +1271,27 @@ function mediaBodyState(inner: string): "yes" | "no" | "maybe" {
   const ands = splitTopKeyword(raw, "and");
   if (ands) return combineBool(ands.map((part) => mediaBodyState(part)), "and");
   if (raw.startsWith("not") && !/[a-z0-9_-]/i.test(raw[3] ?? "")) return flipState(mediaBodyState(raw.slice(3)));
+  const typed = mediaTypeState(raw);
+  if (typed) return typed;
   return mediaLeaf(unwrapMatchedParens(raw).replace(/\s+/g, "").toLowerCase());
 }
 
+/** screen and all are this page. print, speech, and the other types are not. only does not change that. */
+function mediaTypeState(raw: string): "yes" | "no" | "maybe" | null {
+  let body = unwrapMatchedParens(raw).trim().toLowerCase();
+  if (/^only(?![a-z0-9_-])/.test(body)) body = body.slice(4).trim();
+  const kind = /^(all|screen|print|speech|aural|tty|tv|projection|handheld|braille|embossed)$/.exec(body)?.[1] ?? "";
+  if (!kind) return null;
+  return kind === "all" || kind === "screen" ? "yes" : "no";
+}
+
 function mediaState(test: string): "yes" | "no" | "maybe" {
-  const compact = test.replace(/\s+/g, "").toLowerCase();
-  const wrapped = /^media\((.*)\)$/.exec(compact);
-  if (!wrapped) return "maybe";
-  return mediaBodyState(wrapped[1] ?? "");
+  const trimmed = test.trim();
+  const calls = namedFunctionCalls(trimmed, ["media"]);
+  if (calls.length !== 1 || !calls[0]) return "maybe";
+  const call = calls[0];
+  if (trimmed.replace(/\s+/g, "").toLowerCase() !== `media(${call.inner})`.replace(/\s+/g, "").toLowerCase()) return "maybe";
+  return mediaBodyState(call.inner.trim());
 }
 
 function selectorSyntaxOk(sel: string): boolean {
@@ -1291,19 +1317,30 @@ function selectorSyntaxOk(sel: string): boolean {
   return true;
 }
 
+function cssWideYes(flat: string): "yes" | "maybe" {
+  const idx = flat.indexOf(":");
+  if (idx <= 0) return "maybe";
+  const prop = flat.slice(0, idx);
+  const value = flat.slice(idx + 1);
+  if (!/^(?:initial|inherit|unset|revert|revert-layer)$/.test(value)) return "maybe";
+  if (/^(?:display|position|opacity|color|aspect-ratio|overflow(?:-[xy])?|width|height|inline-size|block-size|min-width|max-width|min-height|max-height|min-inline-size|max-inline-size|min-block-size|max-block-size|font-size|gap|margin|padding|top|left|right|bottom|inset)$/.test(prop)) return "yes";
+  return "maybe";
+}
+
 function supportsFeatureState(body: string, raw: string): "yes" | "no" | "maybe" {
   const feature = unwrapMatchedParens(body);
   const ors = splitTopKeyword(feature, "or");
   if (ors) return combineBool(ors.map((part) => supportsFeatureState(part.replace(/\s+/g, "").toLowerCase(), `supports(${part.trim()})`)), "or");
   const ands = splitTopKeyword(feature, "and");
   if (ands) return combineBool(ands.map((part) => supportsFeatureState(part.replace(/\s+/g, "").toLowerCase(), `supports(${part.trim()})`)), "and");
-  const flat = feature.replace(/\s+/g, "").toLowerCase();
-  if (flat.startsWith("display:")) return DISPLAY_YES.test(flat.slice("display:".length)) ? "yes" : "maybe";
-  if (flat.startsWith("position:")) return POSITION_YES.test(flat.slice("position:".length)) ? "yes" : "maybe";
-  if (/^(?:overflow|overflow-x|overflow-y):/.test(flat)) return OVERFLOW_YES.test(flat.slice(flat.indexOf(":") + 1)) ? "yes" : "maybe";
+  const flat = feature.replace(/\s+/g, "").toLowerCase().replace(/!important$/, "");
+  if (flat.startsWith("display:")) return DISPLAY_YES.test(flat.slice("display:".length)) ? "yes" : cssWideYes(flat);
+  if (flat.startsWith("position:")) return POSITION_YES.test(flat.slice("position:".length)) ? "yes" : cssWideYes(flat);
+  if (/^(?:overflow|overflow-x|overflow-y):/.test(flat)) return OVERFLOW_YES.test(flat.slice(flat.indexOf(":") + 1)) ? "yes" : cssWideYes(flat);
   if (/^opacity:(?:0|1|0?\.\d+)$/.test(flat)) return "yes";
-  if (/^(?:width|height|inline-size|block-size|font-size|gap|margin|padding|top|left|right|bottom|inset):(?:auto|none|(?:0|[1-9]\d*)(?:\.\d+)?(?:px|em|rem|pt|pc|in|cm|mm|%)?)$/.test(flat)) return "yes";
+  if (new RegExp(`^(?:width|height|inline-size|block-size|min-width|max-width|min-height|max-height|min-inline-size|max-inline-size|min-block-size|max-block-size|font-size|gap|margin|padding|top|left|right|bottom|inset):(?:auto|none|fit-content|min-content|max-content|medium|small|large|x-large|xx-large|xxx-large|smaller|larger|xx-small|x-small|(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:px|em|rem|pt|pc|in|cm|mm|%)?)$`).test(flat)) return "yes";
   if (/^aspect-ratio:(?:auto|\d+(?:\.\d+)?\/\d+(?:\.\d+)?)$/.test(flat)) return "yes";
+  if (cssWideYes(flat) === "yes") return "yes";
   if (flat.startsWith("selector(") && flat.endsWith(")")) return selectorSyntaxOk(flat.slice("selector(".length, -1)) ? "yes" : "maybe";
   if (flat.startsWith("color:")) {
     if (supportsColor(`supports(${flat})`) || SYSTEM_COLORS.has(flat.slice("color:".length))) return "yes";
@@ -1651,6 +1688,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   const prop = piece.slice(0, idx).trim().toLowerCase().replace(/\s+/g, "");
   const val = piece.slice(idx + 1).trim();
   if (!prop || !val) return false;
+  if (wholeFunction(val, "if")) return ifCanHide(val, hidden, (branch) => declarationHidesDesk(`${prop}: ${branch}`, hidden));
   if (prop === "display" || prop === "pointer-events") return valueCanHide(val, hidden, (v) => /\bnone\b/i.test(v));
   if (prop === "visibility") return valueCanHide(val, hidden, (v) => /\b(?:hidden|collapse)\b/i.test(v));
   if (prop === "content-visibility") return valueCanHide(val, hidden, (v) => /\bhidden\b/i.test(v));
@@ -1669,7 +1707,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     ) {
       return true;
     }
-    return matrixFlattens(val, hidden) || translateHides(val, hidden);
+    return matrixFlattens(val, hidden) || matrixShifts(val, hidden) || translateHides(val, hidden);
   }
   if (prop === "zoom") return valueCanHide(val, hidden, hidesAsZero);
   if (prop === "clip-path" || prop === "-webkit-clip-path") return clipHides(val, hidden);
@@ -1953,7 +1991,7 @@ function parseMathUnary(s: string, i: number): MathQty | null {
   const n = Number(m[1]) * (m[2] ? 10 ** Number(m[2]) : 1);
   if (!Number.isFinite(n)) return null;
   const unit = (m[3] || "").toLowerCase();
-  if (unit && !/^(?:px|em|rem|pt|pc|in|cm|mm|vh|vw|vmin|vmax|dvh|svh|lvh|dvw|svw|lvw|deg|turn|rad|grad|s|ms|fr|ch|ex|%)$/.test(unit)) return null;
+  if (unit && !/^(?:px|em|rem|pt|pc|in|cm|mm|vh|vw|vmin|vmax|vi|vb|dvh|svh|lvh|dvw|svw|lvw|dvmin|dvmax|svmin|svmax|lvmin|lvmax|cqi|cqb|cqw|cqh|cqmin|cqmax|deg|turn|rad|grad|s|ms|fr|ch|ex|%)$/.test(unit)) return null;
   const u = unit ? { [unit]: 1 } : blankUnits();
   return { n, u, i: i + m[0].length };
 }
@@ -2229,6 +2267,23 @@ function matrixFlattens(value: string, hidden: Set<string>): boolean {
     const b2 = nums[5];
     if (a1 == null || b1 == null || a2 == null || b2 == null) return false;
     return a1 * b2 - b1 * a2 === 0;
+  });
+}
+
+function matrixParts(inner: string): string[] {
+  const comma = splitArgs(inner).map((part) => part.trim()).filter(Boolean);
+  if (comma.length > 1) return comma;
+  return splitTopWords(inner);
+}
+
+/** A matrix translation of a full page is the same hide as translate(). A few pixels stay. */
+function matrixShifts(value: string, hidden: Set<string>): boolean {
+  const found = namedFunctionCalls(value, ["matrix3d", "matrix"]);
+  return found.some((call) => {
+    const nums = matrixParts(call.inner);
+    const tx = call.name === "matrix" ? (nums[4] ?? "") : (nums[12] ?? "");
+    const ty = call.name === "matrix" ? (nums[5] ?? "") : (nums[13] ?? "");
+    return shiftTokenCovers(tx, hidden) || shiftTokenCovers(ty, hidden);
   });
 }
 
