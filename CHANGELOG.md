@@ -1,3 +1,21 @@
+# Quire 1.9.28 — The type is not the feature
+
+Released 24 October 2026.
+
+- **A media type inside if(media()) can no longer hide the desk.** `media()` takes a feature, not `screen`, `all`, `print`, or `only`. `media(screen)`, `media(not print)`, `media(all)`, `media(screen, print)`, and `media(screen and (min-width: 0px))` are not this page, so the else zero is dropped and a zero only in that query stays. `media(min-width: 0px)` is still dropped when the taken value is zero. Colour stays.
+- **A comparison the page still answers can no longer hide the desk.** `media(scripting)`, `media(not (grid))`, `media(monochrome: 0)`, `media(monochrome >= 0)`, `media(monochrome <= 0)`, `media(color-index: 0)`, `media(color-index >= 0)`, `media(color >= 0)`, `media(max-color: 100)`, `media(dynamic-range)`, `media(dynamic-range: standard)`, `media(resolution)`, `media(aspect-ratio)`, `media(aspect-ratio >= 0/1)`, `media(min-device-width: 0px)`, `media(horizontal-viewport-segments >= 1)`, and `media(-webkit-transform-3d)` follow a taken if() of zero. `media(monochrome > 0)`, `media(dynamic-range: high)`, `media(max-aspect-ratio: 0/1)`, `media(max-device-width: 0px)`, `media(resolution >= 0)` with no unit, and `media(grid = 0)` are not this page, so the else zero is dropped. `media(color-index > 0)`, `media(min-resolution: 2dppx)`, `media(hover)`, and `media(pointer)` stay. Colour stays.
+- **A support the page can answer can no longer hide the desk.** `supports(--x: 1)`, `supports(not (--x: 1))`, `supports(color: rgb(1 0 0 / 1))`, `supports(background-color: red)`, `supports(font-family: serif)`, `supports(font-family: NotARealFont)`, `supports(color-scheme: light dark)`, `supports(flex: 1 1 auto)`, `supports(user-select: none)`, `supports(font-variant: normal)`, `supports(text-decoration: none)`, `supports(writing-mode: horizontal-tb)`, and `supports(column-width: 10em)` follow a support this page already has. When the page itself can answer `supports()`, that answer is used, including a function this page can already parse. `supports(user-select: no-such)` is not taken, so the else zero is dropped. `supports(display: no-such)` stays. A taken `0.5` stays. Colour stays.
+
+Windows installer: Quire-Setup-1.9.28.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+Windows installer: Quire-Setup-1.9.28.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.27 — A query the page still answers
 
 Released 24 October 2026.
