@@ -1234,12 +1234,12 @@ function flipState(state: "yes" | "no" | "maybe"): "yes" | "no" | "maybe" {
 }
 
 function mediaLengthIsZero(token: string): boolean {
-  return /^(?:0+(?:\.0*)?|\.0+)(?:px|em|rem|pt|pc|in|cm|mm|q|ch|ex|%|(?:[dls])?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))?$/.test(token);
+  return /^(?:0+(?:\.0*)?|\.0+)(?:px|em|rem|pt|pc|in|cm|mm|q|ch|ex|cap|ic|rlh|lh|rex|rch|%|(?:[dls])?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))?$/.test(token);
 }
 
 function mediaLeaf(inner: string): "yes" | "no" | "maybe" {
-  if (inner === "all" || inner === "scripting:enabled" || inner === "grid:0" || inner === "min-color:0" || inner === "color") return "yes";
-  if (inner === "scripting:none" || inner === "scripting:initial-only" || inner === "grid:1") return "no";
+  if (inner === "all" || inner === "scripting:enabled" || inner === "grid:0" || inner === "min-color:0" || inner === "min-color:1" || inner === "color" || inner === "color-gamut:srgb") return "yes";
+  if (inner === "scripting:none" || inner === "scripting:initial-only" || inner === "grid:1" || inner === "monochrome") return "no";
   let hit = /^(min-width|min-height):(.+)$/.exec(inner);
   if (hit) return mediaLengthIsZero(hit[2] ?? "") ? "yes" : "maybe";
   hit = /^(max-width|max-height):(.+)$/.exec(inner);
@@ -1256,18 +1256,125 @@ function mediaLeaf(inner: string): "yes" | "no" | "maybe" {
   if (hit) return mediaLengthIsZero(hit[2] ?? "") ? "yes" : "maybe";
   hit = /^(.+)<(width|height)$/.exec(inner);
   if (hit) return mediaLengthIsZero(hit[1] ?? "") ? "yes" : "maybe";
-  if (/^min-monochrome:0+(?:\.0+)?$/.test(inner)) return "yes";
-  if (/^min-resolution:0(?:dpi|dppx|dpcm|x)?$/.test(inner)) return "yes";
+  if (/^min-monochrome:0+(?:\.0+)?$/.test(inner) || /^max-monochrome:0+(?:\.0+)?$/.test(inner)) return "yes";
+  if (/^min-monochrome:[1-9]/.test(inner)) return "no";
+  if (/^color>=1$/.test(inner) || /^color>0+$/.test(inner) || /^1<=color$/.test(inner) || /^0+<color$/.test(inner)) return "yes";
+  if (/^max-color:0+$/.test(inner) || /^color<=0+$/.test(inner) || /^color<1$/.test(inner)) return "no";
+  if (/^min-resolution:0(?:dpi|dppx|dpcm|x)?$/.test(inner) || /^min-resolution:1dpi$/.test(inner)) return "yes";
   if (/^max-resolution:0(?:dpi|dppx|dpcm|x)?$/.test(inner)) return "no";
-  if (/^resolution>=0(?:dpi|dppx|dpcm|x)?$/.test(inner)) return "yes";
+  if (/^resolution>=0(?:dpi|dppx|dpcm|x)?$/.test(inner) || /^resolution>0+(?:\.0+)?(?:dpi|dppx|dpcm|x)?$/.test(inner)) return "yes";
+  if (/^0+(?:\.0+)?(?:dpi|dppx|dpcm|x)?<resolution$/.test(inner)) return "yes";
   if (/^resolution<=0(?:dpi|dppx|dpcm|x)?$/.test(inner)) return "no";
   return "maybe";
 }
 
+/** A comma list is the same or as the word or. A closed set of one feature is still this page. */
+const CLOSED_MEDIA: Record<string, string[]> = {
+  orientation: ["portrait", "landscape"],
+  hover: ["none", "hover"],
+  "any-hover": ["none", "hover"],
+  pointer: ["none", "coarse", "fine"],
+  "any-pointer": ["none", "coarse", "fine"],
+  update: ["none", "slow", "fast"],
+  "overflow-block": ["none", "scroll", "optional-paged", "paged"],
+  "overflow-inline": ["none", "scroll"],
+  "dynamic-range": ["standard", "high"],
+  "forced-colors": ["none", "active"],
+  "prefers-reduced-motion": ["no-preference", "reduce"],
+  "prefers-color-scheme": ["light", "dark"],
+  "prefers-contrast": ["no-preference", "more", "less", "custom"],
+  "prefers-reduced-transparency": ["no-preference", "reduce"],
+  "display-mode": ["browser", "fullscreen", "standalone", "minimal-ui", "window-controls-overlay", "picture-in-picture"],
+};
+
+/** These names are not this page, even when every value is listed. A zero in the else is the value that is taken. */
+const CLOSED_MEDIA_NO: Record<string, string[]> = {
+  "video-dynamic-range": ["standard", "high"],
+  "inverted-colors": ["none", "inverted"],
+  "prefers-reduced-data": ["no-preference", "reduce"],
+  "environment-blending": ["opaque", "additive", "subtractive"],
+  scan: ["interlace", "progressive"],
+  "nav-controls": ["none", "back"],
+};
+
+function splitTopCommaList(value: string): string[] | null {
+  const parts: string[] = [];
+  let current = "";
+  let depth = 0;
+  let quote = "";
+  let saw = false;
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      current += ch;
+      if (ch === "\\" && next) {
+        current += next;
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "(") {
+      depth += 1;
+      current += ch;
+      continue;
+    }
+    if (ch === ")" && depth > 0) {
+      depth -= 1;
+      current += ch;
+      continue;
+    }
+    if (ch === "," && depth === 0) {
+      saw = true;
+      if (current.trim()) parts.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (!saw) return null;
+  if (current.trim()) parts.push(current.trim());
+  return parts.length > 1 ? parts : null;
+}
+
+function closedMediaOr(parts: string[]): "yes" | "no" | null {
+  const pairs: { feature: string; value: string }[] = [];
+  for (const part of parts) {
+    const flat = unwrapMatchedParens(part).replace(/\s+/g, "").toLowerCase();
+    const match = /^([a-z][a-z0-9-]*):([a-z0-9-]+)$/.exec(flat);
+    if (!match) return null;
+    pairs.push({ feature: match[1] ?? "", value: match[2] ?? "" });
+  }
+  const feature = pairs[0]?.feature ?? "";
+  const yes = CLOSED_MEDIA[feature];
+  const no = CLOSED_MEDIA_NO[feature];
+  const set = yes ?? no;
+  if (!set || pairs.some((pair) => pair.feature !== feature || !set.includes(pair.value))) return null;
+  if (!set.every((value) => pairs.some((pair) => pair.value === value))) return null;
+  return yes ? "yes" : "no";
+}
+
 function mediaBodyState(inner: string): "yes" | "no" | "maybe" {
   const raw = unwrapMatchedParens(inner);
+  const commas = splitTopCommaList(raw);
+  if (commas) {
+    const closed = closedMediaOr(commas);
+    if (closed) return closed;
+    return combineBool(commas.map((part) => mediaBodyState(part)), "or");
+  }
   const ors = splitTopKeyword(raw, "or");
-  if (ors) return combineBool(ors.map((part) => mediaBodyState(part)), "or");
+  if (ors) {
+    const closed = closedMediaOr(ors);
+    if (closed) return closed;
+    return combineBool(ors.map((part) => mediaBodyState(part)), "or");
+  }
   const ands = splitTopKeyword(raw, "and");
   if (ands) return combineBool(ands.map((part) => mediaBodyState(part)), "and");
   if (raw.startsWith("not") && !/[a-z0-9_-]/i.test(raw[3] ?? "")) return flipState(mediaBodyState(raw.slice(3)));
@@ -1327,26 +1434,95 @@ function cssWideYes(flat: string): "yes" | "maybe" {
   return "maybe";
 }
 
+const SUPPORT_LEN_NUM = String.raw`[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?`;
+const SUPPORT_LEN_UNIT = String.raw`px|em|rem|pt|pc|in|cm|mm|q|ch|ex|cap|ic|rlh|lh|rex|rch|%|vw|vh|vmin|vmax|vb|vi|svw|svh|svmin|svmax|lvw|lvh|lvmin|lvmax|dvw|dvh|dvmin|dvmax|cqw|cqh|cqi|cqb|cqmin|cqmax`;
+
+function supportedLengthToken(value: string): boolean {
+  if (/^(?:auto|none|fit-content|min-content|max-content|medium|small|large|x-large|xx-large|xxx-large|smaller|larger|xx-small|x-small)$/.test(value)) return true;
+  return new RegExp(`^${SUPPORT_LEN_NUM}(?:${SUPPORT_LEN_UNIT})?$`).test(value);
+}
+
+function supportedLengthExpr(value: string): boolean {
+  if (supportedLengthToken(value)) return true;
+  const wrapped = /^(?:calc|min|max|clamp)\(([\s\S]+)\)$/.exec(value);
+  if (!wrapped) return false;
+  const inner = (wrapped[1] ?? "").replace(/\s+/g, "");
+  if (!inner || !new RegExp(`^(?:${SUPPORT_LEN_NUM}(?:${SUPPORT_LEN_UNIT})?|[,+\\-*/()])+$`).test(inner)) return false;
+  return new RegExp(SUPPORT_LEN_NUM).test(inner);
+}
+
+function keywordSupport(flat: string, yes: RegExp): "yes" | "no" | "maybe" {
+  const value = flat.slice(flat.indexOf(":") + 1);
+  if (yes.test(value) || cssWideYes(flat) === "yes") return "yes";
+  if (/^[a-z][a-z-]*$/.test(value)) return "no";
+  return "maybe";
+}
+
+/** A declaration this page can already use. A made-up keyword is not. */
+function plainSupportYes(flat: string): boolean {
+  if (/^box-sizing:(?:border-box|content-box)$/.test(flat)) return true;
+  if (/^(?:transform|translate|rotate|scale|filter|clip-path|float|clear|outline|border|background|list-style|contain):none$/.test(flat)) return true;
+  if (/^font-weight:(?:normal|bold|lighter|bolder|[1-9]00)$/.test(flat)) return true;
+  if (/^font-style:(?:normal|italic|oblique)$/.test(flat)) return true;
+  if (/^white-space:(?:normal|nowrap|pre|pre-wrap|pre-line|break-spaces)$/.test(flat)) return true;
+  if (/^text-align:(?:left|right|center|start|end|justify)$/.test(flat)) return true;
+  if (/^cursor:(?:auto|default|pointer|none|text)$/.test(flat)) return true;
+  if (/^z-index:(?:auto|-?\d+)$/.test(flat)) return true;
+  if (/^appearance:(?:none|auto)$/.test(flat)) return true;
+  if (/^accent-color:auto$/.test(flat)) return true;
+  if (/^content-visibility:(?:visible|hidden|auto)$/.test(flat)) return true;
+  if (/^visibility:(?:visible|hidden|collapse)$/.test(flat)) return true;
+  if (/^pointer-events:(?:auto|none)$/.test(flat)) return true;
+  if (/^flex-direction:(?:row|column|row-reverse|column-reverse)$/.test(flat)) return true;
+  if (/^justify-content:(?:flex-start|center|flex-end|space-between|space-around|space-evenly|start|end)$/.test(flat)) return true;
+  if (/^align-items:(?:stretch|center|flex-start|flex-end|baseline|start|end)$/.test(flat)) return true;
+  if (/^line-height:(?:normal|\d+\.?\d*|\.\d+)$/.test(flat)) return true;
+  if (/^vertical-align:(?:baseline|top|middle|bottom|sub|super|text-top|text-bottom)$/.test(flat)) return true;
+  if (/^mix-blend-mode:normal$/.test(flat)) return true;
+  if (/^isolation:(?:auto|isolate)$/.test(flat)) return true;
+  if (/^object-fit:(?:fill|contain|cover|none|scale-down)$/.test(flat)) return true;
+  if (/^overflow-wrap:(?:normal|anywhere|break-word)$/.test(flat)) return true;
+  if (/^word-break:(?:normal|break-all|keep-all|break-word)$/.test(flat)) return true;
+  if (/^will-change:auto$/.test(flat)) return true;
+  if (/^gap:normal$/.test(flat)) return true;
+  if (/^opacity:\d+(?:\.\d+)?%$/.test(flat)) return true;
+  if (/^scale:(?:none|[+-]?(?:\d+\.?\d*|\.\d+)(?:%)?)$/.test(flat)) return true;
+  return false;
+}
+
 function supportsFeatureState(body: string, raw: string): "yes" | "no" | "maybe" {
   const feature = unwrapMatchedParens(body);
   const ors = splitTopKeyword(feature, "or");
   if (ors) return combineBool(ors.map((part) => supportsFeatureState(part.replace(/\s+/g, "").toLowerCase(), `supports(${part.trim()})`)), "or");
   const ands = splitTopKeyword(feature, "and");
   if (ands) return combineBool(ands.map((part) => supportsFeatureState(part.replace(/\s+/g, "").toLowerCase(), `supports(${part.trim()})`)), "and");
-  const flat = feature.replace(/\s+/g, "").toLowerCase().replace(/!important$/, "");
-  if (flat.startsWith("display:")) return DISPLAY_YES.test(flat.slice("display:".length)) ? "yes" : cssWideYes(flat);
-  if (flat.startsWith("position:")) return POSITION_YES.test(flat.slice("position:".length)) ? "yes" : cssWideYes(flat);
-  if (/^(?:overflow|overflow-x|overflow-y):/.test(flat)) return OVERFLOW_YES.test(flat.slice(flat.indexOf(":") + 1)) ? "yes" : cssWideYes(flat);
-  if (/^opacity:(?:0|1|0?\.\d+)$/.test(flat)) return "yes";
-  if (new RegExp(`^(?:width|height|inline-size|block-size|min-width|max-width|min-height|max-height|min-inline-size|max-inline-size|min-block-size|max-block-size|font-size|gap|margin|padding|top|left|right|bottom|inset):(?:auto|none|fit-content|min-content|max-content|medium|small|large|x-large|xx-large|xxx-large|smaller|larger|xx-small|x-small|(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:px|em|rem|pt|pc|in|cm|mm|%)?)$`).test(flat)) return "yes";
-  if (/^aspect-ratio:(?:auto|\d+(?:\.\d+)?\/\d+(?:\.\d+)?)$/.test(flat)) return "yes";
-  if (cssWideYes(flat) === "yes") return "yes";
+  const compactFeature = feature.replace(/\s+/g, "");
+  if (/^not(?![a-z0-9_-])/i.test(compactFeature)) return flipState(supportsFeatureState(compactFeature.slice(3), raw));
+  const flat = compactFeature.toLowerCase().replace(/!important$/, "");
+  if (flat.startsWith("display:")) {
+    const value = flat.slice("display:".length);
+    if (value === "none" || DISPLAY_YES.test(value) || cssWideYes(flat) === "yes") return "yes";
+    if (/^[a-z][a-z-]*$/.test(value)) return "no";
+    return "maybe";
+  }
+  if (flat.startsWith("position:")) return keywordSupport(flat, POSITION_YES);
+  if (/^(?:overflow|overflow-x|overflow-y):/.test(flat)) return keywordSupport(flat, OVERFLOW_YES);
+  if (/^opacity:(?:0|1|0?\.\d+|\d+(?:\.\d+)?%)$/.test(flat)) return "yes";
+  const colon = flat.indexOf(":");
+  const propName = colon > 0 ? flat.slice(0, colon) : "";
+  const propValue = colon > 0 ? flat.slice(colon + 1) : "";
+  if (/^(?:width|height|inline-size|block-size|min-width|max-width|min-height|max-height|min-inline-size|max-inline-size|min-block-size|max-block-size|font-size|gap|margin|padding|top|left|right|bottom|inset)$/.test(propName) && supportedLengthExpr(propValue)) return "yes";
+  if (/^aspect-ratio:(?:auto|[+-]?(?:\d+\.?\d*|\.\d+)(?:\/[+-]?(?:\d+\.?\d*|\.\d+))?)$/.test(flat)) return "yes";
+  if (cssWideYes(flat) === "yes" || plainSupportYes(flat)) return "yes";
   if (flat.startsWith("selector(") && flat.endsWith(")")) return selectorSyntaxOk(flat.slice("selector(".length, -1)) ? "yes" : "maybe";
   if (flat.startsWith("color:")) {
     if (supportsColor(`supports(${flat})`) || SYSTEM_COLORS.has(flat.slice("color:".length))) return "yes";
     if (supportsModernColor(raw)) return "yes";
     const loosened = raw.replace(/^supports\(\s*\(/i, "supports(").replace(/\)\s*\)$/, ")");
     if (loosened !== raw && supportsModernColor(loosened)) return "yes";
+    const colorValue = flat.slice("color:".length);
+    if (/^(?:initial|inherit|unset|revert|revert-layer|currentcolor|transparent)$/.test(colorValue)) return "yes";
+    if (/^[a-z][a-z-]*$/.test(colorValue)) return "no";
     return "maybe";
   }
   return "maybe";

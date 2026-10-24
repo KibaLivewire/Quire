@@ -1,3 +1,17 @@
+# Quire 1.9.27 — A query the page still answers
+
+Released 24 October 2026.
+
+- **A media list, or a query that is still the page, can no longer hide the desk.** `media(screen, print)` follows `media(screen or print)`. `media(print, speech)` is not this page, so the else zero is dropped. A zero length in `cap`, `ic`, `lh`, `rlh`, `rex`, or `rch` follows `min-width: 0px`. `min-color: 1`, `color >= 1`, `color > 0`, `not (monochrome)`, `color-gamut: srgb`, `resolution > 0dpi`, and `min-resolution: 1dpi` follow `media(color)`. A full list of `orientation`, `hover`, `any-hover`, `pointer`, `any-pointer`, `update`, `overflow-block`, `overflow-inline`, `dynamic-range`, `forced-colors`, `prefers-reduced-motion`, `prefers-color-scheme`, `prefers-contrast`, `prefers-reduced-transparency`, or `display-mode` is still this page. `media(hover: hover)` on its own stays. `inverted-colors`, `video-dynamic-range`, `prefers-reduced-data`, `environment-blending`, `scan`, and `nav-controls` are not this page, so the else zero is dropped and a zero only in that list stays. `media(min-width: 10px)` stays. Colour stays.
+- **A support the page already has, or one it does not, can no longer hide the desk.** `supports(not (display: block))` is not taken, so the else zero is dropped. `supports(not (display: no-such))` is taken. `font-size: .5em`, `width: .5px`, `1ch`, `1cap`, `1lh`, `calc(1px)`, `1e2px`, and `aspect-ratio: 1` follow a length this page can use. `box-sizing: border-box`, `transform: none`, `font-weight: 400`, `white-space: normal`, and `display: none` follow a support the page already has. `supports(display: no-such)` stays. A colour this page does not know, written as a word, is not taken, so the else zero is dropped. A taken `0.5` stays. Colour stays.
+- **An RTF field with no result is a space.** `{\field{\*\fldinst PAGE}}` between two words no longer glues them. The field code stays off the page. A result that is real text stays. A Word `w:fldSimple` is a space on either side of that text. Quire still does not invent the page number.
+
+Windows installer: Quire-Setup-1.9.27.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.26 — The screen is still the page
 
 Released 23 October 2026.

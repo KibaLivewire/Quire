@@ -161,6 +161,8 @@ function rtfToText(rtf: string) {
   let skip = 0;
   const openedShape: boolean[] = [];
   const shapeWrote: boolean[] = [];
+  const openedField: boolean[] = [];
+  const fieldWrote: boolean[] = [];
   const skipDest =
     /^(?:\\\*(?!\s*\\shpinst\b)|\\(?:fonttbl|colortbl|stylesheet|info|pict|headerl|headerr|headerf|footerl|footerr|footerf|header|footer|ftnsep|ftnsepc|ftncn|aftnsep|aftnsepc|aftncn|object|datastore|themedata|colorschememapping|generator|title|author|operator|creatim|revtim|company|comment|doccomm|keywords|subject|category|manager|hlinkbase|filetbl|listtable|listoverridetable|revtbl|rsidtbl|latentstyles|xmlnstbl|mmathPr|userprops|sp|sn|sv|tcn|tc|xe)\b)/;
   const blockSkip =
@@ -217,6 +219,7 @@ function rtfToText(rtf: string) {
       if (out && !out.endsWith(" ") && !out.endsWith("\n")) out += " ";
       shapeWrote[shapeWrote.length - 1] = true;
     }
+    if (fieldWrote.length && text !== "\n" && text !== " ") fieldWrote[fieldWrote.length - 1] = true;
     out += text;
   }
 
@@ -233,6 +236,9 @@ function rtfToText(rtf: string) {
       const isShape = name === "shp" || name === "shpgrp";
       openedShape.push(isShape);
       if (isShape) shapeWrote.push(false);
+      const isField = name === "field";
+      openedField.push(isField);
+      if (isField) fieldWrote.push(false);
       const duplicateShapeText = (name === "shptxt" || name === "shprslt") && shapeWrote.at(-1) === true;
       if (skip === 0 && blockSkip.test(rest) && out && !out.endsWith("\n")) out += "\n";
       if (skip === 0 && /^(?:\\\*\s*)?\\(?:object|pict|nonshppict|shppict)\b/.test(rest) && out && !out.endsWith(" ") && !out.endsWith("\n")) out += " ";
@@ -243,12 +249,17 @@ function rtfToText(rtf: string) {
     if (ch === "}") {
       const wasShape = openedShape.pop() === true;
       const wrote = wasShape ? shapeWrote.pop() === true : false;
+      const wasField = openedField.pop() === true;
+      const fieldHadText = wasField ? fieldWrote.pop() === true : false;
       if (ucStack.length > 1) ucStack.pop();
       if (cpStack.length > 1) cpStack.pop();
       if (fontStack.length > 1) fontStack.pop();
       if (fonttblDepth > 0) fonttblDepth -= 1;
       if (skip > 0) skip -= 1;
-      else if (wasShape && wrote && out && !out.endsWith(" ") && !out.endsWith("\n")) out += " ";
+      else {
+        if (wasShape && wrote && out && !out.endsWith(" ") && !out.endsWith("\n")) out += " ";
+        if (wasField && !fieldHadText && out && !out.endsWith(" ") && !out.endsWith("\n")) out += " ";
+      }
       i += 1;
       continue;
     }
@@ -396,7 +407,7 @@ function rtfToText(rtf: string) {
 
 function docxXmlToHtml(xml: string) {
   const re =
-    /<w:p\b[^>]*\/?>|<\/w:p>|<w:del\b[^>]*\/?>|<\/w:del>|<w:moveFrom\b[^>]*\/?>|<\/w:moveFrom>|<w:instrText\b[^>]*\/?>|<\/w:instrText>|<mc:AlternateContent\b[^>]*\/?>|<\/mc:AlternateContent>|<mc:Choice\b[^>]*\/?>|<\/mc:Choice>|<mc:Fallback\b[^>]*\/?>|<\/mc:Fallback>|<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:ptab\b[^>]*\/>|<w:ptab\b[^>]*>\s*<\/w:ptab>|<w:separator\b[^>]*\/>|<w:separator\b[^>]*>\s*<\/w:separator>|<w:continuationSeparator\b[^>]*\/>|<w:continuationSeparator\b[^>]*>\s*<\/w:continuationSeparator>|<w:footnoteReference\b[^>]*\/>|<w:footnoteReference\b[^>]*>\s*<\/w:footnoteReference>|<w:endnoteReference\b[^>]*\/>|<w:endnoteReference\b[^>]*>\s*<\/w:endnoteReference>|<w:sym\b[^>]*\/>|<w:sym\b[^>]*>\s*<\/w:sym>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:lastRenderedPageBreak\b[^>]*\/>|<w:lastRenderedPageBreak\b[^>]*>\s*<\/w:lastRenderedPageBreak>|<w:noBreakHyphen\b[^>]*\/>|<w:noBreakHyphen\b[^>]*>\s*<\/w:noBreakHyphen>|<w:softHyphen\b[^>]*\/>|<w:softHyphen\b[^>]*>\s*<\/w:softHyphen>|<w:drawing\b[^>]*\/?>|<w:pict\b[^>]*\/?>|<w:object\b[^>]*\/?>|<w:contentPart\b[^>]*\/?>|<w:fldChar\b[^>]*\/?>|<w:fldChar\b[^>]*>\s*<\/w:fldChar>|<w:commentReference\b[^>]*\/>|<w:commentReference\b[^>]*>\s*<\/w:commentReference>|<w:annotationRef\b[^>]*\/>|<w:annotationRef\b[^>]*>\s*<\/w:annotationRef>|<w:footnoteRef\b[^>]*\/>|<w:footnoteRef\b[^>]*>\s*<\/w:footnoteRef>|<w:endnoteRef\b[^>]*\/>|<w:endnoteRef\b[^>]*>\s*<\/w:endnoteRef>|<w:pgNum\b[^>]*\/>|<w:pgNum\b[^>]*>\s*<\/w:pgNum>|<w:dayLong\b[^>]*\/>|<w:dayLong\b[^>]*>\s*<\/w:dayLong>|<w:dayShort\b[^>]*\/>|<w:dayShort\b[^>]*>\s*<\/w:dayShort>|<w:monthLong\b[^>]*\/>|<w:monthLong\b[^>]*>\s*<\/w:monthLong>|<w:monthShort\b[^>]*\/>|<w:monthShort\b[^>]*>\s*<\/w:monthShort>|<w:yearLong\b[^>]*\/>|<w:yearLong\b[^>]*>\s*<\/w:yearLong>|<w:yearShort\b[^>]*\/>|<w:yearShort\b[^>]*>\s*<\/w:yearShort>|<w:rt\b[^>]*\/?>|<\/w:rt>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+    /<w:p\b[^>]*\/?>|<\/w:p>|<w:del\b[^>]*\/?>|<\/w:del>|<w:moveFrom\b[^>]*\/?>|<\/w:moveFrom>|<w:instrText\b[^>]*\/?>|<\/w:instrText>|<mc:AlternateContent\b[^>]*\/?>|<\/mc:AlternateContent>|<mc:Choice\b[^>]*\/?>|<\/mc:Choice>|<mc:Fallback\b[^>]*\/?>|<\/mc:Fallback>|<w:tab\b[^>]*\/>|<w:tab\b[^>]*>\s*<\/w:tab>|<w:ptab\b[^>]*\/>|<w:ptab\b[^>]*>\s*<\/w:ptab>|<w:separator\b[^>]*\/>|<w:separator\b[^>]*>\s*<\/w:separator>|<w:continuationSeparator\b[^>]*\/>|<w:continuationSeparator\b[^>]*>\s*<\/w:continuationSeparator>|<w:footnoteReference\b[^>]*\/>|<w:footnoteReference\b[^>]*>\s*<\/w:footnoteReference>|<w:endnoteReference\b[^>]*\/>|<w:endnoteReference\b[^>]*>\s*<\/w:endnoteReference>|<w:sym\b[^>]*\/>|<w:sym\b[^>]*>\s*<\/w:sym>|<w:br\b[^>]*\/>|<w:br\b[^>]*>\s*<\/w:br>|<w:cr\b[^>]*\/>|<w:cr\b[^>]*>\s*<\/w:cr>|<w:lastRenderedPageBreak\b[^>]*\/>|<w:lastRenderedPageBreak\b[^>]*>\s*<\/w:lastRenderedPageBreak>|<w:noBreakHyphen\b[^>]*\/>|<w:noBreakHyphen\b[^>]*>\s*<\/w:noBreakHyphen>|<w:softHyphen\b[^>]*\/>|<w:softHyphen\b[^>]*>\s*<\/w:softHyphen>|<w:drawing\b[^>]*\/?>|<w:pict\b[^>]*\/?>|<w:object\b[^>]*\/?>|<w:contentPart\b[^>]*\/?>|<w:fldChar\b[^>]*\/?>|<w:fldChar\b[^>]*>\s*<\/w:fldChar>|<w:fldSimple\b[^>]*\/?>|<\/w:fldSimple>|<w:commentReference\b[^>]*\/>|<w:commentReference\b[^>]*>\s*<\/w:commentReference>|<w:annotationRef\b[^>]*\/>|<w:annotationRef\b[^>]*>\s*<\/w:annotationRef>|<w:footnoteRef\b[^>]*\/>|<w:footnoteRef\b[^>]*>\s*<\/w:footnoteRef>|<w:endnoteRef\b[^>]*\/>|<w:endnoteRef\b[^>]*>\s*<\/w:endnoteRef>|<w:pgNum\b[^>]*\/>|<w:pgNum\b[^>]*>\s*<\/w:pgNum>|<w:dayLong\b[^>]*\/>|<w:dayLong\b[^>]*>\s*<\/w:dayLong>|<w:dayShort\b[^>]*\/>|<w:dayShort\b[^>]*>\s*<\/w:dayShort>|<w:monthLong\b[^>]*\/>|<w:monthLong\b[^>]*>\s*<\/w:monthLong>|<w:monthShort\b[^>]*\/>|<w:monthShort\b[^>]*>\s*<\/w:monthShort>|<w:yearLong\b[^>]*\/>|<w:yearLong\b[^>]*>\s*<\/w:yearLong>|<w:yearShort\b[^>]*\/>|<w:yearShort\b[^>]*>\s*<\/w:yearShort>|<w:rt\b[^>]*\/?>|<\/w:rt>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
   const parts: string[] = [];
   let html = "";
   let pDepth = 0;
@@ -474,7 +485,7 @@ function docxXmlToHtml(xml: string) {
       if (html && !/ $/.test(html) && !html.endsWith("<br>")) html += " ";
       continue;
     }
-    if (raw.startsWith("<w:tab") || raw.startsWith("<w:ptab") || raw.startsWith("<w:separator") || raw.startsWith("<w:continuationSeparator") || raw.startsWith("<w:footnote") || raw.startsWith("<w:endnote") || raw.startsWith("<w:commentReference") || raw.startsWith("<w:annotationRef") || raw.startsWith("<w:pgNum") || raw.startsWith("<w:fldChar") || raw.startsWith("<w:dayLong") || raw.startsWith("<w:dayShort") || raw.startsWith("<w:monthLong") || raw.startsWith("<w:monthShort") || raw.startsWith("<w:yearLong") || raw.startsWith("<w:yearShort")) {
+    if (raw.startsWith("<w:tab") || raw.startsWith("<w:ptab") || raw.startsWith("<w:separator") || raw.startsWith("<w:continuationSeparator") || raw.startsWith("<w:footnote") || raw.startsWith("<w:endnote") || raw.startsWith("<w:commentReference") || raw.startsWith("<w:annotationRef") || raw.startsWith("<w:pgNum") || raw.startsWith("<w:fldChar") || raw.startsWith("<w:fldSimple") || raw.startsWith("</w:fldSimple") || raw.startsWith("<w:dayLong") || raw.startsWith("<w:dayShort") || raw.startsWith("<w:monthLong") || raw.startsWith("<w:monthShort") || raw.startsWith("<w:yearLong") || raw.startsWith("<w:yearShort")) {
       html += " ";
       markWrote();
     } else if (raw.startsWith("<w:sym")) {
