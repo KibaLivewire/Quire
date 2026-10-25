@@ -1,3 +1,16 @@
+# Quire 1.9.29 — A feature with no off switch
+
+Released 25 October 2026.
+
+- **A boolean feature that is still the page can no longer hide the desk.** `media(orientation)`, `media(display-mode)`, `media(prefers-color-scheme)`, `media(color-gamut)`, `media(width)`, `media(height)`, `media(device-width)`, `media(device-height)`, and `media(-webkit-device-pixel-ratio)` are this page, the same way the full list or `width > 0px` already was. A taken zero is dropped. `device-width > 0px` follows it. `media(orientation: landscape)`, `media(display-mode: browser)`, `media(prefers-color-scheme: light)`, `media(hover)`, `media(pointer)`, `media(update)`, `media(1px <= width)`, and `media(prefers-reduced-motion)` stay. A taken `0.5` stays. Colour stays.
+- **A zero root size can no longer hide the desk.** `font-size: 0`, `0px`, `0%`, and `0rem` on `html`, `:root`, `body`, or a star follow `opacity: 0`, including a variable set to that zero, a taken `if()`, and a keyframe. `font-size: 18px` and `1.125rem` stay. A size that is not zero stays. A class may still use a zero size. A print size stays. Colour stays.
+
+Windows installer: Quire-Setup-1.9.29.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.28 — The type is not the feature
 
 Released 24 October 2026.

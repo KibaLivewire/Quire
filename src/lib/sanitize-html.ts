@@ -1282,6 +1282,7 @@ function mediaLeaf(inner: string): "yes" | "no" | "maybe" {
   if (inner === "all" || inner === "scripting:enabled" || inner === "grid:0" || inner === "min-color:0" || inner === "min-color:1" || inner === "color" || inner === "color-gamut:srgb") return "yes";
   if (inner === "scripting:none" || inner === "scripting:initial-only" || inner === "grid:1" || inner === "monochrome") return "no";
   if (inner === "scripting" || inner === "dynamic-range" || inner === "dynamic-range:standard" || inner === "resolution" || inner === "aspect-ratio" || inner === "horizontal-viewport-segments" || inner === "vertical-viewport-segments" || inner === "-webkit-transform-3d") return "yes";
+  if (inner === "orientation" || inner === "display-mode" || inner === "prefers-color-scheme" || inner === "color-gamut" || inner === "width" || inner === "height" || inner === "device-width" || inner === "device-height" || inner === "-webkit-device-pixel-ratio") return "yes";
   if (inner === "grid" || inner === "color-index" || inner === "dynamic-range:high") return "no";
   if (/^grid(?:<=|>=|<|>|=)/.test(inner) || /^(?:0+(?:\.0*)?|\.0+|[1-9]\d*)(?:<=|>=|<|>|=)grid$/.test(inner) || /^scripting=/.test(inner)) return "no";
   if (/^monochrome[:=](?:0+(?:\.0*)?|\.0+)$/.test(inner) || /^(?:0+(?:\.0*)?|\.0+)=monochrome$/.test(inner)) return "yes";
@@ -1329,6 +1330,10 @@ function mediaLeaf(inner: string): "yes" | "no" | "maybe" {
   if (/^max-device-(?:width|height):(?:0+(?:\.0*)?|\.0+)(?:px|em|rem|pt|pc|in|cm|mm|q|ch|ex|cap|ic|rlh|lh|rex|rch|vw|vh|vmin|vmax|vb|vi|%)?$/.test(inner)) return "no";
   if (/^device-(?:width|height)>=(?:0+(?:\.0*)?|\.0+)(?:px|em|rem|pt|pc|in|cm|mm)?$/.test(inner)) return "yes";
   if (/^(?:0+(?:\.0*)?|\.0+)(?:px|em|rem|pt|pc|in|cm|mm)?<=device-(?:width|height)$/.test(inner)) return "yes";
+  const deviceGt = /^device-(?:width|height)>(.+)$/.exec(inner);
+  if (deviceGt) return mediaLengthIsZero(deviceGt[1] ?? "") ? "yes" : "maybe";
+  const deviceLt = /^(.+)<device-(?:width|height)$/.exec(inner);
+  if (deviceLt) return mediaLengthIsZero(deviceLt[1] ?? "") ? "yes" : "maybe";
   if (/^device-aspect-ratio>=(?:0+(?:\.0*)?|\.0+)\/[1-9]\d*$/.test(inner) || /^min-device-aspect-ratio:(?:0+(?:\.0*)?|\.0+)\/[1-9]\d*$/.test(inner)) return "yes";
   return "maybe";
 }
@@ -2162,6 +2167,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     return matrixFlattens(val, hidden) || matrixShifts(val, hidden) || translateHides(val, hidden);
   }
   if (prop === "zoom") return valueCanHide(val, hidden, hidesAsZero);
+  if (prop === "font-size") return valueCanHide(val, hidden, hidesAsZero);
   if (prop === "clip-path" || prop === "-webkit-clip-path") return clipHides(val, hidden);
   if (prop === "clip") return namedFunctionCalls(val, ["rect"]).some((call) => rectHides(call.inner));
   if (prop === "mask" || prop === "mask-image" || prop === "-webkit-mask" || prop === "-webkit-mask-image") return maskHides(val, hidden);
