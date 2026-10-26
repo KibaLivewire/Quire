@@ -1,3 +1,18 @@
+# Quire 1.9.32 — A length by its other name
+
+Released 26 October 2026.
+
+- **A paint box of size zero can no longer hide the desk.** `contain: paint` or `contain: content` together with a zero width, height, or inline size is dropped, including when the two are written as two rules. `contain: paint` stays. `contain: size` stays. `width: 0` on its own stays. A paint box on `html` does not take a zero from `body`. A class may still use both. Colour stays.
+- **A perspective written on the transform can no longer hide the desk.** `perspective(1px) translateZ(-100px)` and the same Z in `translate3d()` follow a tiny perspective. `perspective(800px) translateZ(-100px)` stays. `translateZ(-100px) perspective(1px)` stays. `perspective(1px)` on its own stays. A class may still use it. Colour stays.
+- **A length written in another unit can no longer hide the desk.** `translateX(-100dvi)`, `translateY(-100dvb)`, `translateY(-100lvb)`, and `translateX(-100svi)` follow `translateX(-100vw)`. `translateX(-10000q)` and `margin-left: -10000q` follow a shift of 8000px. `translateX(-4000q)` and `translateX(-100px)` stay. `font-size: calc(1cap - 1cap)`, `calc(1q - 1q)`, and `calc(0 * 1q)` follow `font-size: 0`. `font-size: 1cap` stays. `filter: blur(20q)` follows `blur(12px)`. `blur(10q)` and `blur(4px)` stay. Inside `if(media())`, `min-width: calc(1cap - 1cap)`, `calc(1q - 1q)`, `calc(0 * 1q)`, `0rcap`, and `0ric` are this page, so a taken zero is dropped. `not` of that query drops the else zero. `min-width: calc(10px)`, `hover`, `color <= 8`, and `device-pixel-ratio` stay. A class may still use these. Colour stays.
+- **A large absolute indent can no longer hide the desk.** `text-indent: -9999px` and `text-indent: -1000px` move the line off the page, and the page does not scroll back. A variable set to that indent follows. `text-indent: -400px` stays. `text-indent: -100%` stays unless nowrap and a clip already drop it. `text-indent: 2em` stays. A class may still indent. Colour stays.
+
+Windows installer: Quire-Setup-1.9.32.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.31 — The page reads the query
 
 Released 26 October 2026.

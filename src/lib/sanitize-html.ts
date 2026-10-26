@@ -1241,7 +1241,7 @@ function flipState(state: Cond): Cond {
 function mediaLengthIsZero(token: string): boolean {
   const t = token.trim().toLowerCase();
   if (calcEvaluatesZero(t) || mathEvaluatesZero(t)) return true;
-  return /^[+-]?(?:0+(?:\.0*)?|\.0+)(?:e[+-]?\d+)?(?:px|em|rem|pt|pc|in|cm|mm|q|ch|ex|cap|ic|rlh|lh|rex|rch|%|(?:[dls])?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))?$/.test(t);
+  return /^[+-]?(?:0+(?:\.0*)?|\.0+)(?:e[+-]?\d+)?(?:px|em|rem|pt|pc|in|cm|mm|q|ch|ex|rcap|cap|ric|ic|rlh|lh|rex|rch|%|(?:[dls])?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))?$/.test(t);
 }
 
 /** This page is not an indexed screen. color-index is 0. */
@@ -2173,7 +2173,7 @@ function pathHides(inner: string): boolean {
   return area === 0;
 }
 
-type HideVars = Set<string> & { clips?: Set<string>; masks?: Set<string>; defined?: Map<string, string>; perspectives?: number[] };
+type HideVars = Set<string> & { clips?: Set<string>; masks?: Set<string>; defined?: Map<string, string>; perspectives?: number[]; htmlPaintZero?: boolean; bodyPaintZero?: boolean; contentsPaintZero?: boolean };
 
 function lengthPx(token: string): number | null {
   const compact = token.replace(/!important/gi, "").replace(/\s+/g, "");
@@ -2190,7 +2190,18 @@ function lengthPx(token: string): number | null {
   if (unit === "in") return n * 96;
   if (unit === "cm") return (n * 96) / 2.54;
   if (unit === "mm") return (n * 96) / 25.4;
+  if (unit === "q") return (n * 96) / 101.6;
   return null;
+}
+
+function lengthUnit(token: string): string | null {
+  const compact = token.replace(/!important/gi, "").replace(/\s+/g, "");
+  if (!compact) return null;
+  const parsed = parseMathSum(compact, 0);
+  if (!parsed || parsed.i !== compact.length || !Number.isFinite(parsed.n)) return null;
+  const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+  if (units.length !== 1 || units[0]?.[1] !== 1) return null;
+  return units[0]?.[0] ?? null;
 }
 
 function angleDegrees(token: string, hidden: Set<string>, seen?: Set<string>): number | null {
@@ -2371,10 +2382,50 @@ function translateZHides(value: string, hidden: Set<string>): boolean {
   });
 }
 
+/** perspective() before a Z shift is the same flatten as a tiny perspective on the desk. The other order stays. */
+function perspectiveTranslateHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
+  const found = namedFunctionCalls(value, ["perspective", "translatez", "translate3d", "translate"]);
+  let distance: number | null = null;
+  for (const call of found) {
+    if (call.name === "perspective") {
+      const px = lengthPx((splitArgs(call.inner)[0] ?? "").trim());
+      distance = px != null && px >= 0 ? px : null;
+      continue;
+    }
+    if (distance == null) continue;
+    const args = splitArgs(call.inner);
+    let token = "";
+    if (call.name === "translatez") token = args[0] ?? "";
+    else if (call.name === "translate3d") token = args[2] ?? "";
+    else {
+      const words = args.flatMap((part) => splitTopWords(part));
+      if (words.length < 3) continue;
+      token = words[2] ?? "";
+    }
+    const z = lengthPx(token.trim());
+    if (z == null) continue;
+    if (distance === 0) return true;
+    const scale = Math.abs(distance / (distance - z));
+    if (Number.isFinite(scale) && scale < 0.2) return true;
+  }
+  const trail = seen ?? new Set<string>();
+  const defined = (hidden as HideVars).defined;
+  for (const call of varCalls(value)) {
+    const raw = defined?.get(call.name);
+    if (raw && !trail.has(call.name)) {
+      const next = new Set(trail);
+      next.add(call.name);
+      if (perspectiveTranslateHides(raw, hidden, next)) return true;
+    }
+    if (call.fallback && perspectiveTranslateHides(call.fallback, hidden, trail)) return true;
+  }
+  return false;
+}
+
 function blurHides(inner: string, hidden: Set<string>, seen?: Set<string>): boolean {
   const arg = (splitArgs(inner)[0] ?? inner).trim();
   const px = lengthPx(arg);
-  if (px != null) return Math.abs(px) >= 8;
+  if (px != null) return Math.abs(px) >= (lengthUnit(arg) === "q" ? 16 : 8);
   const compact = arg.replace(/!important/gi, "").replace(/\s+/g, "");
   const parsed = parseMathSum(compact, 0);
   if (parsed && parsed.i === compact.length && Number.isFinite(parsed.n)) {
@@ -2429,6 +2480,24 @@ function shiftValueCovers(value: string, hidden: Set<string>): boolean {
   return splitTopWords(value.replace(/!important/gi, "")).some((token) => token.toLowerCase() !== "auto" && shiftTokenCovers(token, hidden));
 }
 
+/** A large absolute indent moves the only line off the page, and the page does not scroll back to it. A few pixels stay. A percentage stays unless nowrap clips it. */
+function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
+  const px = lengthPx(value);
+  if (px != null) return Math.abs(px) >= 1000;
+  const trail = seen ?? new Set<string>();
+  const defined = (hidden as HideVars).defined;
+  for (const call of varCalls(value)) {
+    const raw = defined?.get(call.name);
+    if (raw && !trail.has(call.name)) {
+      const next = new Set(trail);
+      next.add(call.name);
+      if (indentPxHides(raw, hidden, next)) return true;
+    }
+    if (call.fallback && indentPxHides(call.fallback, hidden, trail)) return true;
+  }
+  return false;
+}
+
 function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   const idx = piece.indexOf(":");
   if (idx <= 0) return false;
@@ -2455,11 +2524,12 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     ) {
       return true;
     }
-    return matrixFlattens(val, hidden) || matrixShifts(val, hidden) || translateHides(val, hidden) || transformAxisHides(val, hidden) || translateZHides(val, hidden);
+    return matrixFlattens(val, hidden) || matrixShifts(val, hidden) || translateHides(val, hidden) || transformAxisHides(val, hidden) || translateZHides(val, hidden) || perspectiveTranslateHides(val, hidden);
   }
   if (prop === "rotate") return rotatePropertyHides(val, hidden);
   if (prop === "zoom") return valueCanHide(val, hidden, hidesAsZero);
   if (prop === "font-size") return valueCanHide(val, hidden, hidesAsZero);
+  if (prop === "text-indent") return indentPxHides(val, hidden);
   if (prop === "clip-path" || prop === "-webkit-clip-path") return clipHides(val, hidden);
   if (prop === "clip") return namedFunctionCalls(val, ["rect"]).some((call) => rectHides(call.inner));
   if (prop === "mask" || prop === "mask-image" || prop === "-webkit-mask" || prop === "-webkit-mask-image") return maskHides(val, hidden);
@@ -2596,6 +2666,13 @@ function isBoxClip(part: string): boolean {
   return (prop === "overflow" || prop === "overflow-x" || prop === "overflow-y") && /\b(?:hidden|clip)\b/i.test(part.slice(idx + 1));
 }
 
+function isPaintContain(part: string): boolean {
+  const piece = pieceProp(part);
+  if (!piece || piece.prop !== "contain") return false;
+  const words = piece.val.toLowerCase().replace(/!important/gi, "").split(/[\s,]+/).filter(Boolean);
+  return words.includes("paint") || words.includes("content") || words.includes("strict");
+}
+
 function isBoxZero(part: string, hidden: Set<string>): boolean {
   const idx = part.indexOf(":");
   if (idx <= 0) return false;
@@ -2616,6 +2693,21 @@ function boxCollapsesFor(parts: string[], hidden: Set<string>, profiles: Sib[]):
 function isBoxZeroFor(part: string, hidden: Set<string>, profiles: Sib[]): boolean {
   if (isBoxZero(part, hidden)) return true;
   return profiles.some((sib) => withSib(sib, () => isBoxZero(part, hidden)));
+}
+
+function paintCollapsesFor(parts: string[], hidden: Set<string>, profiles: Sib[]): boolean {
+  if (!parts.some((part) => isPaintContain(part))) return false;
+  return parts.some((part) => isBoxZeroFor(part, hidden, profiles));
+}
+
+function elementPaintPair(profiles: Sib[], hidden: Set<string>): boolean {
+  const flags = hidden as HideVars;
+  if (profiles.length === 0 && flags.contentsPaintZero) return true;
+  return profiles.some((profile) => (profile === HTML_SIB && flags.htmlPaintZero) || (profile === BODY_SIB && flags.bodyPaintZero));
+}
+
+function paintPieceDrops(part: string, hidden: Set<string>, profiles: Sib[], paint: boolean): boolean {
+  return paint && (isPaintContain(part) || isBoxZeroFor(part, hidden, profiles));
 }
 
 function pieceProp(part: string): { prop: string; val: string } | null {
@@ -2670,9 +2762,10 @@ function scrubHideBody(body: string, hidden: Set<string>, anims: Set<string> = n
     .map((part) => part.trim())
     .filter(Boolean);
   const flat = boxCollapsesFor(parts, hidden, profiles);
+  const paint = paintCollapsesFor(parts, hidden, profiles) || elementPaintPair(profiles, hidden);
   const pair = pairedHide(parts, hidden);
   return parts
-    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !pair(part) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles))))
+    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !pair(part) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles))) && !paintPieceDrops(part, hidden, profiles, paint))
     .join("; ");
 }
 
@@ -2798,7 +2891,7 @@ function parseMathUnary(s: string, i: number): MathQty | null {
   const n = Number(m[1]) * (m[2] ? 10 ** Number(m[2]) : 1);
   if (!Number.isFinite(n)) return null;
   const unit = (m[3] || "").toLowerCase();
-  if (unit && !/^(?:px|em|rem|pt|pc|in|cm|mm|vh|vw|vmin|vmax|vi|vb|dvh|svh|lvh|dvw|svw|lvw|dvmin|dvmax|svmin|svmax|lvmin|lvmax|cqi|cqb|cqw|cqh|cqmin|cqmax|deg|turn|rad|grad|s|ms|fr|ch|ex|%)$/.test(unit)) return null;
+  if (unit && !/^(?:px|em|rem|pt|pc|in|cm|mm|q|vh|vw|vmin|vmax|vi|vb|dvh|svh|lvh|dvw|svw|lvw|dvi|dvb|svi|svb|lvi|lvb|dvmin|dvmax|svmin|svmax|lvmin|lvmax|cqi|cqb|cqw|cqh|cqmin|cqmax|deg|turn|rad|grad|s|ms|fr|ch|ex|cap|rcap|ic|ric|lh|rlh|rex|rch|%)$/.test(unit)) return null;
   const u = unit ? { [unit]: 1 } : blankUnits();
   return { n, u, i: i + m[0].length };
 }
@@ -3109,6 +3202,7 @@ function shiftAxisCovers(value: string): boolean {
     if (unit === "in") return Math.abs(parsed.n) >= 80;
     if (unit === "cm") return Math.abs(parsed.n) >= 200;
     if (unit === "mm") return Math.abs(parsed.n) >= 2000;
+    if (unit === "q") return Math.abs(parsed.n) * (96 / 101.6) >= 8000;
     return false;
   }
   return Math.abs(parsed.n) >= 100;
@@ -3810,6 +3904,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   if (!body.includes("{")) return desk ? scrubHideBody(body, hidden, anims, profiles) : body.trim();
   const decls = topLevelDeclarations(body);
   const flat = desk && boxCollapsesFor(decls, hidden, profiles);
+  const paint = desk && (paintCollapsesFor(decls, hidden, profiles) || elementPaintPair(profiles, hidden));
   const pair = desk ? pairedHide(decls, hidden) : () => false;
   let out = "";
   let decl = "";
@@ -3821,6 +3916,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     if (!next) return;
     if (desk && (declarationHidesFor(next, hidden, profiles) || declarationUsesHidingAnim(next, anims) || pair(next))) return;
     if (flat && (isBoxClip(next) || isBoxZeroFor(next, hidden, profiles))) return;
+    if (paintPieceDrops(next, hidden, profiles, paint)) return;
     out += `${next}; `;
   };
   while (i < body.length) {
@@ -3894,7 +3990,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     i += 1;
   }
   const tail = decl.trim();
-  if (tail && !(desk && (declarationHidesFor(tail, hidden, profiles) || declarationUsesHidingAnim(tail, anims) || pair(tail))) && !(flat && (isBoxClip(tail) || isBoxZeroFor(tail, hidden, profiles)))) out += tail;
+  if (tail && !(desk && (declarationHidesFor(tail, hidden, profiles) || declarationUsesHidingAnim(tail, anims) || pair(tail))) && !(flat && (isBoxClip(tail) || isBoxZeroFor(tail, hidden, profiles))) && !paintPieceDrops(tail, hidden, profiles, paint)) out += tail;
   return out.replace(/;\s*$/g, "").trim();
 }
 
@@ -4126,11 +4222,86 @@ function scrubRemoteImageCalls(css: string) {
   return out + css.slice(cursor);
 }
 
+function collectPaintZero(css: string, hidden: Set<string>): void {
+  const found = { htmlPaint: false, htmlZero: false, bodyPaint: false, bodyZero: false, contentsPaint: false, contentsZero: false };
+  const take = (body: string, html: boolean, bodyEl: boolean, contents: boolean) => {
+    const parts = topLevelDeclarations(body);
+    const paint = parts.some((part) => isPaintContain(part));
+    const zero = (profiles: Sib[]) => parts.some((part) => isBoxZeroFor(part, hidden, profiles));
+    if (html && paint) found.htmlPaint = true;
+    if (html && zero([HTML_SIB])) found.htmlZero = true;
+    if (bodyEl && paint) found.bodyPaint = true;
+    if (bodyEl && zero([BODY_SIB])) found.bodyZero = true;
+    if (contents && paint) found.contentsPaint = true;
+    if (contents && zero([])) found.contentsZero = true;
+  };
+  const walk = (sheet: string, scopeSel: string | null, nestingSel: string | null): void => {
+    let i = 0;
+    while (i < sheet.length) {
+      if (sheet[i] === "@") {
+        const name = /^@(-?[\w-]+)/.exec(sheet.slice(i));
+        if (!name) {
+          i += 1;
+          continue;
+        }
+        const kind = (name[1] ?? "").replace(/^-webkit-/, "");
+        const j = i + name[0].length;
+        if (/keyframes/i.test(kind) || /^(?:font-face|page|counter-style|property)$/i.test(kind)) {
+          const open = sheet.indexOf("{", j);
+          const semi = sheet.indexOf(";", j);
+          if (open < 0 || (semi >= 0 && semi < open)) {
+            i = semi < 0 ? sheet.length : semi + 1;
+            continue;
+          }
+          const close = matchingBrace(sheet, open);
+          i = close < 0 ? sheet.length : close + 1;
+          continue;
+        }
+        if (/^scope$/i.test(kind) || RECURSE_AT.test(kind)) {
+          const open = sheet.indexOf("{", j);
+          if (open < 0) return;
+          const close = matchingBrace(sheet, open);
+          if (close < 0) return;
+          const nextScope = /^scope$/i.test(kind) ? (scopeRootSelector(sheet.slice(j, open)) ?? null) : scopeSel;
+          const resolved = nextScope ? rewriteAmp(nextScope, nestingSel) : nextScope;
+          walk(sheet.slice(open + 1, close), resolved, resolved ?? nestingSel);
+          i = close + 1;
+          continue;
+        }
+      }
+      const open = sheet.indexOf("{", i);
+      if (open < 0) return;
+      const selector = sheet.slice(i, open);
+      const close = matchingBrace(sheet, open);
+      if (close < 0) return;
+      const opened = rewriteAmp(selector, scopeSel);
+      const body = sheet.slice(open + 1, close);
+      let html = false;
+      let bodyEl = false;
+      let contents = false;
+      for (const part of splitSelectorList(opened)) {
+        if (selectorMatchesEl(part, HTML_EL, scopeSel)) html = true;
+        if (selectorMatchesEl(part, BODY_EL, scopeSel)) bodyEl = true;
+        if (hidesDeskContents(part, scopeSel)) contents = true;
+      }
+      if (html || bodyEl || contents) take(body, html, bodyEl, contents);
+      if (body.includes("{")) walk(body, scopeSel, opened);
+      i = close + 1;
+    }
+  };
+  walk(css, null, null);
+  const flags = hidden as HideVars;
+  flags.htmlPaintZero = found.htmlPaint && found.htmlZero;
+  flags.bodyPaintZero = found.bodyPaint && found.bodyZero;
+  flags.contentsPaintZero = found.contentsPaint && found.contentsZero;
+}
+
 /** Add-on CSS can restyle the desk. It cannot pull a remote sheet or image, or hide the desk. */
 export function sanitizePluginCss(css: string): string {
   const readable = stripCssComments(decodeCssEscapes(stripCssComments(css), false));
   const cleaned = scrubAttrUrls(scrubRemoteImageCalls(scrubPluginCss(readable)));
   const hidden = collectHideVars(cleaned);
   hidden.perspectives = collectDeskPerspectives(cleaned);
+  collectPaintZero(cleaned, hidden);
   return scrubDeskHide(cleaned, hidden);
 }
