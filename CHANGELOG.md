@@ -1,3 +1,17 @@
+# Quire 1.9.31 — The page reads the query
+
+Released 26 October 2026.
+
+- **A zero length written another way can no longer hide the desk.** `min-width: 0e0px`, `0e+0px`, `+0px`, and `-0px` follow `min-width: 0px`. `calc(0px)`, `calc(1px - 1px)`, and `calc(0cap)` follow it. A taken zero is dropped. `min-width: 10px` and `calc(10px)` stay. `1px <= width` stays. Colour stays.
+- **A join the page does not read can no longer hide the desk.** Inside `if(media())`, `and` and `or` count only when each side is in parentheses. `min-width: 0px or min-height: 0px` is not this page, so the else zero is dropped and a zero only in that join stays. `(min-width: 0px) or (min-height: 0px)` is still this page. A comma is not an or. `orientation: portrait, orientation: landscape` is not this page. The same list written with `or` and parentheses is still this page. `media(screen, print)` stays not this page. Colour stays.
+- **A comparison that is still the page, or is not, can no longer hide the desk.** `resolution: 0dpi` and `resolution = 0dppx` are not this page. `not (resolution: 0dpi)` is. `color: 0`, `0 = color`, `min-color: 17`, `color > 16`, and `17 <= color` follow the ceiling that already treats `color <= 16` as this page. `color <= 8` stays. `monochrome: 1`, `monochrome = 1`, `monochrome >= 1`, and `1 = monochrome` are not this page. `monochrome <= 0` stays this page. `device-aspect-ratio` and `device-aspect-ratio > 0/1` are this page. `max-device-aspect-ratio: 0/1` is not. `-webkit-device-pixel-ratio > 0` and `-webkit-min-device-pixel-ratio: 0` are this page. `-webkit-max-device-pixel-ratio: 0` and `-webkit-device-pixel-ratio: 0` are not. `-webkit-device-pixel-ratio: 1` stays. `scan` and `scan: progressive` are not this page. `not (scan)` is. `hover`, `pointer`, `update`, and `prefers-reduced-motion` stay. Colour stays.
+
+Windows installer: Quire-Setup-1.9.31.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.30 — An edge is not a turn
 
 Released 26 October 2026.

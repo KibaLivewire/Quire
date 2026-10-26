@@ -1216,25 +1216,32 @@ function splitTopKeyword(value: string, keyword: string): string[] | null {
   return parts.length > 1 ? parts : null;
 }
 
-function combineBool(states: ("yes" | "no" | "maybe")[], op: "and" | "or"): "yes" | "no" | "maybe" {
+type Cond = "yes" | "no" | "maybe" | "dead";
+
+function combineBool(states: Cond[], op: "and" | "or"): Cond {
   if (op === "or") {
     if (states.some((state) => state === "yes")) return "yes";
+    if (states.some((state) => state === "dead")) return "dead";
     if (states.every((state) => state === "no")) return "no";
     return "maybe";
   }
+  if (states.some((state) => state === "dead")) return "dead";
   if (states.some((state) => state === "no")) return "no";
   if (states.every((state) => state === "yes")) return "yes";
   return "maybe";
 }
 
-function flipState(state: "yes" | "no" | "maybe"): "yes" | "no" | "maybe" {
+function flipState(state: Cond): Cond {
   if (state === "yes") return "no";
   if (state === "no") return "yes";
-  return "maybe";
+  return state;
 }
 
+/** A zero length, including a sign, a power of ten, and calc() of zero. 0.01 stays. */
 function mediaLengthIsZero(token: string): boolean {
-  return /^(?:0+(?:\.0*)?|\.0+)(?:px|em|rem|pt|pc|in|cm|mm|q|ch|ex|cap|ic|rlh|lh|rex|rch|%|(?:[dls])?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))?$/.test(token);
+  const t = token.trim().toLowerCase();
+  if (calcEvaluatesZero(t) || mathEvaluatesZero(t)) return true;
+  return /^[+-]?(?:0+(?:\.0*)?|\.0+)(?:e[+-]?\d+)?(?:px|em|rem|pt|pc|in|cm|mm|q|ch|ex|cap|ic|rlh|lh|rex|rch|%|(?:[dls])?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))?$/.test(t);
 }
 
 /** This page is not an indexed screen. color-index is 0. */
@@ -1282,12 +1289,13 @@ function mediaLeaf(inner: string): "yes" | "no" | "maybe" {
   if (inner === "all" || inner === "scripting:enabled" || inner === "grid:0" || inner === "min-color:0" || inner === "min-color:1" || inner === "color" || inner === "color-gamut:srgb") return "yes";
   if (inner === "scripting:none" || inner === "scripting:initial-only" || inner === "grid:1" || inner === "monochrome") return "no";
   if (inner === "scripting" || inner === "dynamic-range" || inner === "dynamic-range:standard" || inner === "resolution" || inner === "aspect-ratio" || inner === "horizontal-viewport-segments" || inner === "vertical-viewport-segments" || inner === "-webkit-transform-3d") return "yes";
-  if (inner === "orientation" || inner === "display-mode" || inner === "prefers-color-scheme" || inner === "color-gamut" || inner === "width" || inner === "height" || inner === "device-width" || inner === "device-height" || inner === "-webkit-device-pixel-ratio") return "yes";
-  if (inner === "grid" || inner === "color-index" || inner === "dynamic-range:high") return "no";
+  if (inner === "orientation" || inner === "display-mode" || inner === "prefers-color-scheme" || inner === "color-gamut" || inner === "width" || inner === "height" || inner === "device-width" || inner === "device-height" || inner === "-webkit-device-pixel-ratio" || inner === "device-aspect-ratio" || inner === "aspect-ratio") return "yes";
+  if (inner === "grid" || inner === "color-index" || inner === "dynamic-range:high" || inner === "scan" || /^scan:/.test(inner)) return "no";
   if (/^grid(?:<=|>=|<|>|=)/.test(inner) || /^(?:0+(?:\.0*)?|\.0+|[1-9]\d*)(?:<=|>=|<|>|=)grid$/.test(inner) || /^scripting=/.test(inner)) return "no";
   if (/^monochrome[:=](?:0+(?:\.0*)?|\.0+)$/.test(inner) || /^(?:0+(?:\.0*)?|\.0+)=monochrome$/.test(inner)) return "yes";
   if (/^monochrome(?:>=|<=)(?:0+(?:\.0*)?|\.0+)$/.test(inner) || /^monochrome<1(?:\.0*)?$/.test(inner) || /^(?:0+(?:\.0*)?|\.0+)<=monochrome$/.test(inner)) return "yes";
   if (/^monochrome>(?:0+(?:\.0*)?|\.0+)$/.test(inner) || /^(?:0+(?:\.0*)?|\.0+)<monochrome$/.test(inner)) return "no";
+  if (/^monochrome[:=]/.test(inner) || /=monochrome$/.test(inner) || /^monochrome(?:>=|<=|>|<)/.test(inner) || /(?:>=|<=|>|<)monochrome$/.test(inner)) return "no";
   const indexed = colorIndexState(inner);
   if (indexed) return indexed;
   let hit = /^(min-width|min-height):(.+)$/.exec(inner);
@@ -1315,10 +1323,24 @@ function mediaLeaf(inner: string): "yes" | "no" | "maybe" {
   if (/^resolution>=0(?:dpi|dppx|dpcm|x)$/.test(inner) || /^resolution>0+(?:\.0+)?(?:dpi|dppx|dpcm|x)$/.test(inner)) return "yes";
   if (/^0+(?:\.0+)?(?:dpi|dppx|dpcm|x)<resolution$/.test(inner)) return "yes";
   if (/^resolution<=0(?:dpi|dppx|dpcm|x)$/.test(inner)) return "no";
+  if (/^resolution[:=](?:0+(?:\.0*)?|\.0+)(?:dpi|dppx|dpcm|x)$/.test(inner)) return "no";
   if ((/^(?:min-resolution|max-resolution):/.test(inner) || /^resolution(?:<=|>=|<|>|=)/.test(inner) || /(?:<=|>=|<|>|=)resolution$/.test(inner)) && !/(?:dpi|dppx|dpcm|x)$/.test(inner)) return "no";
   if (/^color>=0+(?:\.0*)?$/.test(inner) || /^0+(?:\.0*)?<=color$/.test(inner)) return "yes";
   const colorCeiling = /^(?:max-color:|color<=)(\d+)$/.exec(inner) ?? /^(\d+)>=color$/.exec(inner);
   if (colorCeiling && Number(colorCeiling[1]) >= 16) return "yes";
+  if (/^color[:=](?:0+(?:\.0*)?|\.0+)$/.test(inner) || /^(?:0+(?:\.0*)?|\.0+)=color$/.test(inner)) return "no";
+  const minColor = /^min-color:(\d+)$/.exec(inner);
+  if (minColor && Number(minColor[1]) > 16) return "no";
+  const colorGt = /^color>(\d+)$/.exec(inner);
+  if (colorGt && Number(colorGt[1]) >= 16) return "no";
+  const colorGe = /^color>=(\d+)$/.exec(inner);
+  if (colorGe && Number(colorGe[1]) > 16) return "no";
+  const colorEq = /^color[:=](\d+)$/.exec(inner);
+  if (colorEq && Number(colorEq[1]) > 16) return "no";
+  const colorFrom = /^(\d+)<=color$/.exec(inner);
+  if (colorFrom && Number(colorFrom[1]) > 16) return "no";
+  const colorBelow = /^(\d+)<color$/.exec(inner);
+  if (colorBelow && Number(colorBelow[1]) >= 16) return "no";
   if (inner === "aspect-ratio" || /^min-aspect-ratio:(?:0+(?:\.0*)?|\.0+)\/[1-9]\d*$/.test(inner)) return "yes";
   if (/^aspect-ratio>=(?:0+(?:\.0*)?|\.0+)(?:\/[1-9]\d*)?$/.test(inner) || /^aspect-ratio>(?:0+(?:\.0*)?|\.0+)(?:\/[1-9]\d*)?$/.test(inner)) return "yes";
   if (/^(?:0+(?:\.0*)?|\.0+)(?:\/[1-9]\d*)?<=aspect-ratio$/.test(inner) || /^(?:0+(?:\.0*)?|\.0+)(?:\/[1-9]\d*)?<aspect-ratio$/.test(inner)) return "yes";
@@ -1335,6 +1357,13 @@ function mediaLeaf(inner: string): "yes" | "no" | "maybe" {
   const deviceLt = /^(.+)<device-(?:width|height)$/.exec(inner);
   if (deviceLt) return mediaLengthIsZero(deviceLt[1] ?? "") ? "yes" : "maybe";
   if (/^device-aspect-ratio>=(?:0+(?:\.0*)?|\.0+)\/[1-9]\d*$/.test(inner) || /^min-device-aspect-ratio:(?:0+(?:\.0*)?|\.0+)\/[1-9]\d*$/.test(inner)) return "yes";
+  if (/^device-aspect-ratio>(?:0+(?:\.0*)?|\.0+)(?:\/[1-9]\d*)?$/.test(inner) || /^(?:0+(?:\.0*)?|\.0+)(?:\/[1-9]\d*)?<device-aspect-ratio$/.test(inner)) return "yes";
+  if (/^max-device-aspect-ratio:(?:0+(?:\.0*)?|\.0+)(?:\/[1-9]\d*)?$/.test(inner) || /^device-aspect-ratio[:=](?:0+(?:\.0*)?|\.0+)(?:\/[1-9]\d*)?$/.test(inner)) return "no";
+  if (/^-webkit-min-device-pixel-ratio:(?:0+(?:\.0*)?|\.0+)$/.test(inner)) return "yes";
+  if (/^-webkit-device-pixel-ratio>=(?:0+(?:\.0*)?|\.0+)$/.test(inner) || /^-webkit-device-pixel-ratio>(?:0+(?:\.0*)?|\.0+)$/.test(inner)) return "yes";
+  if (/^(?:0+(?:\.0*)?|\.0+)<=-webkit-device-pixel-ratio$/.test(inner) || /^(?:0+(?:\.0*)?|\.0+)<-webkit-device-pixel-ratio$/.test(inner)) return "yes";
+  if (/^-webkit-max-device-pixel-ratio:(?:0+(?:\.0*)?|\.0+)$/.test(inner) || /^-webkit-device-pixel-ratio(?:<=|[:=])(?:0+(?:\.0*)?|\.0+)$/.test(inner)) return "no";
+  if (/^(?:0+(?:\.0*)?|\.0+)(?:>=|=)-webkit-device-pixel-ratio$/.test(inner)) return "no";
   return "maybe";
 }
 
@@ -1431,22 +1460,27 @@ function closedMediaOr(parts: string[]): "yes" | "no" | null {
   return yes ? "yes" : "no";
 }
 
-function mediaBodyState(inner: string): "yes" | "no" | "maybe" {
+/** if(media()) joins with and/or only when each side is in parentheses. A comma is not an or. */
+function mediaPartWrapped(part: string): boolean {
+  const trimmed = part.trim();
+  return trimmed.startsWith("(") && matchingParen(trimmed, 0) === trimmed.length - 1;
+}
+
+function mediaBodyState(inner: string): Cond {
   const raw = unwrapMatchedParens(inner);
-  const commas = splitTopCommaList(raw);
-  if (commas) {
-    const closed = closedMediaOr(commas);
-    if (closed) return closed;
-    return combineBool(commas.map((part) => mediaBodyState(part)), "or");
-  }
+  if (splitTopCommaList(raw)) return "dead";
   const ors = splitTopKeyword(raw, "or");
   if (ors) {
+    if (ors.some((part) => !mediaPartWrapped(part))) return "dead";
     const closed = closedMediaOr(ors);
     if (closed) return closed;
     return combineBool(ors.map((part) => mediaBodyState(part)), "or");
   }
   const ands = splitTopKeyword(raw, "and");
-  if (ands) return combineBool(ands.map((part) => mediaBodyState(part)), "and");
+  if (ands) {
+    if (ands.some((part) => !mediaPartWrapped(part))) return "dead";
+    return combineBool(ands.map((part) => mediaBodyState(part)), "and");
+  }
   if (raw.startsWith("not") && !/[a-z0-9_-]/i.test(raw[3] ?? "")) return flipState(mediaBodyState(raw.slice(3)));
   const typed = mediaTypeState(raw);
   if (typed) return typed;
@@ -1462,7 +1496,7 @@ function mediaTypeState(raw: string): "yes" | "no" | "maybe" | null {
   return "no";
 }
 
-function mediaState(test: string): "yes" | "no" | "maybe" {
+function mediaState(test: string): Cond {
   const trimmed = test.trim();
   const calls = namedFunctionCalls(trimmed, ["media"]);
   if (calls.length !== 1 || !calls[0]) return "maybe";
@@ -1743,7 +1777,7 @@ function knownSupportState(flat: string): "yes" | "no" | null {
   return null;
 }
 
-function supportsFeatureState(body: string, raw: string): "yes" | "no" | "maybe" {
+function supportsFeatureState(body: string, raw: string): Cond {
   const feature = unwrapMatchedParens(body);
   const ors = splitTopKeyword(feature, "or");
   if (ors) return combineBool(ors.map((part) => supportsFeatureState(part, `supports(${part.trim()})`)), "or");
@@ -1805,7 +1839,7 @@ function liveSupportsState(test: string): "yes" | "no" | null {
   }
 }
 
-function supportsTestState(test: string): "yes" | "no" | "maybe" {
+function supportsTestState(test: string): Cond {
   const live = liveSupportsState(test);
   if (live) return live;
   const trimmed = test.trim();
@@ -1816,7 +1850,7 @@ function supportsTestState(test: string): "yes" | "no" | "maybe" {
   return supportsFeatureState(unwrapMatchedParens(call.inner), trimmed);
 }
 
-function ifConditionState(cond: string, defined?: Map<string, string>): "yes" | "no" | "maybe" {
+function ifConditionState(cond: string, defined?: Map<string, string>): Cond {
   const raw = unwrapMatchedParens(cond.trim());
   if (!raw) return "maybe";
   const ors = splitTopKeyword(raw, "or");
@@ -1872,7 +1906,7 @@ function ifCanHide(value: string, hidden: Set<string>, pred: (v: string) => bool
   for (const part of parts) {
     const state = ifConditionState(part.cond, defined);
     if (state === "yes") return valueCanHide(part.value, hidden, pred, seen);
-    if (state === "no") continue;
+    if (state === "no" || state === "dead") continue;
     break;
   }
   return parts.every((part) => valueCanHide(part.value, hidden, pred, seen));
