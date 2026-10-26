@@ -2139,6 +2139,262 @@ function pathHides(inner: string): boolean {
   return area === 0;
 }
 
+type HideVars = Set<string> & { clips?: Set<string>; masks?: Set<string>; defined?: Map<string, string>; perspectives?: number[] };
+
+function lengthPx(token: string): number | null {
+  const compact = token.replace(/!important/gi, "").replace(/\s+/g, "");
+  if (!compact) return null;
+  const parsed = parseMathSum(compact, 0);
+  if (!parsed || parsed.i !== compact.length || !Number.isFinite(parsed.n)) return null;
+  const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+  if (units.length !== 1 || units[0]?.[1] !== 1) return null;
+  const unit = units[0]?.[0] ?? "";
+  const n = parsed.n;
+  if (unit === "px") return n;
+  if (unit === "pt") return (n * 96) / 72;
+  if (unit === "pc") return n * 16;
+  if (unit === "in") return n * 96;
+  if (unit === "cm") return (n * 96) / 2.54;
+  if (unit === "mm") return (n * 96) / 25.4;
+  return null;
+}
+
+function angleDegrees(token: string, hidden: Set<string>, seen?: Set<string>): number | null {
+  const compact = token.replace(/!important/gi, "").replace(/\s+/g, "");
+  if (!compact) return null;
+  const parsed = parseMathSum(compact, 0);
+  if (parsed && parsed.i === compact.length && Number.isFinite(parsed.n)) {
+    const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+    if (units.length === 1 && units[0]?.[1] === 1) {
+      const unit = units[0]?.[0] ?? "";
+      if (unit === "deg") return parsed.n;
+      if (unit === "turn") return parsed.n * 360;
+      if (unit === "grad") return parsed.n * 0.9;
+      if (unit === "rad") return (parsed.n * 180) / Math.PI;
+      if (unit === "pi") return parsed.n * 180;
+    }
+  }
+  const trail = seen ?? new Set<string>();
+  const defined = (hidden as HideVars).defined;
+  for (const call of varCalls(token)) {
+    const raw = defined?.get(call.name);
+    if (raw && !trail.has(call.name)) {
+      const next = new Set(trail);
+      next.add(call.name);
+      const deg = angleDegrees(raw, hidden, next);
+      if (deg != null) return deg;
+    }
+    if (call.fallback) {
+      const deg = angleDegrees(call.fallback, hidden, trail);
+      if (deg != null) return deg;
+    }
+  }
+  return null;
+}
+
+function nearDeg(n: number, target: number): boolean {
+  const m = ((n % 360) + 360) % 360;
+  const d = Math.abs(m - target);
+  return d < 1e-6 || Math.abs(d - 360) < 1e-6;
+}
+
+function angleIsEdge(token: string, hidden: Set<string>): boolean {
+  const deg = angleDegrees(token, hidden);
+  return deg != null && (nearDeg(deg, 90) || nearDeg(deg, 270));
+}
+
+function angleIsBack(token: string, hidden: Set<string>): boolean {
+  const deg = angleDegrees(token, hidden);
+  return deg != null && nearDeg(deg, 180);
+}
+
+function tanOf(token: string, hidden: Set<string>): number | null {
+  const deg = angleDegrees(token, hidden);
+  if (deg == null) return null;
+  const rad = (deg * Math.PI) / 180;
+  const c = Math.cos(rad);
+  if (Math.abs(c) < 1e-9) return Number.POSITIVE_INFINITY;
+  return Math.sin(rad) / c;
+}
+
+function skewCallHides(inner: string, hidden: Set<string>): boolean {
+  const angles = splitArgs(inner).map((part) => part.trim()).filter(Boolean);
+  if (angles.some((angle) => angleIsEdge(angle, hidden))) return true;
+  if (angles.length < 2) return false;
+  const left = tanOf(angles[0] ?? "", hidden);
+  const right = tanOf(angles[1] ?? "", hidden);
+  if (left == null || right == null) return false;
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return true;
+  return Math.abs(1 - left * right) < 1e-6;
+}
+
+function axisArgsHide(args: string[], hidden: Set<string>, edge: boolean): boolean {
+  const angle = args[3] ?? "";
+  if (edge ? !angleIsEdge(angle, hidden) : !angleIsBack(angle, hidden)) return false;
+  const x = coeffOf(args[0] ?? "", hidden);
+  const y = coeffOf(args[1] ?? "", hidden);
+  const z = coeffOf(args[2] ?? "", hidden);
+  if (x == null || y == null || z == null) return false;
+  return z === 0 && (x !== 0 || y !== 0);
+}
+
+function transformAxisHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
+  const found = namedFunctionCalls(value, ["rotate3d", "rotatex", "rotatey", "rotatez", "rotate", "skewx", "skewy", "skew"]);
+  for (const call of found) {
+    const args = splitArgs(call.inner);
+    if ((call.name === "rotatex" || call.name === "rotatey") && args.some((arg) => angleIsEdge(arg, hidden))) return true;
+    if (call.name === "rotate3d" && axisArgsHide(args, hidden, true)) return true;
+    if ((call.name === "skewx" || call.name === "skewy" || call.name === "skew") && skewCallHides(call.inner, hidden)) return true;
+  }
+  const trail = seen ?? new Set<string>();
+  const defined = (hidden as HideVars).defined;
+  for (const call of varCalls(value)) {
+    const raw = defined?.get(call.name);
+    if (raw && !trail.has(call.name)) {
+      const next = new Set(trail);
+      next.add(call.name);
+      if (transformAxisHides(raw, hidden, next)) return true;
+    }
+    if (call.fallback && transformAxisHides(call.fallback, hidden, trail)) return true;
+  }
+  return false;
+}
+
+function transformBackTurn(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
+  const found = namedFunctionCalls(value, ["rotate3d", "rotatex", "rotatey"]);
+  for (const call of found) {
+    const args = splitArgs(call.inner);
+    if ((call.name === "rotatex" || call.name === "rotatey") && args.some((arg) => angleIsBack(arg, hidden))) return true;
+    if (call.name === "rotate3d" && axisArgsHide(args, hidden, false)) return true;
+  }
+  const trail = seen ?? new Set<string>();
+  const defined = (hidden as HideVars).defined;
+  for (const call of varCalls(value)) {
+    const raw = defined?.get(call.name);
+    if (raw && !trail.has(call.name)) {
+      const next = new Set(trail);
+      next.add(call.name);
+      if (transformBackTurn(raw, hidden, next)) return true;
+    }
+    if (call.fallback && transformBackTurn(call.fallback, hidden, trail)) return true;
+  }
+  return false;
+}
+
+function rotatePropertyParts(value: string): string[] {
+  return splitTopWords(value.replace(/!important/gi, "")).filter(Boolean);
+}
+
+function rotatePropertyHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
+  const parts = rotatePropertyParts(value);
+  if (parts.length === 2) {
+    const axis = (parts[0] ?? "").toLowerCase();
+    if ((axis === "x" || axis === "y") && angleIsEdge(parts[1] ?? "", hidden)) return true;
+  }
+  if (parts.length === 4 && axisArgsHide(parts, hidden, true)) return true;
+  return rotateValueFollows(value, hidden, seen, rotatePropertyHides);
+}
+
+function rotatePropertyBack(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
+  const parts = rotatePropertyParts(value);
+  if (parts.length === 2) {
+    const axis = (parts[0] ?? "").toLowerCase();
+    if ((axis === "x" || axis === "y") && angleIsBack(parts[1] ?? "", hidden)) return true;
+  }
+  if (parts.length === 4 && axisArgsHide(parts, hidden, false)) return true;
+  return rotateValueFollows(value, hidden, seen, rotatePropertyBack);
+}
+
+function rotateValueFollows(value: string, hidden: Set<string>, seen: Set<string> | undefined, again: (value: string, hidden: Set<string>, seen?: Set<string>) => boolean): boolean {
+  const trail = seen ?? new Set<string>();
+  const defined = (hidden as HideVars).defined;
+  for (const call of varCalls(value)) {
+    const raw = defined?.get(call.name);
+    if (raw && !trail.has(call.name)) {
+      const next = new Set(trail);
+      next.add(call.name);
+      if (again(raw, hidden, next)) return true;
+    }
+    if (call.fallback && again(call.fallback, hidden, trail)) return true;
+  }
+  return false;
+}
+
+function translateZHides(value: string, hidden: Set<string>): boolean {
+  const distances = (hidden as HideVars).perspectives ?? [];
+  if (!distances.length) return false;
+  const found = namedFunctionCalls(value, ["translate3d", "translatez"]);
+  return found.some((call) => {
+    const args = splitArgs(call.inner);
+    const token = call.name === "translatez" ? (args[0] ?? "") : (args[2] ?? "");
+    const z = lengthPx(token);
+    if (z == null) return false;
+    return distances.some((d) => {
+      if (d === 0) return true;
+      const scale = Math.abs(d / (d - z));
+      return Number.isFinite(scale) && scale < 0.2;
+    });
+  });
+}
+
+function blurHides(inner: string, hidden: Set<string>, seen?: Set<string>): boolean {
+  const arg = (splitArgs(inner)[0] ?? inner).trim();
+  const px = lengthPx(arg);
+  if (px != null) return Math.abs(px) >= 8;
+  const compact = arg.replace(/!important/gi, "").replace(/\s+/g, "");
+  const parsed = parseMathSum(compact, 0);
+  if (parsed && parsed.i === compact.length && Number.isFinite(parsed.n)) {
+    const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+    if (units.length === 1 && units[0]?.[1] === 1) {
+      const unit = units[0]?.[0] ?? "";
+      const n = Math.abs(parsed.n);
+      if (unit === "em" || unit === "rem") return n >= 0.5;
+      if (unit === "%" || /^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit)) return n >= 2;
+    }
+  }
+  const trail = seen ?? new Set<string>();
+  const defined = (hidden as HideVars).defined;
+  for (const call of varCalls(arg)) {
+    const raw = defined?.get(call.name);
+    if (raw && !trail.has(call.name)) {
+      const next = new Set(trail);
+      next.add(call.name);
+      if (blurHides(raw, hidden, next)) return true;
+    }
+    if (call.fallback && blurHides(call.fallback, hidden, trail)) return true;
+  }
+  return false;
+}
+
+const SHIFT_PROP = new Set([
+  "top",
+  "right",
+  "bottom",
+  "left",
+  "inset",
+  "inset-block",
+  "inset-inline",
+  "inset-block-start",
+  "inset-block-end",
+  "inset-inline-start",
+  "inset-inline-end",
+  "margin",
+  "margin-block",
+  "margin-inline",
+  "margin-top",
+  "margin-right",
+  "margin-bottom",
+  "margin-left",
+  "margin-block-start",
+  "margin-block-end",
+  "margin-inline-start",
+  "margin-inline-end",
+]);
+
+function shiftValueCovers(value: string, hidden: Set<string>): boolean {
+  return splitTopWords(value.replace(/!important/gi, "")).some((token) => token.toLowerCase() !== "auto" && shiftTokenCovers(token, hidden));
+}
+
 function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   const idx = piece.indexOf(":");
   if (idx <= 0) return false;
@@ -2151,7 +2407,8 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "content-visibility") return valueCanHide(val, hidden, (v) => /\bhidden\b/i.test(v));
   if (prop === "opacity") return valueCanHide(val, hidden, clampsToZero);
   if (prop === "filter" || prop === "-webkit-filter") {
-    return functionCallsNamed(val, ["opacity", "brightness", "contrast"]).some((inner) => valueCanHide(inner, hidden, clampsToZero));
+    if (functionCallsNamed(val, ["opacity", "brightness", "contrast"]).some((inner) => valueCanHide(inner, hidden, clampsToZero))) return true;
+    return functionCallsNamed(val, ["blur"]).some((inner) => blurHides(inner, hidden));
   }
   if (prop === "scale") {
     return splitScaleParts(val.replace(/!important/gi, "")).some((arg) => valueCanHide(arg, hidden, hidesAsZero));
@@ -2164,8 +2421,9 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     ) {
       return true;
     }
-    return matrixFlattens(val, hidden) || matrixShifts(val, hidden) || translateHides(val, hidden);
+    return matrixFlattens(val, hidden) || matrixShifts(val, hidden) || translateHides(val, hidden) || transformAxisHides(val, hidden) || translateZHides(val, hidden);
   }
+  if (prop === "rotate") return rotatePropertyHides(val, hidden);
   if (prop === "zoom") return valueCanHide(val, hidden, hidesAsZero);
   if (prop === "font-size") return valueCanHide(val, hidden, hidesAsZero);
   if (prop === "clip-path" || prop === "-webkit-clip-path") return clipHides(val, hidden);
@@ -2175,10 +2433,19 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     const args = splitTopWords(val.replace(/!important/gi, ""));
     return args.slice(0, 2).some((arg) => shiftTokenCovers(arg, hidden));
   }
+  if (SHIFT_PROP.has(prop)) return shiftValueCovers(val, hidden);
+  if (prop === "contain") {
+    const words = val.toLowerCase().replace(/!important/gi, "").split(/[\s,]+/).filter(Boolean);
+    return words.includes("strict") || (words.includes("size") && words.includes("paint"));
+  }
+  if (prop === "offset-path") return val.replace(/!important/gi, "").trim().toLowerCase() !== "none";
+  if (prop === "offset") {
+    const tight = val.replace(/!important/gi, "").trim().toLowerCase();
+    if (tight === "none" || tight === "auto") return false;
+    return /\b(?:path|ray|url|shape|border-box|content-box|padding-box|fill-box|stroke-box|view-box|margin-box)\b/.test(tight);
+  }
   return false;
 }
-
-type HideVars = Set<string> & { clips?: Set<string>; masks?: Set<string>; defined?: Map<string, string> };
 
 function parenDepthAt(value: string, index: number): number {
   let depth = 0;
@@ -2317,13 +2584,61 @@ function isBoxZeroFor(part: string, hidden: Set<string>, profiles: Sib[]): boole
   return profiles.some((sib) => withSib(sib, () => isBoxZero(part, hidden)));
 }
 
+function pieceProp(part: string): { prop: string; val: string } | null {
+  const idx = part.indexOf(":");
+  if (idx <= 0) return null;
+  const prop = part.slice(0, idx).trim().toLowerCase().replace(/\s+/g, "");
+  const val = part.slice(idx + 1).trim();
+  if (!prop || !val) return null;
+  return { prop, val };
+}
+
+function isBackHidden(part: string): boolean {
+  const piece = pieceProp(part);
+  if (!piece) return false;
+  return (piece.prop === "backface-visibility" || piece.prop === "-webkit-backface-visibility") && /\bhidden\b/i.test(piece.val);
+}
+
+function isBackTurn(part: string, hidden: Set<string>): boolean {
+  const piece = pieceProp(part);
+  if (!piece) return false;
+  if (piece.prop === "rotate") return rotatePropertyBack(piece.val, hidden);
+  if (piece.prop === "transform" || piece.prop === "-webkit-transform") return transformBackTurn(piece.val, hidden);
+  return false;
+}
+
+function isNowrap(part: string): boolean {
+  const piece = pieceProp(part);
+  if (!piece) return false;
+  return (piece.prop === "white-space" || piece.prop === "text-wrap" || piece.prop === "text-wrap-mode") && /\bnowrap\b/i.test(piece.val);
+}
+
+function indentCovers(value: string, hidden: Set<string>): boolean {
+  if (shiftValueCovers(value, hidden)) return true;
+  const px = lengthPx(value);
+  return px != null && Math.abs(px) >= 1000;
+}
+
+function isIndentCover(part: string, hidden: Set<string>): boolean {
+  const piece = pieceProp(part);
+  return Boolean(piece && piece.prop === "text-indent" && indentCovers(piece.val, hidden));
+}
+
+/** A back-face flip, or a full indent on one line, hides the desk only as a pair. Either one alone stays. */
+function pairedHide(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  const back = parts.some((part) => isBackHidden(part)) && parts.some((part) => isBackTurn(part, hidden));
+  const indent = parts.some((part) => isNowrap(part)) && parts.some((part) => isBoxClip(part)) && parts.some((part) => isIndentCover(part, hidden));
+  return (part) => (back && (isBackHidden(part) || isBackTurn(part, hidden))) || (indent && isIndentCover(part, hidden));
+}
+
 function scrubHideBody(body: string, hidden: Set<string>, anims: Set<string> = new Set(), profiles: Sib[] = [HTML_SIB, BODY_SIB]) {
   const parts = splitCssDeclarations(body)
     .map((part) => part.trim())
     .filter(Boolean);
   const flat = boxCollapsesFor(parts, hidden, profiles);
+  const pair = pairedHide(parts, hidden);
   return parts
-    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles))))
+    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !pair(part) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles))))
     .join("; ");
 }
 
@@ -2753,7 +3068,15 @@ function shiftAxisCovers(value: string): boolean {
   const units = Object.entries(parsed.u).filter(([, exp]) => exp);
   if (units.length !== 1 || units[0]?.[1] !== 1) return false;
   const unit = units[0]?.[0] ?? "";
-  if (unit !== "%" && !/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) && !/^cq(?:w|h|i|b|min|max)$/.test(unit)) return false;
+  if (unit !== "%" && !/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) && !/^cq(?:w|h|i|b|min|max)$/.test(unit)) {
+    if (unit === "px") return Math.abs(parsed.n) >= 8000;
+    if (unit === "pt") return Math.abs(parsed.n) >= 6000;
+    if (unit === "pc") return Math.abs(parsed.n) >= 500;
+    if (unit === "in") return Math.abs(parsed.n) >= 80;
+    if (unit === "cm") return Math.abs(parsed.n) >= 200;
+    if (unit === "mm") return Math.abs(parsed.n) >= 2000;
+    return false;
+  }
   return Math.abs(parsed.n) >= 100;
 }
 
@@ -3451,7 +3774,9 @@ function hideProfiles(selector: string, scopeSel: string | null): Sib[] {
 
 function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, desk: boolean, scopeSel: string | null = null, nestingSel: string | null = null, profiles: Sib[] = []): string {
   if (!body.includes("{")) return desk ? scrubHideBody(body, hidden, anims, profiles) : body.trim();
-  const flat = desk && boxCollapsesFor(topLevelDeclarations(body), hidden, profiles);
+  const decls = topLevelDeclarations(body);
+  const flat = desk && boxCollapsesFor(decls, hidden, profiles);
+  const pair = desk ? pairedHide(decls, hidden) : () => false;
   let out = "";
   let decl = "";
   let i = 0;
@@ -3460,7 +3785,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const keep = (piece: string) => {
     const next = piece.trim();
     if (!next) return;
-    if (desk && (declarationHidesFor(next, hidden, profiles) || declarationUsesHidingAnim(next, anims))) return;
+    if (desk && (declarationHidesFor(next, hidden, profiles) || declarationUsesHidingAnim(next, anims) || pair(next))) return;
     if (flat && (isBoxClip(next) || isBoxZeroFor(next, hidden, profiles))) return;
     out += `${next}; `;
   };
@@ -3535,7 +3860,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     i += 1;
   }
   const tail = decl.trim();
-  if (tail && !(desk && (declarationHidesFor(tail, hidden, profiles) || declarationUsesHidingAnim(tail, anims))) && !(flat && (isBoxClip(tail) || isBoxZeroFor(tail, hidden, profiles)))) out += tail;
+  if (tail && !(desk && (declarationHidesFor(tail, hidden, profiles) || declarationUsesHidingAnim(tail, anims) || pair(tail))) && !(flat && (isBoxClip(tail) || isBoxZeroFor(tail, hidden, profiles)))) out += tail;
   return out.replace(/;\s*$/g, "").trim();
 }
 
@@ -3694,6 +4019,66 @@ function scrubDeskHide(css: string, hidden: Set<string>) {
   return scrubLooseDeskRules(out, hidden, anims);
 }
 
+function collectDeskPerspectives(css: string): number[] {
+  const found: number[] = [];
+  const take = (body: string) => {
+    for (const part of topLevelDeclarations(body)) {
+      const piece = pieceProp(part);
+      if (!piece || piece.prop !== "perspective") continue;
+      const px = lengthPx(piece.val);
+      if (px != null && px >= 0) found.push(px);
+    }
+  };
+  const walk = (sheet: string, scopeSel: string | null, nestingSel: string | null): void => {
+    let i = 0;
+    while (i < sheet.length) {
+      if (sheet[i] === "@") {
+        const name = /^@(-?[\w-]+)/.exec(sheet.slice(i));
+        if (!name) {
+          i += 1;
+          continue;
+        }
+        const kind = (name[1] ?? "").replace(/^-webkit-/, "");
+        const j = i + name[0].length;
+        if (/keyframes/i.test(kind) || /^(?:font-face|page|counter-style|property)$/i.test(kind)) {
+          const open = sheet.indexOf("{", j);
+          const semi = sheet.indexOf(";", j);
+          if (open < 0 || (semi >= 0 && semi < open)) {
+            i = semi < 0 ? sheet.length : semi + 1;
+            continue;
+          }
+          const close = matchingBrace(sheet, open);
+          i = close < 0 ? sheet.length : close + 1;
+          continue;
+        }
+        if (/^scope$/i.test(kind) || RECURSE_AT.test(kind)) {
+          const open = sheet.indexOf("{", j);
+          if (open < 0) return;
+          const close = matchingBrace(sheet, open);
+          if (close < 0) return;
+          const nextScope = /^scope$/i.test(kind) ? (scopeRootSelector(sheet.slice(j, open)) ?? null) : scopeSel;
+          const resolved = nextScope ? rewriteAmp(nextScope, nestingSel) : nextScope;
+          walk(sheet.slice(open + 1, close), resolved, resolved ?? nestingSel);
+          i = close + 1;
+          continue;
+        }
+      }
+      const open = sheet.indexOf("{", i);
+      if (open < 0) return;
+      const selector = sheet.slice(i, open);
+      const close = matchingBrace(sheet, open);
+      if (close < 0) return;
+      const opened = rewriteAmp(selector, scopeSel);
+      const body = sheet.slice(open + 1, close);
+      if (selectorMatchesDesk(opened, scopeSel)) take(body);
+      if (body.includes("{")) walk(body, scopeSel, opened);
+      i = close + 1;
+    }
+  };
+  walk(css, null, null);
+  return found;
+}
+
 function scrubRemoteImageCalls(css: string) {
   const calls = imageCalls(css);
   if (!calls.length) return css;
@@ -3711,5 +4096,7 @@ function scrubRemoteImageCalls(css: string) {
 export function sanitizePluginCss(css: string): string {
   const readable = stripCssComments(decodeCssEscapes(stripCssComments(css), false));
   const cleaned = scrubAttrUrls(scrubRemoteImageCalls(scrubPluginCss(readable)));
-  return scrubDeskHide(cleaned, collectHideVars(cleaned));
+  const hidden = collectHideVars(cleaned);
+  hidden.perspectives = collectDeskPerspectives(cleaned);
+  return scrubDeskHide(cleaned, hidden);
 }

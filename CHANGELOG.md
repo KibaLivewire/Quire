@@ -1,3 +1,19 @@
+# Quire 1.9.30 — An edge is not a turn
+
+Released 26 October 2026.
+
+- **An edge-on turn can no longer hide the desk.** `rotateX(90deg)`, `rotateY(90deg)`, `rotate3d(1, 0, 0, 90deg)`, `rotate: x 90deg`, and the same angle as `0.25turn`, `100grad`, or `pi * 1rad / 2` flatten the page the way `scale(0)` does. `skewX(90deg)` and `skew(45deg, 45deg)` do too. A variable, a taken `if()`, and a keyframe follow. `rotate(2deg)`, `rotateZ(90deg)`, `rotate: 90deg`, `rotateX(89deg)`, `skewX(4deg)`, and `scale(-1)` stay. A class may still turn. Colour stays.
+- **A full shift written as a position or a margin can no longer hide the desk.** `left: -100%`, `inset: -100%`, `margin-left: -100vw`, and `translateX(-9999px)` follow `translate(-100%)`. `left: 4px` and `margin-left: 16px` stay. A class may still shift. Colour stays.
+- **A size and a paint together, or a motion path, can no longer hide the desk.** `contain: strict` and `contain: size paint` follow a zero box. `contain: size` and `contain: paint` stay. `offset-path` other than `none` is dropped on the desk. A class may still use both. Colour stays.
+- **A back-face flip, a wiping blur, or a one-line indent can no longer hide the desk.** `backface-visibility: hidden` together with `rotateY(180deg)` is dropped. Either one alone stays. `rotateZ(180deg)` with a hidden back stays. `scale(-1)` stays. `filter: blur(12px)` is dropped. `blur(4px)` and a grayscale filter stay. `text-indent: -100%` together with `nowrap` and a clipped overflow is dropped. `text-indent: 2em` stays. Colour stays.
+- **A tiny perspective and a Z shift can no longer hide the desk.** `perspective: 1px` on the desk together with `translateZ(-100px)` follows a zero scale. Either one alone stays. `perspective: 800px` with that same shift stays. Colour stays.
+
+Windows installer: Quire-Setup-1.9.30.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.29 — A feature with no off switch
 
 Released 25 October 2026.
