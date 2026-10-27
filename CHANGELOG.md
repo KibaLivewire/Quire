@@ -1,3 +1,19 @@
+# Quire 1.9.33 — The sheet does not cover the page
+
+Released 27 October 2026.
+
+- **A clear text fill can no longer hide the desk.** `-webkit-text-fill-color: transparent`, `rgba(0, 0, 0, 0)`, and `rgb(0 0 0 / none)` paint the letters with nothing. Those are dropped on `html`, `body`, and a star. `#222` stays. A class may still use a clear fill. Colour stays.
+- **A spacing that stacks the line can no longer hide the desk.** `letter-spacing: -12px` and `letter-spacing: -100vw` follow a line that has left the page. `word-spacing: -96px` does too. `letter-spacing: -8px`, `2px`, and `0.04em` stay. `word-spacing: -48px` and `0.2em` stay. A class may still space. Colour stays.
+- **A full padding can no longer hide the desk.** `padding-left: 100vw`, `padding-left: 100%`, and `padding-top: 100vh` follow `margin-left: -100vw`. `padding-left: 16px` and `padding-left: 400px` stay. A class may still pad. Colour stays.
+- **A mask of no size can no longer hide the desk.** A mask image together with `mask-size: 0` is dropped, including when the two are written as two rules. A one-pixel mask, `no-repeat`, parked off the page is dropped. `mask-size: 0` on its own stays. A mask that still covers stays. A class may still use a zero mask. Colour stays.
+- **A sheet in front of the desk can no longer hide it.** `html::before`, `html:before`, `*::before`, and `body *::before` with a fixed cover and an opaque background lose that background. A quote, a small square, and a wash at `opacity: 0.15` stay. A class pseudo may still cover that class. Fixed placement stays. Colour stays.
+
+Windows installer: Quire-Setup-1.9.33.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.32 — A length by its other name
 
 Released 26 October 2026.
