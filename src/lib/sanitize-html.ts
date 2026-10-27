@@ -2491,11 +2491,16 @@ function shiftValueCovers(value: string, hidden: Set<string>): boolean {
   return splitTopWords(value.replace(/!important/gi, "")).some((token) => token.toLowerCase() !== "auto" && shiftTokenCovers(token, hidden));
 }
 
-/** A few pixels of letter or word spacing stay. A full shift, or a negative that stacks the line, does not. */
-function spacingHides(value: string, hidden: Set<string>, limit: number): boolean {
+/** A few pixels of letter or word spacing stay. A full shift, a negative that stacks the line, or half an em of letter-spacing, does not. */
+function spacingHides(value: string, hidden: Set<string>, limit: number, emLimit = 0): boolean {
   const token = value.replace(/!important/gi, "").trim();
   const px = lengthPx(token);
   if (px != null && px <= -limit) return true;
+  if (emLimit > 0 && lengthUnit(token) === "em") {
+    const compact = token.replace(/\s+/g, "");
+    const parsed = parseMathSum(compact, 0);
+    if (parsed && parsed.i === compact.length && Number.isFinite(parsed.n) && parsed.n <= -emLimit) return true;
+  }
   return shiftTokenCovers(token, hidden);
 }
 function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
@@ -2513,6 +2518,150 @@ function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): 
     if (call.fallback && indentPxHides(call.fallback, hidden, trail)) return true;
   }
   return false;
+}
+
+/** A zero aspect, or one too small to leave a letter, hides the line. 0.1 and from-font still paint. */
+function fontAspectHides(value: string, hidden: Set<string>): boolean {
+  return valueCanHide(value, hidden, (raw) => {
+    let token = raw.replace(/!important/gi, "").trim().toLowerCase();
+    if (!token || token === "none" || token === "from-font") return false;
+    token = token.replace(/^(?:ex-height|cap-height|ch-width|ic-width|ic-height)\s+/, "");
+    if (!token || token === "none" || token === "from-font") return false;
+    if (hidesAsZero(token)) return true;
+    const n = Number(token);
+    return Number.isFinite(n) && n > 0 && n < 0.1;
+  });
+}
+
+/** A face under 30% is not a letter. 30% and a normal face stay. */
+function sizeAdjustHides(value: string, hidden: Set<string>): boolean {
+  return valueCanHide(value, hidden, (raw) => {
+    const token = raw.replace(/!important/gi, "").trim().toLowerCase().replace(/\s+/g, "");
+    if (!token) return false;
+    if (hidesAsZero(token)) return true;
+    const pct = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)%$/.exec(token);
+    if (!pct?.[1]) return false;
+    const n = Number(pct[1]);
+    return Number.isFinite(n) && n < 30;
+  });
+}
+
+function wideStroke(token: string): boolean {
+  const raw = token.replace(/!important/gi, "").trim();
+  const px = lengthPx(raw);
+  if (px != null) return px >= 2;
+  if (lengthUnit(raw) !== "em") return false;
+  const compact = raw.replace(/\s+/g, "");
+  const parsed = parseMathSum(compact, 0);
+  return Boolean(parsed && parsed.i === compact.length && Number.isFinite(parsed.n) && parsed.n >= 0.1);
+}
+
+function channelByte(token: string): number | null {
+  const t = token.trim().toLowerCase();
+  if (t.endsWith("%")) {
+    const n = Number(t.slice(0, -1));
+    if (!Number.isFinite(n)) return null;
+    return Math.max(0, Math.min(255, Math.round((n / 100) * 255)));
+  }
+  const n = Number(t);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(255, Math.round(n)));
+}
+
+function rgbIsPageLight(r: number, g: number, b: number): boolean {
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) >= 0.7;
+}
+
+const PAGE_LIGHT = new Set([
+  "white",
+  "snow",
+  "ivory",
+  "floralwhite",
+  "ghostwhite",
+  "whitesmoke",
+  "seashell",
+  "linen",
+  "antiquewhite",
+  "oldlace",
+  "beige",
+  "cornsilk",
+  "papayawhip",
+  "blanchedalmond",
+  "bisque",
+  "mistyrose",
+  "lavenderblush",
+  "aliceblue",
+  "azure",
+  "mintcream",
+  "honeydew",
+  "lightyellow",
+  "lightcyan",
+  "lightgoldenrodyellow",
+  "lemonchiffon",
+]);
+
+/** A stroke in the page colour paints out the ink. A dark stroke is still ink. */
+function colorIsPageLight(token: string): boolean {
+  const t = token.trim().toLowerCase();
+  if (!t || pieceIsClearColor(t)) return false;
+  if (PAGE_LIGHT.has(t)) return true;
+  const hex = /^#([0-9a-f]{3,8})$/.exec(t);
+  if (hex?.[1]) {
+    const h = hex[1];
+    if (h.length === 3 || h.length === 4) return rgbIsPageLight(parseInt(h[0] + h[0], 16), parseInt(h[1] + h[1], 16), parseInt(h[2] + h[2], 16));
+    if (h.length === 6 || h.length === 8) return rgbIsPageLight(parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16));
+    return false;
+  }
+  const calls = namedFunctionCalls(t, ["rgba", "rgb"]);
+  if (calls.length !== 1 || !calls[0]) return false;
+  const call = calls[0];
+  if (t.replace(/\s+/g, "") !== `${call.name}(${call.inner.replace(/\s+/g, "")})`) return false;
+  const inner = call.inner.trim();
+  let channels: string[] = [];
+  if (inner.includes(",")) channels = splitArgs(inner).map((part) => part.trim()).filter(Boolean);
+  else {
+    const bits = inner.split("/");
+    if ((bits[1] ?? "") && alphaIsClear(bits[1] ?? "")) return false;
+    channels = splitTopWords(bits[0] ?? "").filter(Boolean);
+  }
+  if (channels.length < 3) return false;
+  const r = channelByte(channels[0] ?? "");
+  const g = channelByte(channels[1] ?? "");
+  const b = channelByte(channels[2] ?? "");
+  if (r == null || g == null || b == null) return false;
+  if (channels.length >= 4 && alphaIsClear(channels[3] ?? "")) return false;
+  return rgbIsPageLight(r, g, b);
+}
+
+function strokeShorthandHides(raw: string): boolean {
+  const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
+  if (tokens.length < 2) return false;
+  return tokens.some((token) => wideStroke(token)) && tokens.some((token) => colorIsPageLight(token));
+}
+
+function lightStrokeDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  let wide = false;
+  let light = false;
+  for (const part of parts) {
+    const piece = pieceProp(part);
+    if (!piece) continue;
+    if (piece.prop === "-webkit-text-stroke-width" || piece.prop === "text-stroke-width") {
+      if (valueCanHide(piece.val, hidden, (v) => wideStroke(v))) wide = true;
+    }
+    if (piece.prop === "-webkit-text-stroke-color" || piece.prop === "text-stroke-color") {
+      if (valueCanHide(piece.val, hidden, (v) => colorIsPageLight(v.replace(/!important/gi, "").trim()))) light = true;
+    }
+  }
+  const on = wide && light;
+  return (part) => {
+    if (!on) return false;
+    const piece = pieceProp(part);
+    return Boolean(piece && (piece.prop === "-webkit-text-stroke-width" || piece.prop === "text-stroke-width"));
+  };
 }
 
 function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
@@ -2546,9 +2695,14 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "rotate") return rotatePropertyHides(val, hidden);
   if (prop === "zoom") return valueCanHide(val, hidden, hidesAsZero);
   if (prop === "font-size") return valueCanHide(val, hidden, hidesAsZero);
-  if (prop === "letter-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 12));
+  if (prop === "font-size-adjust") return fontAspectHides(val, hidden);
+  if (prop === "letter-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 12, 0.5));
   if (prop === "word-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 96));
   if (prop === "-webkit-text-fill-color" || prop === "text-fill-color") return valueCanHide(val, hidden, pieceIsClearColor);
+  if (prop === "-webkit-text-security" || prop === "text-security") {
+    return valueCanHide(val, hidden, (raw) => /^(?:disc|circle|square)$/i.test(raw.replace(/!important/gi, "").trim()));
+  }
+  if (prop === "-webkit-text-stroke" || prop === "text-stroke") return valueCanHide(val, hidden, strokeShorthandHides);
   if (prop === "text-indent") return indentPxHides(val, hidden);
   if (prop === "clip-path" || prop === "-webkit-clip-path") return clipHides(val, hidden);
   if (prop === "clip") return namedFunctionCalls(val, ["rect"]).some((call) => rectHides(call.inner));
@@ -2854,8 +3008,9 @@ function scrubHideBody(body: string, hidden: Set<string>, anims: Set<string> = n
   const mask = maskCollapsesFor(parts, hidden, profiles);
   const parked = parkedMask(parts, hidden);
   const pair = pairedHide(parts, hidden);
+  const stroke = lightStrokeDrops(parts, hidden);
   return parts
-    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !pair(part) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles))) && !paintPieceDrops(part, hidden, profiles, paint) && !maskZeroDrops(part, hidden, mask) && !parkedMaskDrops(part, parked))
+    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !pair(part) && !stroke(part) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles))) && !paintPieceDrops(part, hidden, profiles, paint) && !maskZeroDrops(part, hidden, mask) && !parkedMaskDrops(part, parked))
     .join("; ");
 }
 
@@ -4178,10 +4333,11 @@ function boxCovers(parts: string[]): boolean {
 }
 
 /** A pseudo on the desk, or on every child, can paint over the page. A class pseudo cannot. */
-function deskPseudoSelector(selector: string): boolean {
+function deskPseudoSelector(selector: string, kind: "any" | "before" = "any"): boolean {
+  const pseudoRe = kind === "before" ? /(?:::?before)\s*$/i : /(?:::?before|::?after)\s*$/i;
   return splitSelectorList(selector).some((part) => {
     const trimmed = part.trim();
-    const pseudo = /(?:::?before|::?after)\s*$/i.exec(trimmed);
+    const pseudo = pseudoRe.exec(trimmed);
     if (!pseudo || pseudo.index == null) return false;
     const head = trimmed.slice(0, pseudo.index).trim();
     if (!head || head === "*" || head === "*|*") return true;
@@ -4225,6 +4381,63 @@ function scrubPseudoCover(body: string): string {
     .filter((part) => {
       const piece = pieceProp(part);
       return !piece || (piece.prop !== "background" && piece.prop !== "background-color" && piece.prop !== "background-image");
+    })
+    .join("; ");
+}
+
+const PUSH_SIZE = new Set(["height", "min-height", "block-size", "min-block-size"]);
+const PUSH_SHIFT = new Set([
+  "margin",
+  "margin-top",
+  "margin-bottom",
+  "margin-block",
+  "margin-block-start",
+  "margin-block-end",
+  "padding",
+  "padding-top",
+  "padding-bottom",
+  "padding-block",
+  "padding-block-start",
+  "padding-block-end",
+]);
+
+/** A full viewport length on a block before the writing. A percentage height does not push. */
+function viewportFills(value: string, hidden: Set<string>): boolean {
+  return valueCanHide(value, hidden, (raw) => {
+    const parts = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
+    if (parts.length !== 1) return false;
+    const token = (parts[0] ?? "").replace(/\s+/g, "");
+    if (token.includes("%")) return false;
+    return shiftAxisCovers(token);
+  });
+}
+
+function pseudoPushes(body: string, hidden: Set<string>): boolean {
+  const parts = splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const position = parts.map((part) => pieceProp(part)).find((piece) => piece?.prop === "position");
+  if (position && /\b(?:fixed|absolute)\b/i.test(position.val)) return false;
+  const content = parts.map((part) => pieceProp(part)).find((piece) => piece?.prop === "content");
+  if (!content || /^\s*(?:none|normal)\b/i.test(content.val)) return false;
+  return parts.some((part) => {
+    const piece = pieceProp(part);
+    if (!piece) return false;
+    if (PUSH_SIZE.has(piece.prop)) return viewportFills(piece.val, hidden);
+    if (PUSH_SHIFT.has(piece.prop)) return shiftValueCovers(piece.val, hidden);
+    return false;
+  });
+}
+
+function scrubPseudoPush(body: string, hidden: Set<string>): string {
+  return splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter((part) => {
+      const piece = pieceProp(part);
+      if (!piece) return true;
+      if (PUSH_SIZE.has(piece.prop)) return !viewportFills(piece.val, hidden);
+      if (PUSH_SHIFT.has(piece.prop)) return !shiftValueCovers(piece.val, hidden);
+      return true;
     })
     .join("; ");
 }
@@ -4295,8 +4508,19 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
     const opened = rewriteAmp(selector, scopeSel);
     const rawBody = css.slice(open + 1, close);
     if (selectorMatchesDesk(opened, scopeSel)) out += `${selector}{${scrubNestedBody(rawBody, hidden, anims, true, scopeSel, opened, hideProfiles(opened, scopeSel))}}`;
-    else if (!rawBody.includes("{") && deskPseudoSelector(opened) && pseudoCovers(rawBody, hidden)) out += `${selector}{${scrubPseudoCover(rawBody)}}`;
-    else out += css.slice(i, close + 1);
+    else if (!rawBody.includes("{") && deskPseudoSelector(opened)) {
+      let next = rawBody;
+      let touched = false;
+      if (pseudoCovers(next, hidden)) {
+        next = scrubPseudoCover(next);
+        touched = true;
+      }
+      if (deskPseudoSelector(opened, "before") && pseudoPushes(next, hidden)) {
+        next = scrubPseudoPush(next, hidden);
+        touched = true;
+      }
+      out += touched ? `${selector}{${next}}` : css.slice(i, close + 1);
+    } else out += css.slice(i, close + 1);
     i = close + 1;
   }
   return out;
@@ -4552,5 +4776,63 @@ export function sanitizePluginCss(css: string): string {
   hidden.perspectives = collectDeskPerspectives(cleaned);
   collectPaintZero(cleaned, hidden);
   collectMaskZero(cleaned, hidden);
-  return scrubDeskHide(cleaned, hidden);
+  return scrubDeskHide(scrubTinyFaces(cleaned, hidden), hidden);
+}
+
+function scrubTinyFaceBody(body: string, hidden: Set<string>): string {
+  return splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter((part) => {
+      const piece = pieceProp(part);
+      return !piece || piece.prop !== "size-adjust" || !sizeAdjustHides(piece.val, hidden);
+    })
+    .join("; ");
+}
+
+/** A zero face replaces Newsreader or Georgia for the whole desk. The family stays. The shrink does not. */
+function scrubTinyFaces(css: string, hidden: Set<string>): string {
+  let out = "";
+  let i = 0;
+  let quote = "";
+  while (i < css.length) {
+    const ch = css[i] ?? "";
+    const next = css[i + 1] ?? "";
+    if (quote) {
+      out += ch;
+      if (ch === "\\" && next) {
+        out += next;
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      out += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "@" && /^@font-face(?![A-Za-z0-9_-])/i.test(css.slice(i))) {
+      const open = css.indexOf("{", i);
+      if (open < 0) {
+        out += css.slice(i);
+        break;
+      }
+      const close = matchingBrace(css, open);
+      if (close < 0) {
+        out += css.slice(i);
+        break;
+      }
+      out += css.slice(i, open + 1);
+      out += scrubTinyFaceBody(css.slice(open + 1, close), hidden);
+      out += "}";
+      i = close + 1;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
 }

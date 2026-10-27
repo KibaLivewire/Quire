@@ -1,3 +1,20 @@
+# Quire 1.9.34 — The letters stay letters
+
+Released 27 October 2026.
+
+- **A zero font aspect can no longer hide the desk.** `font-size-adjust: 0`, `ex-height 0`, `cap-height 0`, and a number under `0.1` leave no letter. A variable set to that aspect follows. A taken `if()` follows. Those are dropped on `html`, `body`, and a star. `0.1`, `0.5`, `from-font`, and `none` stay. A class may still use a zero aspect. Colour stays.
+- **A face under 30% can no longer hide the desk.** `@font-face` for `Newsreader` or `Georgia` with `size-adjust: 0%`, `10%`, or `25%` replaces the desk face with a blank. The shrink is dropped, including inside `@media`. The family and the source stay. `30%`, `50%`, and `100%` stay. `ascent-override: 0%` stays. Colour stays.
+- **Security marks can no longer hide the desk.** `-webkit-text-security: disc`, `circle`, and `square` replace the letters with marks. Those are dropped. `none` stays. A taken `if()` that chooses a mark is dropped. A class may still use a mark. Colour stays.
+- **Half an em of letter-spacing can no longer stack the line.** `letter-spacing: -0.5em` piles the line onto the first glyph. It is dropped. `-0.4em`, `-0.03em`, and `-8px` stay. A class may still space. Colour stays.
+- **A light stroke can no longer paint out the letters.** `-webkit-text-stroke: 2px #f7f3ea` and `40px white` cover the ink with the page. The longhands do the same when the width and the light colour are together. Those widths are dropped. A `1px` light stroke stays. A dark stroke stays. A class may still stroke. Colour stays.
+- **A block before the writing can no longer push it off the page.** `html::before`, `body::before`, and `*::before` with `height: 100vh`, `height: 100vw`, `min-height: 100dvh`, `margin-top: 100vh`, or `padding-top: 100vh` move the writing off the first screen. That length is dropped. `height: 12px`, `height: 50vh`, and `height: 100%` stay. `html::after` may still be a full screen. `.note::before` may still push that class. Fixed placement stays. Colour stays.
+
+Windows installer: Quire-Setup-1.9.34.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.33 — The sheet does not cover the page
 
 Released 27 October 2026.
