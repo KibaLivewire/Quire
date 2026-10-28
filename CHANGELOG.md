@@ -1,3 +1,22 @@
+# Quire 1.9.35 — Another name for the same hide
+
+Released 28 October 2026.
+
+- **A zero in the font shorthand can no longer hide the desk.** `font: 0px/1.7 Georgia`, `font: 0 serif`, and `font: italic 0px Georgia` are `font-size: 0`. A calculation and a taken `if()` follow. Those are dropped on `html`, `body`, and a star. `font: 18px Georgia` and `font: 1.125rem Newsreader, serif` stay. An oblique angle is not the size. A class may still use a zero shorthand. Colour stays.
+- **A calculated font aspect can no longer hide the desk.** `font-size-adjust: calc(0.05)`, `min(0.05, 1)`, and `ex-height calc(0.05)` leave a speck. Those are dropped. `calc(0.5)` and `0.1` stay. A class may still use a zero aspect. Colour stays.
+- **A calculated face under 30% can no longer hide the desk.** `@font-face` for `Georgia` or `"Newsreader"` with `size-adjust: calc(10%)` or `min(10%, 20%)` replaces the desk face with a blank. The shrink is dropped. The family and the source stay. `calc(50%)` stays. A generic `serif` face is not the desk face, so `size-adjust: 0%` on `serif` stays. Colour stays.
+- **Letter-spacing in another unit can no longer stack the line.** `-0.5rem`, `-50%`, `-0.5lh`, `-1ch`, `-1cap`, `-1ex`, and `-0.5ic` pile the line the way `-0.5em` does. Those are dropped. `-0.4rem`, `-40%`, `-0.4lh`, `-0.5ch`, `-0.5cap`, `-0.5ex`, and `-0.4ic` stay. A class may still space. Colour stays.
+- **Word-spacing in another unit can no longer stack the words.** `-6em`, `-6rem`, `-6ic`, `-6lh`, `-12ch`, `-12cap`, and `-12ex` pull the later words onto the first, the way `-96px` does. Those are dropped. `-5em`, `-2em`, `-0.2em`, `-5ic`, `-4lh`, `-8ch`, `-6cap`, and `-8ex` stay. A class may still space. Colour stays.
+- **A light stroke in another unit, or written as hsl, oklch, or hwb, can no longer paint out the letters.** `0.1rem`, `0.2rem`, `0.1ic`, `0.1lh`, `0.2cap`, `0.2ch`, and `0.2ex` in the page colour cover the ink. `6px` in `hsl(36 33% 95%)`, `oklch(0.96 0.02 90)`, or `hwb(40 90% 2%)` does too. The longhand width is dropped with the light colour. A `1px` light stroke stays. `0.1cap`, `0.1ch`, `0.1ex`, and `0.05lh` stay. A dark stroke stays. A class may still stroke. Colour stays.
+- **A blur in another unit can no longer wipe the line.** `blur(0.5lh)`, `blur(1lh)`, `blur(0.5ic)`, `blur(1ic)`, `blur(1cap)`, `blur(1ch)`, and `blur(2ex)` follow `blur(12px)`. Those are dropped. `blur(0.2lh)`, `blur(0.5cap)`, `blur(1ex)`, `blur(0.5ch)`, and `blur(4px)` stay. A grayscale filter stays. Colour stays.
+- **An indent or a shift in another unit can no longer hide the desk.** `text-indent: -80em` and `-200ch` move the line off the page. `margin-left: -500rem`, `-500lh`, `-500ic`, and `-1000ch` follow a shift of 8000px. `translate: -500em` does too. Those are dropped. `text-indent: -8em`, `-400px`, and `-100ch` stay. `margin-left: -400rem`, `-200lh`, and `-500ch` stay. `translate: -100px` stays. A class may still indent or shift. Colour stays.
+
+Windows installer: Quire-Setup-1.9.35.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.34 — The letters stay letters
 
 Released 27 October 2026.

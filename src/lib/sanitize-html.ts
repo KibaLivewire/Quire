@@ -2204,6 +2204,24 @@ function lengthUnit(token: string): string | null {
   return units[0]?.[0] ?? null;
 }
 
+/** em and rem use the desk's 16px root. A 1000px indent is the same bar as a pixel indent. */
+function lengthDeskPx(token: string): number | null {
+  const px = lengthPx(token);
+  if (px != null) return px;
+  const compact = token.replace(/!important/gi, "").replace(/\s+/g, "");
+  const parsed = parseMathSum(compact, 0);
+  if (!parsed || parsed.i !== compact.length || !Number.isFinite(parsed.n)) return null;
+  const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+  if (units.length !== 1 || units[0]?.[1] !== 1) return null;
+  const unit = units[0]?.[0] ?? "";
+  if (unit === "em" || unit === "rem" || unit === "ic" || unit === "ric") return parsed.n * 16;
+  if (unit === "lh" || unit === "rlh") return parsed.n * 16;
+  if (unit === "ch" || unit === "rch") return parsed.n * 8;
+  if (unit === "cap" || unit === "rcap") return parsed.n * 10;
+  if (unit === "ex" || unit === "rex") return parsed.n * 7;
+  return null;
+}
+
 function angleDegrees(token: string, hidden: Set<string>, seen?: Set<string>): number | null {
   const compact = token.replace(/!important/gi, "").replace(/\s+/g, "");
   if (!compact) return null;
@@ -2433,7 +2451,11 @@ function blurHides(inner: string, hidden: Set<string>, seen?: Set<string>): bool
     if (units.length === 1 && units[0]?.[1] === 1) {
       const unit = units[0]?.[0] ?? "";
       const n = Math.abs(parsed.n);
-      if (unit === "em" || unit === "rem") return n >= 0.5;
+      if (unit === "em" || unit === "rem" || unit === "ic" || unit === "ric") return n >= 0.5;
+      if (unit === "lh" || unit === "rlh") return n >= 0.5;
+      if (unit === "cap" || unit === "rcap") return n >= 1;
+      if (unit === "ch" || unit === "rch") return n >= 1;
+      if (unit === "ex" || unit === "rex") return n >= 1.5;
       if (unit === "%" || /^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit)) return n >= 2;
     }
   }
@@ -2491,20 +2513,26 @@ function shiftValueCovers(value: string, hidden: Set<string>): boolean {
   return splitTopWords(value.replace(/!important/gi, "")).some((token) => token.toLowerCase() !== "auto" && shiftTokenCovers(token, hidden));
 }
 
-/** A few pixels of letter or word spacing stay. A full shift, a negative that stacks the line, or half an em of letter-spacing, does not. */
+/** A few pixels of letter or word spacing stay. A full shift, a negative that stacks the line, or half an em of letter-spacing, does not. The same stack in ch, cap, ex, or ic does not either. */
 function spacingHides(value: string, hidden: Set<string>, limit: number, emLimit = 0): boolean {
   const token = value.replace(/!important/gi, "").trim();
   const px = lengthPx(token);
   if (px != null && px <= -limit) return true;
-  if (emLimit > 0 && lengthUnit(token) === "em") {
-    const compact = token.replace(/\s+/g, "");
-    const parsed = parseMathSum(compact, 0);
-    if (parsed && parsed.i === compact.length && Number.isFinite(parsed.n) && parsed.n <= -emLimit) return true;
+  const unit = lengthUnit(token);
+  const compact = token.replace(/\s+/g, "");
+  const parsed = unit ? parseMathSum(compact, 0) : null;
+  if (parsed && parsed.i === compact.length && Number.isFinite(parsed.n) && unit) {
+    if (emLimit > 0 && (unit === "em" || unit === "rem" || unit === "lh" || unit === "rlh" || unit === "ic" || unit === "ric") && parsed.n <= -emLimit) return true;
+    if (emLimit > 0 && unit === "%" && parsed.n <= -(emLimit * 100)) return true;
+    if (emLimit > 0 && (unit === "ch" || unit === "rch" || unit === "cap" || unit === "rcap" || unit === "ex" || unit === "rex") && parsed.n <= -1) return true;
+    if (emLimit === 0 && (unit === "ic" || unit === "ric" || unit === "lh" || unit === "rlh") && parsed.n <= -6) return true;
+    if (emLimit === 0 && (unit === "ch" || unit === "rch" || unit === "cap" || unit === "rcap" || unit === "ex" || unit === "rex") && parsed.n <= -12) return true;
+    if ((unit === "em" || unit === "rem") && parsed.n * 16 <= -limit) return true;
   }
   return shiftTokenCovers(token, hidden);
 }
 function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
-  const px = lengthPx(value);
+  const px = lengthDeskPx(value);
   if (px != null) return Math.abs(px) >= 1000;
   const trail = seen ?? new Set<string>();
   const defined = (hidden as HideVars).defined;
@@ -2520,7 +2548,7 @@ function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): 
   return false;
 }
 
-/** A zero aspect, or one too small to leave a letter, hides the line. 0.1 and from-font still paint. */
+/** A zero aspect, or one too small to leave a letter, hides the line. 0.1 and from-font still paint. A calculation of that aspect does too. */
 function fontAspectHides(value: string, hidden: Set<string>): boolean {
   return valueCanHide(value, hidden, (raw) => {
     let token = raw.replace(/!important/gi, "").trim().toLowerCase();
@@ -2528,21 +2556,33 @@ function fontAspectHides(value: string, hidden: Set<string>): boolean {
     token = token.replace(/^(?:ex-height|cap-height|ch-width|ic-width|ic-height)\s+/, "");
     if (!token || token === "none" || token === "from-font") return false;
     if (hidesAsZero(token)) return true;
-    const n = Number(token);
-    return Number.isFinite(n) && n > 0 && n < 0.1;
+    const plain = Number(token);
+    if (Number.isFinite(plain)) return plain > 0 && plain < 0.1;
+    const compact = token.replace(/\s+/g, "");
+    const parsed = parseMathSum(compact, 0);
+    if (!parsed || parsed.i !== compact.length || !Number.isFinite(parsed.n)) return false;
+    const units = Object.keys(parsed.u).filter((key) => parsed.u[key]);
+    if (units.length) return false;
+    return parsed.n === 0 || (parsed.n > 0 && parsed.n < 0.1);
   });
 }
 
-/** A face under 30% is not a letter. 30% and a normal face stay. */
+/** A face under 30% is not a letter. 30% and a normal face stay. A calculation of that percentage is the same shrink. */
 function sizeAdjustHides(value: string, hidden: Set<string>): boolean {
   return valueCanHide(value, hidden, (raw) => {
     const token = raw.replace(/!important/gi, "").trim().toLowerCase().replace(/\s+/g, "");
     if (!token) return false;
     if (hidesAsZero(token)) return true;
     const pct = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)%$/.exec(token);
-    if (!pct?.[1]) return false;
-    const n = Number(pct[1]);
-    return Number.isFinite(n) && n < 30;
+    if (pct?.[1]) {
+      const n = Number(pct[1]);
+      return Number.isFinite(n) && n < 30;
+    }
+    const parsed = parseMathSum(token, 0);
+    if (!parsed || parsed.i !== token.length || !Number.isFinite(parsed.n)) return false;
+    const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+    if (units.length === 1 && units[0]?.[0] === "%" && units[0]?.[1] === 1) return parsed.n < 30;
+    return false;
   });
 }
 
@@ -2550,10 +2590,14 @@ function wideStroke(token: string): boolean {
   const raw = token.replace(/!important/gi, "").trim();
   const px = lengthPx(raw);
   if (px != null) return px >= 2;
-  if (lengthUnit(raw) !== "em") return false;
+  const unit = lengthUnit(raw);
+  if (!unit) return false;
   const compact = raw.replace(/\s+/g, "");
   const parsed = parseMathSum(compact, 0);
-  return Boolean(parsed && parsed.i === compact.length && Number.isFinite(parsed.n) && parsed.n >= 0.1);
+  if (!parsed || parsed.i !== compact.length || !Number.isFinite(parsed.n)) return false;
+  if (unit === "em" || unit === "rem" || unit === "ic" || unit === "ric" || unit === "lh" || unit === "rlh") return parsed.n >= 0.1;
+  if (unit === "cap" || unit === "rcap" || unit === "ch" || unit === "rch" || unit === "ex" || unit === "rex") return parsed.n >= 0.2;
+  return false;
 }
 
 function channelByte(token: string): number | null {
@@ -2616,10 +2660,11 @@ function colorIsPageLight(token: string): boolean {
     if (h.length === 6 || h.length === 8) return rgbIsPageLight(parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16));
     return false;
   }
-  const calls = namedFunctionCalls(t, ["rgba", "rgb"]);
+  const calls = namedFunctionCalls(t, ["oklch", "oklab", "hsla", "rgba", "hwb", "lch", "lab", "hsl", "rgb"]);
   if (calls.length !== 1 || !calls[0]) return false;
   const call = calls[0];
   if (t.replace(/\s+/g, "") !== `${call.name}(${call.inner.replace(/\s+/g, "")})`) return false;
+  if (call.name !== "rgb" && call.name !== "rgba") return functionIsPageLight(call.name, call.inner);
   const inner = call.inner.trim();
   let channels: string[] = [];
   if (inner.includes(",")) channels = splitArgs(inner).map((part) => part.trim()).filter(Boolean);
@@ -2635,6 +2680,104 @@ function colorIsPageLight(token: string): boolean {
   if (r == null || g == null || b == null) return false;
   if (channels.length >= 4 && alphaIsClear(channels[3] ?? "")) return false;
   return rgbIsPageLight(r, g, b);
+}
+
+function hueDegrees(token: string): number | null {
+  const t = token.trim().toLowerCase();
+  const m = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(deg|turn|grad|rad)?$/.exec(t);
+  if (!m?.[1]) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n)) return null;
+  const unit = m[2] ?? "";
+  if (unit === "turn") return n * 360;
+  if (unit === "grad") return n * 0.9;
+  if (unit === "rad") return (n * 180) / Math.PI;
+  return n;
+}
+
+function percentOf(token: string): number | null {
+  const t = token.trim().toLowerCase();
+  if (!t.endsWith("%")) return null;
+  const n = Number(t.slice(0, -1));
+  if (!Number.isFinite(n)) return null;
+  return n / 100;
+}
+
+function colorChannels(inner: string): { parts: string[]; alpha: string } {
+  const slash = inner.lastIndexOf("/");
+  const body = slash >= 0 ? inner.slice(0, slash) : inner;
+  const alpha = slash >= 0 ? inner.slice(slash + 1).trim() : "";
+  const parts = (body.includes(",") ? splitArgs(body) : splitTopWords(body)).map((part) => part.trim()).filter(Boolean);
+  return { parts, alpha };
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const hue = ((h % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = hue / 60;
+  const x = c * (1 - Math.abs((hp % 2) - 1));
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (hp < 1) [r, g, b] = [c, x, 0];
+  else if (hp < 2) [r, g, b] = [x, c, 0];
+  else if (hp < 3) [r, g, b] = [0, c, x];
+  else if (hp < 4) [r, g, b] = [0, x, c];
+  else if (hp < 5) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  const m = l - c / 2;
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+function hwbToRgb(h: number, w: number, bk: number): [number, number, number] {
+  if (w + bk >= 1) {
+    const gray = Math.round((w / (w + bk)) * 255);
+    return [gray, gray, gray];
+  }
+  const [r, g, b] = hslToRgb(h, 1, 0.5);
+  const scale = 1 - w - bk;
+  return [Math.round((r / 255) * scale * 255 + w * 255), Math.round((g / 255) * scale * 255 + w * 255), Math.round((b / 255) * scale * 255 + w * 255)];
+}
+
+/** A lightness the page already uses as paper. A dark colour is still ink. */
+function functionIsPageLight(name: string, inner: string): boolean {
+  const { parts, alpha } = colorChannels(inner);
+  if (alpha && (alphaIsClear(alpha) || percentOf(alpha) != null && (percentOf(alpha) ?? 1) < 0.95)) return false;
+  if (alpha && !alpha.endsWith("%")) {
+    const n = Number(alpha);
+    if (Number.isFinite(n) && n < 0.95) return false;
+  }
+  if (name === "hsl" || name === "hsla") {
+    if (parts.length < 3) return false;
+    const h = hueDegrees(parts[0] ?? "");
+    const s = percentOf(parts[1] ?? "");
+    const l = percentOf(parts[2] ?? "");
+    if (h == null || s == null || l == null) return false;
+    const [r, g, b] = hslToRgb(h, s, l);
+    return rgbIsPageLight(r, g, b);
+  }
+  if (name === "hwb") {
+    if (parts.length < 3) return false;
+    const h = hueDegrees(parts[0] ?? "");
+    const w = percentOf(parts[1] ?? "");
+    const bk = percentOf(parts[2] ?? "");
+    if (h == null || w == null || bk == null) return false;
+    const [r, g, b] = hwbToRgb(h, w, bk);
+    return rgbIsPageLight(r, g, b);
+  }
+  if (name === "oklch" || name === "oklab") {
+    const light = parts[0] ?? "";
+    if (light.endsWith("%")) return (percentOf(light) ?? 0) >= 0.9;
+    const n = Number(light);
+    return Number.isFinite(n) && n >= 0.9;
+  }
+  if (name === "lab" || name === "lch") {
+    const light = parts[0] ?? "";
+    if (light.endsWith("%")) return (percentOf(light) ?? 0) >= 0.9;
+    const n = Number(light);
+    return Number.isFinite(n) && n >= 90;
+  }
+  return false;
 }
 
 function strokeShorthandHides(raw: string): boolean {
@@ -2695,6 +2838,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "rotate") return rotatePropertyHides(val, hidden);
   if (prop === "zoom") return valueCanHide(val, hidden, hidesAsZero);
   if (prop === "font-size") return valueCanHide(val, hidden, hidesAsZero);
+  if (prop === "font") return valueCanHide(val, hidden, fontShorthandHides);
   if (prop === "font-size-adjust") return fontAspectHides(val, hidden);
   if (prop === "letter-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 12, 0.5));
   if (prop === "word-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 96));
@@ -2983,7 +3127,7 @@ function isNowrap(part: string): boolean {
 
 function indentCovers(value: string, hidden: Set<string>): boolean {
   if (shiftValueCovers(value, hidden)) return true;
-  const px = lengthPx(value);
+  const px = lengthDeskPx(value);
   return px != null && Math.abs(px) >= 1000;
 }
 
@@ -3448,6 +3592,10 @@ function shiftAxisCovers(value: string): boolean {
     if (unit === "cm") return Math.abs(parsed.n) >= 200;
     if (unit === "mm") return Math.abs(parsed.n) >= 2000;
     if (unit === "q") return Math.abs(parsed.n) * (96 / 101.6) >= 8000;
+    if (unit === "em" || unit === "rem" || unit === "ic" || unit === "ric" || unit === "lh" || unit === "rlh") return Math.abs(parsed.n) >= 500;
+    if (unit === "ch" || unit === "rch") return Math.abs(parsed.n) >= 1000;
+    if (unit === "cap" || unit === "rcap") return Math.abs(parsed.n) >= 800;
+    if (unit === "ex" || unit === "rex") return Math.abs(parsed.n) >= 1200;
     return false;
   }
   return Math.abs(parsed.n) >= 100;
@@ -4780,13 +4928,43 @@ export function sanitizePluginCss(css: string): string {
 }
 
 function scrubTinyFaceBody(body: string, hidden: Set<string>): string {
+  const desk = faceNamesDesk(body);
   return splitCssDeclarations(body)
     .map((part) => part.trim())
     .filter((part) => {
       const piece = pieceProp(part);
-      return !piece || piece.prop !== "size-adjust" || !sizeAdjustHides(piece.val, hidden);
+      return !desk || !piece || piece.prop !== "size-adjust" || !sizeAdjustHides(piece.val, hidden);
     })
     .join("; ");
+}
+
+const FONT_SKIP = /^(?:italic|oblique|normal|small-caps|bold|bolder|lighter|ultra-condensed|extra-condensed|condensed|semi-condensed|semi-expanded|expanded|extra-expanded|ultra-expanded)$/i;
+const FONT_ABS = /^(?:xx-small|x-small|small|medium|large|x-large|xx-large|xxx-large|larger|smaller)$/i;
+const FONT_SYS = /^(?:caption|icon|menu|message-box|small-caption|status-bar)$/i;
+
+/** font: 0px serif is font-size: 0. A real size stays. An oblique angle is not the size. */
+function fontShorthandHides(raw: string): boolean {
+  const value = raw.replace(/!important/gi, "").trim();
+  if (!value || FONT_SYS.test(value)) return false;
+  for (const word of splitTopWords(value)) {
+    const head = (word.split("/")[0] ?? "").trim();
+    if (!head || FONT_SKIP.test(head) || /^[1-9]00$/.test(head) || /(?:deg|turn|grad|rad)$/i.test(head)) continue;
+    if (FONT_ABS.test(head)) return false;
+    return hidesAsZero(head);
+  }
+  return false;
+}
+
+function faceNamesDesk(body: string): boolean {
+  for (const part of splitCssDeclarations(body)) {
+    const piece = pieceProp(part);
+    if (!piece || piece.prop !== "font-family") continue;
+    const names = splitArgs(piece.val.replace(/!important/gi, ""))
+      .map((name) => name.trim().replace(/^["']+|["']+$/g, "").trim().toLowerCase())
+      .filter(Boolean);
+    if (names.some((name) => name === "georgia" || name === "newsreader")) return true;
+  }
+  return false;
 }
 
 /** A zero face replaces Newsreader or Georgia for the whole desk. The family stays. The shrink does not. */
