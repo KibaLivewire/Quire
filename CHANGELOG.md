@@ -1,3 +1,19 @@
+# Quire 1.9.36 — The first screen still has the writing
+
+Released 28 October 2026.
+
+- **A block before the writing, in em, rem, or lh, can no longer push it off the page.** `html::before`, `body::before`, and `*::before` with `height: 47em`, `height: 50em`, `height: 100rem`, `min-height: 100lh`, `margin-top: 50em`, or `padding-top: 100lh` follow a `100vh` push. Those lengths are dropped. `height: 46em`, `height: 40em`, `height: 50vh`, `height: 12px`, and `height: 100%` stay. `margin-top: 40em` stays. `html::after` may still be a full screen. `.note::before` may still push that class. Fixed placement stays. Colour stays.
+- **A light stroke written as color() or color-mix() can no longer paint out the letters.** `6px` in `color(srgb 0.96 0.94 0.9)`, `color(srgb 96% 94% 90%)`, `color(display-p3 0.96 0.94 0.9)`, or `color-mix(in srgb, white 90%, #f3eee6)` follows a light hsl stroke. The width is dropped. A `1px` stroke in that colour stays. A dark `color(srgb 0.1 0.1 0.1)` stays. A class may still stroke. Colour stays.
+- **A thick line-through in the page colour can no longer paint out the letters.** `text-decoration: line-through 1em #f3eee6`, `0.6em`, and `12px` cover the glyphs. The shorthand is dropped. The longhand thickness is dropped. `line-through 0.5em` stays. `underline 1em` and `overline 1em` stay. A dark line stays. A class may still draw a line. Colour stays.
+- **A tiny clip can no longer hide the desk.** `circle(8px)`, `circle(100px)`, `circle(10%)`, `ellipse(4px 4px)`, `ellipse(40% 4px)`, `ellipse(80px 200px)`, `xywh(0 0 80px 80px)`, and `inset(42%)` miss the writing. Those are dropped on `html`, `body`, and a star. `circle(20%)`, `circle(40%)`, `circle(200px)`, `ellipse(40% 40%)`, `ellipse(200px 80px)`, `xywh(0 0 240px 120px)`, `inset(40%)`, and `inset(10%)` stay. A class may still clip. Colour stays.
+- **A short box on both html and body, or a star grid row of a pixel, can no longer hide the desk.** `*{height:24px;overflow:hidden}`, `*{height:56px}`, `*{height:3em}`, `*{max-height:8px;overflow:clip}`, `*{width:24px;overflow:hidden}`, `:is(*)`, and `html, body` together clip the page. The same pair written as two rules does too. A star `grid-template-rows: 0px`, `1px`, or `0px 1fr`, and `grid-template-columns: 0px`, with overflow hidden, do too. The short size is dropped. The zero track is dropped. `*{height:64px}`, `*{height:4em}`, `*{height:60px}`, and a height with no clip stay. `html` alone and `body` alone stay. `body *` stays. A grid row of `8px` stays. `1fr 0px` stays. A class may still use a short box. Colour stays.
+
+Windows installer: Quire-Setup-1.9.36.exe
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.35 — Another name for the same hide
 
 Released 28 October 2026.
