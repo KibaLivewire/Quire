@@ -1,3 +1,21 @@
+# Quire 1.9.39 — The first screen still has the writing
+
+Released 29 October 2026.
+
+- **A grid row written another way can no longer hide the desk.** `grid-template: 0px / 1fr`, `grid: 0px / 1fr`, `minmax(0px, 0px)`, `minmax(0px, 1px)`, `repeat(1, 0px)`, `0fr`, `grid-auto-rows: 0px`, and a `2px` row follow a zero track. Those are dropped on a star with overflow hidden. A row of `8px` stays. `minmax(0px, 1fr)` stays. `1fr 0px` stays. A zero row with no clip stays. A class may still use a zero row. Colour stays.
+- **contain:size together with a clip can no longer hide the desk.** `*{contain:size;overflow:hidden}` leaves no writing. The contain is dropped. `contain:size` alone stays. Overflow alone stays. A class may still use both. Colour stays.
+- **Several blocks before the writing can no longer clear the first screen together.** `html::before` at `24em` and `body::before` at `24em` are each under `47em`, and together they are not. `*::before` at `16em`, and `min-height: 20em`, clear it too. Those lengths are dropped. `*::before` at `8em` stays. `html::before` at `46em` stays. `html::after` may still be a full screen. `.note::before` may still push that class. A block with `content: none` stays. Fixed placement stays. Colour stays.
+- **A thin window or an evenodd frame can no longer hide the desk.** `xywh(0 0 40px 100%)` and an evenodd polygon inset by `2%` miss the writing. Those are dropped on `html`, `body`, and a star. `xywh(0 0 240px 120px)` stays. A triangle stays. A class may still clip. Colour stays.
+- **A flex item of no size can no longer hide the desk.** `* > *{flex:0 0 0px;overflow:hidden;min-height:0}` inside a clipping column leaves no writing. The flex is dropped. `flex:1` stays. The min size and the clip stay. A class may still use a zero basis. Colour stays.
+- **A mask composite can no longer punch out the desk.** `mask-composite: exclude` and `-webkit-mask-composite: xor` on two full masks leave a blank. Those composites are dropped. The mask image stays. A class may still use xor. Colour stays.
+- **An indent of 60em can no longer hide the desk.** `text-indent: -60em` and `-900px` move the line off the page. Those are dropped. `-400px` and `-100ch` stay. A class may still indent. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.38 — The page colour still cannot cover the ink
 
 Released 29 October 2026.

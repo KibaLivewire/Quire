@@ -2106,6 +2106,120 @@ function ellipseHides(inner: string, hidden: Set<string>): boolean {
   return clipRadiusFlat(ry, hidden);
 }
 
+function thinStrip(token: string): boolean {
+  const t = token.replace(/!important/gi, "").trim();
+  if (!t) return false;
+  const pct = percentOf(t);
+  if (pct != null) return pct >= 0 && pct <= 0.08;
+  const px = lengthDeskPx(t);
+  return px != null && px >= 0 && px <= 40;
+}
+
+function spanEnds(vals: { n: number; unit: string }[]): { thin: boolean; long: boolean } | null {
+  if (vals.length < 2) return null;
+  let unit = "";
+  const nums: number[] = [];
+  for (const val of vals) {
+    const next = val.unit || (val.n === 0 ? "" : "bare");
+    if (next === "bare") return null;
+    if (!unit && next) unit = next;
+    if (next && unit && next !== unit) return null;
+    nums.push(val.n);
+  }
+  const span = Math.max(...nums) - Math.min(...nums);
+  if (!unit) return { thin: span === 0, long: false };
+  if (unit === "%") return { thin: span <= 8, long: span >= 50 };
+  const px = lengthDeskPx(`${span}${unit}`);
+  if (px == null) return null;
+  return { thin: px >= 0 && px <= 40, long: px >= 400 };
+}
+
+function stripAcross(xs: { n: number; unit: string }[], ys: { n: number; unit: string }[]): boolean {
+  const x = spanEnds(xs);
+  const y = spanEnds(ys);
+  if (!x || !y) return false;
+  return (x.thin && y.long) || (y.thin && x.long);
+}
+
+function polygonStrips(inner: string): boolean {
+  let body = inner.trim().replace(/^(?:evenodd|nonzero)\s*,?\s*/i, "");
+  const even = /^\s*evenodd\b/i.test(inner);
+  const bits = splitArgs(body).map((part) => part.trim()).filter(Boolean);
+  const pts: { x: number; xu: string; y: number; yu: string }[] = [];
+  for (const bit of bits) {
+    const pair = splitTopWords(bit);
+    if (pair.length < 2) continue;
+    const read = (token: string) => {
+      const m = /^([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)(%|px|em|rem)?$/i.exec(token.trim());
+      if (!m?.[1]) return null;
+      return { n: Number(m[1]), unit: (m[2] ?? "").toLowerCase() };
+    };
+    const x = read(pair[0] ?? "");
+    const y = read(pair[1] ?? "");
+    if (!x || !y || !Number.isFinite(x.n) || !Number.isFinite(y.n)) continue;
+    pts.push({ x: x.n, xu: x.unit, y: y.n, yu: y.unit });
+  }
+  if (pts.length < 3) return false;
+  if (stripAcross(pts.map((pt) => ({ n: pt.x, unit: pt.xu })), pts.map((pt) => ({ n: pt.y, unit: pt.yu })))) return true;
+  if (!even) return false;
+  const sub: typeof pts[] = [];
+  let cur: typeof pts = [];
+  for (const pt of pts) {
+    if (cur.length >= 3 && pt.x === cur[0]?.x && pt.xu === cur[0]?.xu && pt.y === cur[0]?.y && pt.yu === cur[0]?.yu) {
+      sub.push(cur);
+      cur = [];
+      continue;
+    }
+    cur.push(pt);
+  }
+  if (cur.length) sub.push(cur);
+  if (sub.length < 2) return false;
+  const frame = (outer: { n: number; unit: string }[], inner: { n: number; unit: string }[]) => {
+    const axisUnit = (vals: { n: number; unit: string }[]) => vals.find((val) => val.unit)?.unit ?? "";
+    const unit = axisUnit(outer);
+    if (!unit || unit !== axisUnit(inner)) return false;
+    const nums = (vals: { n: number; unit: string }[]) => vals.map((val) => val.n);
+    const o0 = Math.min(...nums(outer));
+    const o1 = Math.max(...nums(outer));
+    const i0 = Math.min(...nums(inner));
+    const i1 = Math.max(...nums(inner));
+    const start = i0 - o0;
+    const end = o1 - i1;
+    const span = i1 - i0;
+    if (start < 0 || end < 0) return false;
+    if (unit === "%") return start <= 8 && end <= 8 && span >= 50;
+    const startPx = lengthDeskPx(`${start}${unit}`);
+    const endPx = lengthDeskPx(`${end}${unit}`);
+    const spanPx = lengthDeskPx(`${span}${unit}`);
+    return startPx != null && endPx != null && spanPx != null && startPx <= 40 && endPx <= 40 && spanPx >= 400;
+  };
+  const outer = sub[0] ?? [];
+  const hole = sub[1] ?? [];
+  return (
+    frame(
+      outer.map((pt) => ({ n: pt.x, unit: pt.xu })),
+      hole.map((pt) => ({ n: pt.x, unit: pt.xu })),
+    ) &&
+    frame(
+      outer.map((pt) => ({ n: pt.y, unit: pt.yu })),
+      hole.map((pt) => ({ n: pt.y, unit: pt.yu })),
+    )
+  );
+}
+
+function shapeStrips(inner: string): boolean {
+  const body = inner.trim().replace(/^(?:evenodd|nonzero)\s*,?\s*/i, "");
+  const nums = [...body.matchAll(/([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)(%|px|em|rem)?/gi)];
+  if (nums.length < 4) return false;
+  const xs: { n: number; unit: string }[] = [];
+  const ys: { n: number; unit: string }[] = [];
+  for (let i = 0; i + 1 < nums.length; i += 2) {
+    xs.push({ n: Number(nums[i]?.[1]), unit: (nums[i]?.[2] ?? "").toLowerCase() });
+    ys.push({ n: Number(nums[i + 1]?.[1]), unit: (nums[i + 1]?.[2] ?? "").toLowerCase() });
+  }
+  return stripAcross(xs, ys);
+}
+
 function windowSliver(token: string): boolean {
   const t = token.replace(/!important/gi, "").trim();
   if (!t) return false;
@@ -2130,12 +2244,12 @@ function clipHides(value: string, hidden: Set<string>): boolean {
         const width = parts[2] ?? "";
         const height = parts[3] ?? "";
         const zero = (Boolean(width) && valueCanHide(width, hidden, hidesAsZero)) || (Boolean(height) && valueCanHide(height, hidden, hidesAsZero));
-        return zero || (windowSliver(width) && windowSliver(height));
+        return zero || (windowSliver(width) && windowSliver(height)) || thinStrip(width) || thinStrip(height);
       }
       if (call.name === "rect") return rectHides(call.inner);
-      if (call.name === "polygon") return polygonAreaZero(call.inner) || coordSpanHides(call.inner);
+      if (call.name === "polygon") return polygonAreaZero(call.inner) || coordSpanHides(call.inner) || polygonStrips(call.inner);
       if (call.name === "path") return pathHides(call.inner);
-      if (call.name === "shape") return shapeHides(call.inner) || coordSpanHides(call.inner);
+      if (call.name === "shape") return shapeHides(call.inner) || coordSpanHides(call.inner) || shapeStrips(call.inner);
       if (call.name === "ellipse") return ellipseHides(call.inner, hidden);
       const rawTokens = splitArgs(call.inner).flatMap((part) => splitTopWords(part));
       const roundAt = rawTokens.findIndex((token) => /^round$/i.test(token));
@@ -2661,7 +2775,7 @@ function spacingHides(value: string, hidden: Set<string>, limit: number, emLimit
 }
 function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
   const px = lengthDeskPx(value);
-  if (px != null) return Math.abs(px) >= 1000;
+  if (px != null) return Math.abs(px) >= 880;
   const trail = seen ?? new Set<string>();
   const defined = (hidden as HideVars).defined;
   for (const call of varCalls(value)) {
@@ -3187,6 +3301,9 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     return args.slice(0, 2).some((arg) => shiftTokenCovers(arg, hidden));
   }
   if (SHIFT_PROP.has(prop)) return shiftValueCovers(val, hidden);
+  if (prop === "mask-composite" || prop === "-webkit-mask-composite") {
+    return valueCanHide(val, hidden, (raw) => /\b(?:exclude|xor|subtract|source-out|destination-out)\b/i.test(raw));
+  }
   if (prop === "contain") {
     const words = val.toLowerCase().replace(/!important/gi, "").split(/[\s,]+/).filter(Boolean);
     return words.includes("strict") || (words.includes("size") && words.includes("paint"));
@@ -3477,7 +3594,7 @@ function pairedHide(parts: string[], hidden: Set<string>): (part: string) => boo
 
 const BLOCK_SLIVER = new Set(["height", "max-height", "block-size", "max-block-size"]);
 const INLINE_SLIVER = new Set(["width", "max-width", "inline-size", "max-inline-size"]);
-const TRACK_PROP = new Set(["grid-template-rows", "grid-template-columns"]);
+const TRACK_PROP = new Set(["grid-template-rows", "grid-template-columns", "grid-auto-rows", "grid-auto-columns", "grid-template", "grid"]);
 
 type ClipScope = { body: boolean; whole: boolean };
 
@@ -3510,15 +3627,68 @@ function overflowClips(prop: string, value: string): "both" | "block" | "inline"
   return null;
 }
 
-function firstTrackSliver(value: string, hidden: Set<string>): boolean {
-  return valueCanHide(value, hidden, (raw) => {
-    const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
-    const first = tokens.find((token) => !/^(?:none|auto|subgrid|masonry)$/i.test(token));
-    if (!first) return false;
-    if (hidesAsZero(first)) return true;
-    const px = lengthDeskPx(first);
-    return px != null && px >= 0 && px <= 1;
+function trackTokenSliver(token: string, hidden: Set<string>): boolean {
+  return valueCanHide(token, hidden, (raw) => {
+    const next = raw.replace(/!important/gi, "").trim();
+    if (!next) return false;
+    if (hidesAsZero(next)) return true;
+    if (/^0+fr$/i.test(next.replace(/\s+/g, ""))) return true;
+    const px = lengthDeskPx(next);
+    if (px != null && px >= 0 && px <= 4) return true;
+    const minmax = /^minmax\(([\s\S]*)\)$/i.exec(next);
+    if (minmax) {
+      const args = splitArgs(minmax[1] ?? "").map((part) => part.trim()).filter(Boolean);
+      const min = args[0] ?? "";
+      const max = args[1] ?? args[0] ?? "";
+      return Boolean(min && max && trackTokenSliver(min, hidden) && trackTokenSliver(max, hidden));
+    }
+    const repeat = /^repeat\(([\s\S]*)\)$/i.exec(next);
+    if (repeat) {
+      const args = splitArgs(repeat[1] ?? "").map((part) => part.trim()).filter(Boolean);
+      const track = args.slice(1).join(" ");
+      const first = splitTopWords(track).find((part) => part && !/^(?:none|auto|subgrid|masonry)$/i.test(part));
+      return Boolean(first && trackTokenSliver(first, hidden));
+    }
+    return false;
   });
+}
+
+function gridTrackSliver(value: string, hidden: Set<string>): boolean {
+  return valueCanHide(value, hidden, (raw) => {
+    const body = raw.replace(/!important/gi, "").trim();
+    const slash = (() => {
+      let depth = 0;
+      let quote = "";
+      for (let i = 0; i < body.length; i += 1) {
+        const ch = body[i] ?? "";
+        if (quote) {
+          if (ch === "\\") {
+            i += 1;
+            continue;
+          }
+          if (ch === quote) quote = "";
+          continue;
+        }
+        if (ch === '"' || ch === "'") {
+          quote = ch;
+          continue;
+        }
+        if (ch === "(") depth += 1;
+        else if (ch === ")" && depth > 0) depth -= 1;
+        else if (ch === "/" && depth === 0) return i;
+      }
+      return -1;
+    })();
+    const sides = slash < 0 ? [body] : [body.slice(0, slash), body.slice(slash + 1)];
+    return sides.some((side) => {
+      const first = splitTopWords(side).find((token) => token && !/^(?:none|auto|subgrid|masonry|dense|row|column)$/i.test(token));
+      return Boolean(first && trackTokenSliver(first, hidden));
+    });
+  });
+}
+
+function firstTrackSliver(value: string, hidden: Set<string>): boolean {
+  return gridTrackSliver(value, hidden);
 }
 
 function ruleClipFacts(body: string, hidden: Set<string>) {
@@ -3643,6 +3813,80 @@ function paintPairDrops(part: string, hidden: Set<string>): boolean {
   return false;
 }
 
+function containHasSize(part: string): boolean {
+  const piece = pieceProp(part);
+  if (!piece || piece.prop !== "contain") return false;
+  const words = piece.val.toLowerCase().replace(/!important/gi, "").split(/[\s,]+/).filter(Boolean);
+  return words.includes("size");
+}
+
+/** contain:size alone stays. overflow alone stays. Together they leave no writing. */
+function sizeClipPair(parts: string[]): boolean {
+  return parts.some((part) => isBoxClip(part)) && parts.some((part) => containHasSize(part));
+}
+
+function containSizeDrops(part: string, on: boolean): boolean {
+  return on && containHasSize(part);
+}
+
+const MIN_AXIS = new Set(["min-height", "min-width", "min-block-size", "min-inline-size"]);
+
+function isMinAxisZero(part: string, hidden: Set<string>): boolean {
+  const piece = pieceProp(part);
+  return Boolean(piece && MIN_AXIS.has(piece.prop) && valueCanHide(piece.val, hidden, hidesAsZero));
+}
+
+function flexGrowNumber(value: string): number | null {
+  const tokens = splitTopWords(value.replace(/!important/gi, "")).filter(Boolean);
+  if (!tokens.length) return null;
+  if (/^none$/i.test(tokens[0] ?? "")) return 0;
+  if (/^auto$/i.test(tokens[0] ?? "")) return 1;
+  const n = Number(tokens[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function flexGrowPositive(parts: string[]): boolean {
+  for (const part of parts) {
+    const piece = pieceProp(part);
+    if (!piece) continue;
+    if (piece.prop === "flex-grow") {
+      const n = Number(piece.val.replace(/!important/gi, "").trim());
+      if (Number.isFinite(n) && n > 0) return true;
+    }
+    if (piece.prop === "flex") {
+      const grow = flexGrowNumber(piece.val);
+      if (grow != null && grow > 0) return true;
+    }
+  }
+  return false;
+}
+
+function flexBasisIsZero(part: string, hidden: Set<string>): boolean {
+  const piece = pieceProp(part);
+  if (!piece) return false;
+  if (piece.prop === "flex-basis") return valueCanHide(piece.val, hidden, hidesAsZero);
+  if (piece.prop !== "flex") return false;
+  return valueCanHide(piece.val, hidden, (raw) => {
+    const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
+    if (!tokens.length || /^(?:none|auto)$/i.test(tokens[0] ?? "")) return false;
+    if (tokens.length === 1) return Number(tokens[0]) === 0;
+    if (tokens.length === 2) return hidesAsZero(tokens[1] ?? "");
+    return hidesAsZero(tokens[2] ?? "");
+  });
+}
+
+/** A flex item of basis zero, min size zero, and a clip leaves no writing. flex:1 still grows. */
+function flexCollapses(parts: string[], hidden: Set<string>): boolean {
+  if (flexGrowPositive(parts)) return false;
+  if (!parts.some((part) => isBoxClip(part))) return false;
+  if (!parts.some((part) => isMinAxisZero(part, hidden))) return false;
+  return parts.some((part) => flexBasisIsZero(part, hidden));
+}
+
+function flexPieceDrops(part: string, hidden: Set<string>, on: boolean): boolean {
+  return on && flexBasisIsZero(part, hidden);
+}
+
 function scrubHideBody(body: string, hidden: Set<string>, anims: Set<string> = new Set(), profiles: Sib[] = [HTML_SIB, BODY_SIB], scope: ClipScope = { body: false, whole: false }) {
   const parts = splitCssDeclarations(body)
     .map((part) => part.trim())
@@ -3654,8 +3898,10 @@ function scrubHideBody(body: string, hidden: Set<string>, anims: Set<string> = n
   const pair = pairedHide(parts, hidden);
   const stroke = lightStrokeDrops(parts, hidden);
   const decor = decorationDrops(parts, hidden);
+  const flexOn = flexCollapses(parts, hidden);
+  const sizeClip = sizeClipPair(parts);
   return parts
-    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !pair(part) && !stroke(part) && !decor(part) && !paintPairDrops(part, hidden) && !sliverDrops(part, hidden, scope) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles))) && !paintPieceDrops(part, hidden, profiles, paint) && !maskZeroDrops(part, hidden, mask) && !parkedMaskDrops(part, parked))
+    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !pair(part) && !stroke(part) && !decor(part) && !paintPairDrops(part, hidden) && !sliverDrops(part, hidden, scope) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles))) && !paintPieceDrops(part, hidden, profiles, paint) && !maskZeroDrops(part, hidden, mask) && !parkedMaskDrops(part, parked) && !flexPieceDrops(part, hidden, flexOn) && !containSizeDrops(part, sizeClip))
     .join("; ");
 }
 
@@ -4435,7 +4681,12 @@ function compoundMatches(compound: string, el: DeskEl, scopeSel: string | null =
       i = j + 1;
       continue;
     }
-    if (ch === ":" && text[i + 1] === ":") return false;
+    if (ch === ":" && text[i + 1] === ":") {
+      const pseudoEl = /^::([A-Za-z-]+)/.exec(text.slice(i));
+      if (!pseudoEl || (pseudoEl[1] ?? "").toLowerCase() !== "first-line") return false;
+      i += pseudoEl[0].length;
+      continue;
+    }
     if (ch !== ":") return false;
     const pseudo = /^:([A-Za-z-]+|\*)/.exec(text.slice(i));
     if (!pseudo) return false;
@@ -4539,7 +4790,8 @@ function compoundMatches(compound: string, el: DeskEl, scopeSel: string | null =
     }
     if (name === "defined" || name === "read-only") continue;
     if (STATE_PSEUDO.test(name)) return false;
-    if (name === "before" || name === "after" || name === "first-line" || name === "first-letter" || name === "selection" || name === "placeholder" || name === "marker" || name === "backdrop") return false;
+    if (name === "first-line") continue;
+    if (name === "before" || name === "after" || name === "first-letter" || name === "selection" || name === "placeholder" || name === "marker" || name === "backdrop") return false;
     return false;
   }
   return sawType || text.startsWith(":");
@@ -4825,7 +5077,7 @@ function coversInk(selector: string, scopeSel: string | null): boolean {
   });
 }
 
-function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, desk: boolean, scopeSel: string | null = null, nestingSel: string | null = null, profiles: Sib[] = []): string {
+function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, desk: boolean, scopeSel: string | null = null, nestingSel: string | null = null, profiles: Sib[] = [], stackBefore = false): string {
   const prevInk = activeInk;
   if (desk) activeInk = coversInk(nestingSel ?? "", scopeSel);
   try {
@@ -4838,6 +5090,8 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const parked = desk && parkedMask(decls, hidden);
   const pair = desk ? pairedHide(decls, hidden) : () => false;
   const decor = desk ? decorationDrops(decls, hidden) : () => false;
+  const flexOn = desk && flexCollapses(decls, hidden);
+  const sizeClip = desk && sizeClipPair(decls);
   let out = "";
   let decl = "";
   let i = 0;
@@ -4846,7 +5100,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const keep = (piece: string) => {
     const next = piece.trim();
     if (!next) return;
-    if (desk && (declarationHidesFor(next, hidden, profiles) || declarationUsesHidingAnim(next, anims) || pair(next) || decor(next) || paintPairDrops(next, hidden) || sliverDrops(next, hidden, scope))) return;
+    if (desk && (declarationHidesFor(next, hidden, profiles) || declarationUsesHidingAnim(next, anims) || pair(next) || decor(next) || paintPairDrops(next, hidden) || sliverDrops(next, hidden, scope) || flexPieceDrops(next, hidden, flexOn) || containSizeDrops(next, sizeClip))) return;
     if (flat && (isBoxClip(next) || isBoxZeroFor(next, hidden, profiles))) return;
     if (paintPieceDrops(next, hidden, profiles, paint)) return;
     if (maskZeroDrops(next, hidden, mask)) return;
@@ -4898,8 +5152,8 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
           let root = scopeRootSelector(prelude);
           if (root) root = rewriteAmp(root, nestingSel);
           const nextScope = root ?? null;
-          out += `${selector}{${scrubLooseDeskRules(inner, hidden, anims, nextScope, nextScope)}}`;
-        } else if (RECURSE_AT.test(kind)) out += `${selector}{${scrubNestedBody(inner, hidden, anims, desk, scopeSel, nestingSel, profiles)}}`;
+          out += `${selector}{${scrubLooseDeskRules(inner, hidden, anims, nextScope, nextScope, stackBefore)}}`;
+        } else if (RECURSE_AT.test(kind)) out += `${selector}{${scrubNestedBody(inner, hidden, anims, desk, scopeSel, nestingSel, profiles, stackBefore)}}`;
         else out += `${selector}{${inner}}`;
         decl = "";
         i = close + 1;
@@ -4909,8 +5163,22 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
       const bareAmp = selector.replace(/\s+/g, "") === "&";
       const childDesk = selectorMatchesDesk(looking, scopeSel) || (desk && bareAmp);
       const childProfiles = !childDesk ? [] : bareAmp && desk ? profiles : hideProfiles(looking, scopeSel);
-      if (!inner.includes("{") && deskPseudoSelector(looking) && pseudoCovers(inner, hidden)) out += `${selector}{${scrubPseudoCover(inner)}}`;
-      else out += `${selector}{${scrubNestedBody(inner, hidden, anims, childDesk, scopeSel, looking, childProfiles)}}`;
+      if (!inner.includes("{") && deskPseudoSelector(looking)) {
+        let next = inner;
+        let touched = false;
+        if (pseudoCovers(next, hidden)) {
+          next = scrubPseudoCover(next);
+          touched = true;
+        }
+        if (deskPseudoSelector(looking, "before")) {
+          const stacked = stackBefore && beforePushPx(next, hidden) > 0 && !pseudoPushes(next, hidden);
+          if (pseudoPushes(next, hidden) || stacked) {
+            next = scrubPseudoPush(next, hidden, stacked);
+            touched = true;
+          }
+        }
+        out += touched ? `${selector}{${next}}` : `${selector}{${scrubNestedBody(inner, hidden, anims, childDesk, scopeSel, looking, childProfiles, stackBefore)}}`;
+      } else out += `${selector}{${scrubNestedBody(inner, hidden, anims, childDesk, scopeSel, looking, childProfiles, stackBefore)}}`;
       decl = "";
       i = close + 1;
       continue;
@@ -4925,7 +5193,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     i += 1;
   }
   const tail = decl.trim();
-  if (tail && !(desk && (declarationHidesFor(tail, hidden, profiles) || declarationUsesHidingAnim(tail, anims) || pair(tail) || decor(tail) || paintPairDrops(tail, hidden) || sliverDrops(tail, hidden, scope))) && !(flat && (isBoxClip(tail) || isBoxZeroFor(tail, hidden, profiles))) && !paintPieceDrops(tail, hidden, profiles, paint) && !maskZeroDrops(tail, hidden, mask) && !parkedMaskDrops(tail, parked)) out += tail;
+  if (tail && !(desk && (declarationHidesFor(tail, hidden, profiles) || declarationUsesHidingAnim(tail, anims) || pair(tail) || decor(tail) || paintPairDrops(tail, hidden) || sliverDrops(tail, hidden, scope) || flexPieceDrops(tail, hidden, flexOn) || containSizeDrops(tail, sizeClip))) && !(flat && (isBoxClip(tail) || isBoxZeroFor(tail, hidden, profiles))) && !paintPieceDrops(tail, hidden, profiles, paint) && !maskZeroDrops(tail, hidden, mask) && !parkedMaskDrops(tail, parked)) out += tail;
   return out.replace(/;\s*$/g, "").trim();
   } finally {
     activeInk = prevInk;
@@ -5128,14 +5396,166 @@ function pseudoPushes(body: string, hidden: Set<string>): boolean {
   });
 }
 
-function scrubPseudoPush(body: string, hidden: Set<string>): string {
+function tokenPushPx(token: string, hidden: Set<string>, seen?: Set<string>): number {
+  const raw = token.replace(/!important/gi, "").trim();
+  if (!raw || /^auto$/i.test(raw)) return 0;
+  const compact = raw.replace(/\s+/g, "");
+  if (!compact.includes("%") && shiftAxisCovers(compact)) return 8000;
+  const px = lengthDeskPx(compact);
+  if (px != null && px > 0) return px;
+  let best = 0;
+  const trail = seen ?? new Set<string>();
+  const defined = (hidden as HideVars).defined;
+  for (const call of varCalls(raw)) {
+    const val = defined?.get(call.name);
+    if (val && !trail.has(call.name)) {
+      const next = new Set(trail);
+      next.add(call.name);
+      best = Math.max(best, valuePushPx(val, hidden, next));
+    }
+    if (call.fallback) best = Math.max(best, valuePushPx(call.fallback, hidden, trail));
+  }
+  return best;
+}
+
+function valuePushPx(value: string, hidden: Set<string>, seen?: Set<string>): number {
+  let best = 0;
+  for (const token of splitTopWords(value.replace(/!important/gi, "")).filter(Boolean)) {
+    best = Math.max(best, tokenPushPx(token, hidden, seen));
+  }
+  return best;
+}
+
+function beforePushPx(body: string, hidden: Set<string>): number {
+  const parts = splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const position = parts.map((part) => pieceProp(part)).find((piece) => piece?.prop === "position");
+  if (position && /\b(?:fixed|absolute)\b/i.test(position.val)) return 0;
+  const content = parts.map((part) => pieceProp(part)).find((piece) => piece?.prop === "content");
+  if (!content || /^\s*(?:none|normal)\b/i.test(content.val)) return 0;
+  let size = 0;
+  let shift = 0;
+  for (const part of parts) {
+    const piece = pieceProp(part);
+    if (!piece) continue;
+    const px = valuePushPx(piece.val, hidden);
+    if (px <= 0) continue;
+    if (PUSH_SIZE.has(piece.prop)) size = Math.max(size, px);
+    else if (PUSH_SHIFT.has(piece.prop)) shift = Math.max(shift, px);
+  }
+  return size + shift;
+}
+
+function beforeTarget(selector: string): "html" | "body" | "star" | "both" | null {
+  const trimmed = selector.trim();
+  const pseudo = /(?:::?before)\s*$/i.exec(trimmed);
+  if (!pseudo || pseudo.index == null) return null;
+  const head = trimmed.slice(0, pseudo.index).trim();
+  if (!head || head === "*" || head === "*|*") return "star";
+  const steps = splitCombinators(head.replace(/\s+/g, " "));
+  if (steps.length >= 2) {
+    const last = steps[steps.length - 1];
+    if (last && compoundIsUniversal(last.compound) && (last.combinator === " " || last.combinator === ">")) {
+      const left = steps.slice(0, -1);
+      if (matchSteps(left, left.length - 1, HTML_EL) || matchSteps(left, left.length - 1, BODY_EL)) return "star";
+    }
+    return null;
+  }
+  if (steps.length !== 1) return null;
+  const compound = steps[0]?.compound ?? head;
+  const html = selectorMatchesEl(compound, HTML_EL);
+  const body = selectorMatchesEl(compound, BODY_EL);
+  if (html && body) return "both";
+  if (html) return "html";
+  if (body) return "body";
+  return null;
+}
+
+/** Several blocks before the writing can clear the first screen even when each one is under 47em. */
+function beforeStackClears(css: string, hidden: Set<string>): boolean {
+  let htmlOnly = 0;
+  let bodyOnly = 0;
+  let star = 0;
+  const add = (kind: "html" | "body" | "star" | "both", push: number) => {
+    if (kind === "star") star = Math.max(star, push);
+    if (kind === "html" || kind === "both") htmlOnly = Math.max(htmlOnly, push);
+    if (kind === "body" || kind === "both") bodyOnly = Math.max(bodyOnly, push);
+  };
+  const take = (selector: string, body: string) => {
+    const push = beforePushPx(body, hidden);
+    if (push <= 0) return;
+    for (const part of splitSelectorList(selector)) {
+      const kind = beforeTarget(part);
+      if (kind) add(kind, push);
+    }
+  };
+  const walk = (sheet: string, scopeSel: string | null): void => {
+    let i = 0;
+    while (i < sheet.length) {
+      if (sheet[i] === "@") {
+        const name = /^@(-?[\w-]+)/.exec(sheet.slice(i));
+        if (!name) {
+          i += 1;
+          continue;
+        }
+        const kind = (name[1] ?? "").replace(/^-webkit-/, "");
+        const j = i + name[0].length;
+        if (/keyframes/i.test(kind) || /^(?:font-face|page|counter-style|property)$/i.test(kind)) {
+          const open = sheet.indexOf("{", j);
+          const semi = sheet.indexOf(";", j);
+          if (open < 0 || (semi >= 0 && semi < open)) {
+            i = semi < 0 ? sheet.length : semi + 1;
+            continue;
+          }
+          const close = matchingBrace(sheet, open);
+          i = close < 0 ? sheet.length : close + 1;
+          continue;
+        }
+        if (/^scope$/i.test(kind) || RECURSE_AT.test(kind)) {
+          const open = sheet.indexOf("{", j);
+          if (open < 0) return;
+          const close = matchingBrace(sheet, open);
+          if (close < 0) return;
+          const nextScope = /^scope$/i.test(kind) ? (scopeRootSelector(sheet.slice(j, open)) ?? null) : scopeSel;
+          walk(sheet.slice(open + 1, close), nextScope ? rewriteAmp(nextScope, scopeSel) : nextScope);
+          i = close + 1;
+          continue;
+        }
+      }
+      const open = sheet.indexOf("{", i);
+      if (open < 0) return;
+      const selector = sheet.slice(i, open);
+      const close = matchingBrace(sheet, open);
+      if (close < 0) return;
+      const opened = rewriteAmp(selector, scopeSel);
+      const body = sheet.slice(open + 1, close);
+      take(opened, body);
+      if (body.includes("{")) walk(body, opened);
+      i = close + 1;
+    }
+  };
+  walk(css, null);
+  const htmlPart = Math.max(htmlOnly, star);
+  const bodyPart = Math.max(bodyOnly, star);
+  const extra = star > 0 ? star * 2 : 0;
+  return htmlPart + bodyPart + extra >= 752;
+}
+
+function scrubPseudoPush(body: string, hidden: Set<string>, anyPositive = false): string {
   return splitCssDeclarations(body)
     .map((part) => part.trim())
     .filter((part) => {
       const piece = pieceProp(part);
       if (!piece) return true;
-      if (PUSH_SIZE.has(piece.prop)) return !viewportFills(piece.val, hidden);
-      if (PUSH_SHIFT.has(piece.prop)) return !pushShiftFills(piece.val, hidden);
+      if (PUSH_SIZE.has(piece.prop)) {
+        if (anyPositive) return valuePushPx(piece.val, hidden) <= 0;
+        return !viewportFills(piece.val, hidden);
+      }
+      if (PUSH_SHIFT.has(piece.prop)) {
+        if (anyPositive) return valuePushPx(piece.val, hidden) <= 0;
+        return !pushShiftFills(piece.val, hidden);
+      }
       return true;
     })
     .join("; ");
@@ -5143,7 +5563,7 @@ function scrubPseudoPush(body: string, hidden: Set<string>): string {
 
 const RECURSE_AT = /^(?:media|supports|layer|container|document|starting-style)$/i;
 
-function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string>, scopeSel: string | null = null, nestingSel: string | null = null): string {
+function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string>, scopeSel: string | null = null, nestingSel: string | null = null, stackBefore = false): string {
   let out = "";
   let i = 0;
   while (i < css.length) {
@@ -5187,7 +5607,7 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
           : scopeSel;
         const resolvedScope = nextScope ? rewriteAmp(nextScope, nestingSel) : nextScope;
         out += css.slice(i, open + 1);
-        out += scrubLooseDeskRules(css.slice(open + 1, close), hidden, anims, resolvedScope, resolvedScope ?? nestingSel);
+        out += scrubLooseDeskRules(css.slice(open + 1, close), hidden, anims, resolvedScope, resolvedScope ?? nestingSel, stackBefore);
         out += "}";
         i = close + 1;
         continue;
@@ -5206,7 +5626,7 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
     }
     const opened = rewriteAmp(selector, scopeSel);
     const rawBody = css.slice(open + 1, close);
-    if (selectorMatchesDesk(opened, scopeSel)) out += `${selector}{${scrubNestedBody(rawBody, hidden, anims, true, scopeSel, opened, hideProfiles(opened, scopeSel))}}`;
+    if (selectorMatchesDesk(opened, scopeSel)) out += `${selector}{${scrubNestedBody(rawBody, hidden, anims, true, scopeSel, opened, hideProfiles(opened, scopeSel), stackBefore)}}`;
     else if (!rawBody.includes("{") && deskPseudoSelector(opened)) {
       let next = rawBody;
       let touched = false;
@@ -5214,9 +5634,12 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
         next = scrubPseudoCover(next);
         touched = true;
       }
-      if (deskPseudoSelector(opened, "before") && pseudoPushes(next, hidden)) {
-        next = scrubPseudoPush(next, hidden);
-        touched = true;
+      if (deskPseudoSelector(opened, "before")) {
+        const stacked = stackBefore && beforePushPx(next, hidden) > 0 && !pseudoPushes(next, hidden);
+        if (pseudoPushes(next, hidden) || stacked) {
+          next = scrubPseudoPush(next, hidden, stacked);
+          touched = true;
+        }
       }
       out += touched ? `${selector}{${next}}` : css.slice(i, close + 1);
     } else out += css.slice(i, close + 1);
@@ -5227,6 +5650,7 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
 
 function scrubDeskHide(css: string, hidden: Set<string>) {
   const anims = hidingKeyframeNames(css, hidden);
+  const stackBefore = beforeStackClears(css, hidden);
   let out = css;
   out = out.replace(
     /(^|[{},]\s*)(\*(?![A-Za-z0-9_-])(?:(?::[a-zA-Z-]+(?:\([^)]*\))?)*)\s*)\{([^}]*)\}/g,
@@ -5243,7 +5667,7 @@ function scrubDeskHide(css: string, hidden: Set<string>) {
     if (body.includes("{") || !isStarPairSelector(selector)) return all;
     return `${pre}${selector}{${scrubHideBody(body, hidden, anims)}}`;
   });
-  return scrubLooseDeskRules(out, hidden, anims);
+  return scrubLooseDeskRules(out, hidden, anims, null, null, stackBefore);
 }
 
 function collectDeskPerspectives(css: string): number[] {
