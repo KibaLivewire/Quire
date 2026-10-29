@@ -2131,7 +2131,7 @@ function spanEnds(vals: { n: number; unit: string }[]): { thin: boolean; long: b
   if (unit === "%") return { thin: span <= 8, long: span >= 50 };
   const px = lengthDeskPx(`${span}${unit}`);
   if (px == null) return null;
-  return { thin: px >= 0 && px <= 40, long: px >= 400 };
+  return { thin: px >= 0 && px <= 72, long: px >= 400 };
 }
 
 function stripAcross(xs: { n: number; unit: string }[], ys: { n: number; unit: string }[]): boolean {
@@ -2681,25 +2681,26 @@ function blurHides(inner: string, hidden: Set<string>, seen?: Set<string>): bool
   return false;
 }
 
-const WASH_BLEND = /^(?:screen|plus-lighter|lighten|overlay|soft-light|color|hue|color-dodge)$/i;
+const WASH_BLEND = /^(?:screen|plus-lighter|lighten|overlay|soft-light|color|hue|color-dodge|color-burn|saturation)$/i;
 
 function blendWashes(raw: string): boolean {
   return WASH_BLEND.test(raw.replace(/!important/gi, "").trim());
 }
 
-/** brightness(6) and brighter wash the line into the page. brightness(5) still leaves the letters. */
+/** brightness(5) and brighter wash the line into the page. brightness(4) still leaves the letters. A star compounds, so 1.5 is already gone. */
 function brightnessHides(inner: string, hidden: Set<string>, seen?: Set<string>): boolean {
+  const limit = activeInk ? 1.5 : 5;
   const arg = (splitArgs(inner)[0] ?? inner).trim();
   const plain = arg.replace(/!important/gi, "").trim();
   const pct = percentOf(plain);
-  if (pct != null) return pct >= 6;
-  if (plain && Number.isFinite(Number(plain))) return Number(plain) >= 6;
+  if (pct != null) return pct >= limit;
+  if (plain && Number.isFinite(Number(plain))) return Number(plain) >= limit;
   const compact = plain.replace(/\s+/g, "");
   const parsed = parseMathSum(compact, 0);
   if (parsed && parsed.i === compact.length && Number.isFinite(parsed.n)) {
     const units = Object.entries(parsed.u).filter(([, exp]) => exp);
-    if (!units.length) return parsed.n >= 6;
-    if (units.length === 1 && units[0]?.[0] === "%" && units[0]?.[1] === 1) return parsed.n >= 600;
+    if (!units.length) return parsed.n >= limit;
+    if (units.length === 1 && units[0]?.[0] === "%" && units[0]?.[1] === 1) return parsed.n >= limit * 100;
   }
   const trail = seen ?? new Set<string>();
   const defined = (hidden as HideVars).defined;
@@ -2713,6 +2714,37 @@ function brightnessHides(inner: string, hidden: Set<string>, seen?: Set<string>)
     if (call.fallback && brightnessHides(call.fallback, hidden, trail)) return true;
   }
   return false;
+}
+
+/** contrast under 0.5 flattens the page. A star compounds, so 0.8 is already gone. Zero and a negative are already dropped. */
+function contrastHides(inner: string, hidden: Set<string>, seen?: Set<string>): boolean {
+  const limit = activeInk ? 0.8 : 0.5;
+  const arg = (splitArgs(inner)[0] ?? inner).trim();
+  const plain = arg.replace(/!important/gi, "").trim();
+  const amount = filterAmount(plain);
+  if (amount != null) return amount >= 0 && amount < limit;
+  const trail = seen ?? new Set<string>();
+  const defined = (hidden as HideVars).defined;
+  for (const call of varCalls(arg)) {
+    const raw = defined?.get(call.name);
+    if (raw && !trail.has(call.name)) {
+      const next = new Set(trail);
+      next.add(call.name);
+      if (contrastHides(raw, hidden, next)) return true;
+    }
+    if (call.fallback && contrastHides(call.fallback, hidden, trail)) return true;
+  }
+  return false;
+}
+
+function filterAmount(raw: string): number | null {
+  const token = raw.replace(/!important/gi, "").trim();
+  if (token.endsWith("%")) {
+    const n = Number(token.slice(0, -1));
+    return Number.isFinite(n) ? n / 100 : null;
+  }
+  if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(token.replace(/\s+/g, ""))) return Number(token);
+  return null;
 }
 
 const SHIFT_PROP = new Set([
@@ -3058,6 +3090,49 @@ function resolveRgb(token: string): [number, number, number] | null {
   return [r, g, b];
 }
 
+function colorAlpha(token: string): number | null {
+  const t = token.trim().toLowerCase();
+  const calls = namedFunctionCalls(t, ["rgb", "rgba"]);
+  if (calls.length !== 1 || !calls[0]) return null;
+  const call = calls[0];
+  if (t.replace(/\s+/g, "") !== `${call.name}(${call.inner.replace(/\s+/g, "")})`) return null;
+  const inner = call.inner.trim();
+  const raw = inner.includes(",")
+    ? (splitArgs(inner).map((part) => part.trim()).filter(Boolean)[3] ?? "")
+    : inner.includes("/")
+      ? inner.slice(inner.lastIndexOf("/") + 1)
+      : "";
+  if (!raw.trim()) return 1;
+  const pct = percentOf(raw.trim());
+  if (pct != null) return pct;
+  const n = Number(raw.trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+function contrastVsPaper(r: number, g: number, b: number): number {
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  const paper = 0.2126 * lin(243) + 0.7152 * lin(238) + 0.0722 * lin(230);
+  const hi = Math.max(L, paper);
+  const lo = Math.min(L, paper);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** Ink this faint against the page colour cannot be read. A darker mix stays. */
+function inkTooFaint(token: string): boolean {
+  const rgb = resolveRgb(token.replace(/!important/gi, "").trim());
+  if (!rgb) return false;
+  const alpha = colorAlpha(token);
+  if (alpha == null || alpha >= 0.95) return false;
+  const r = rgb[0] * alpha + 243 * (1 - alpha);
+  const g = rgb[1] * alpha + 238 * (1 - alpha);
+  const b = rgb[2] * alpha + 230 * (1 - alpha);
+  return contrastVsPaper(r, g, b) < 2;
+}
+
 function mixIsPageLight(inner: string): boolean {
   const bits = splitArgs(inner).map((part) => part.trim()).filter(Boolean);
   if (bits.length < 3 || !/^in\b/i.test(bits[0] ?? "")) return false;
@@ -3256,14 +3331,22 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "display" || prop === "pointer-events") return valueCanHide(val, hidden, (v) => /\bnone\b/i.test(v));
   if (prop === "visibility") return valueCanHide(val, hidden, (v) => /\b(?:hidden|collapse)\b/i.test(v));
   if (prop === "content-visibility") return valueCanHide(val, hidden, (v) => /\bhidden\b/i.test(v));
-  if (prop === "opacity") return valueCanHide(val, hidden, clampsToZero);
+  if (prop === "opacity") {
+    if (valueCanHide(val, hidden, clampsToZero)) return true;
+    if (!activeInk) return false;
+    return valueCanHide(val, hidden, (raw) => {
+      const n = filterAmount(raw.replace(/!important/gi, "").trim());
+      return n != null && n <= 0.8;
+    });
+  }
   if (prop === "filter" || prop === "-webkit-filter") {
     if (functionCallsNamed(val, ["opacity", "brightness", "contrast"]).some((inner) => valueCanHide(inner, hidden, clampsToZero))) return true;
     if (functionCallsNamed(val, ["brightness"]).some((inner) => brightnessHides(inner, hidden))) return true;
+    if (functionCallsNamed(val, ["contrast"]).some((inner) => contrastHides(inner, hidden))) return true;
     return functionCallsNamed(val, ["blur"]).some((inner) => blurHides(inner, hidden));
   }
   if (prop === "mix-blend-mode") return valueCanHide(val, hidden, blendWashes);
-  if (prop === "color" && activeInk) return valueCanHide(val, hidden, (raw) => colorIsPageLight(raw));
+  if (prop === "color" && activeInk) return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw) || inkTooFaint(raw));
   if (prop === "scale") {
     return splitScaleParts(val.replace(/!important/gi, "")).some((arg) => valueCanHide(arg, hidden, hidesAsZero));
   }
