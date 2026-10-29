@@ -1,3 +1,21 @@
+# Quire 1.9.38 — The page colour still cannot cover the ink
+
+Released 29 October 2026.
+
+- **A light stroke or fill written as xyz can no longer paint out the letters.** `color(xyz-d65 0.95 1 1.09)`, `color(xyz 0.95 1 1.09)`, `color(xyz-d50 0.96 1 0.82)`, and `color(xyz-d65 95% 100% 108%)` follow a light srgb stroke. A `6px` stroke in that colour is dropped. The same colour as a text fill, or as `*{color:…}`, is dropped. A thick line-through in that colour is dropped. A `1px` stroke stays. A dark `color(xyz-d65 0.04 0.04 0.04)` stays. `html { color: … }` stays, because the desk ink wins. A class may still use that colour. Colour stays.
+- **A page colour written as calc() of its own channels, or as color(from), can no longer paint out the letters.** `rgb(from #f3eee6 calc(r) calc(g) calc(b))` is still the page. `color(from #f3eee6 srgb r g b)` is still the page. Those are dropped on a star, and a `6px` stroke in that colour is dropped. `rgb(from #1c1917 calc(r) calc(g) calc(b))` stays. A class may still use the page colour. Colour stays.
+- **A path slit can no longer hide the desk.** `path('M0 0 H800 V8 H0 Z')` is a full-width strip of `8px`. It is dropped on `html`, `body`, and a star. `path('M0 0 L10 0 L0 10 Z')` stays. A class may still clip. Colour stays.
+- **A first line on the star can no longer paint out the writing.** `*::first-line` with `color: #f3eee6` or `font-size: 0` follows a page colour and a zero size. Those are dropped. `*::first-line { color: red }` stays. `.note::first-line` may still style that class. `p::first-line` may still style that element. Colour stays.
+- **A keyframe in the page colour can no longer paint out the letters.** `@keyframes` that ends on `#f3eee6`, played on `html`, `body`, or a star, follows a keyframe of `opacity: 0`. The animation is dropped. A keyframe that ends on red stays. A class may still play the page-coloured keyframe. Colour stays.
+- **brightness(6) and brightness(7) can no longer wash the line out.** They follow `brightness(8)`. `brightness(5)`, `brightness(4)`, and `brightness(2)` stay. `brightness(600%)` is dropped. A grayscale filter stays. A class may still wash. Colour stays.
+- **A mix that lands on the page colour can no longer paint out the letters.** `color-mix(in srgb, white 95%, black)` is the page. It is dropped on a star. `color-mix(in srgb, #f3eee6 80%, #1c1917)` stays. A class may still mix. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.37 — The ink stays ink
 
 Released 29 October 2026.

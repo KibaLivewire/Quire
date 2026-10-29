@@ -2251,7 +2251,20 @@ function pathHides(inner: string): boolean {
     if (!point || !next) return false;
     area += point[0] * next[1] - next[0] * point[1];
   }
-  return area === 0;
+  if (area === 0) return true;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const point of pts) {
+    minX = Math.min(minX, point[0]);
+    maxX = Math.max(maxX, point[0]);
+    minY = Math.min(minY, point[1]);
+    maxY = Math.max(maxY, point[1]);
+  }
+  const xSpan = maxX - minX;
+  const ySpan = maxY - minY;
+  return (xSpan <= 32 && ySpan >= 400) || (ySpan <= 32 && xSpan >= 400);
 }
 
 type HideVars = Set<string> & { clips?: Set<string>; masks?: Set<string>; defined?: Map<string, string>; perspectives?: number[]; htmlPaintZero?: boolean; bodyPaintZero?: boolean; contentsPaintZero?: boolean; htmlMaskZero?: boolean; bodyMaskZero?: boolean; contentsMaskZero?: boolean; blockPair?: boolean; inlinePair?: boolean; trackPair?: boolean; strokeWide?: boolean; strokeLight?: boolean; strokePair?: boolean; decorStrike?: boolean; decorThick?: boolean; decorLight?: boolean; decorPair?: boolean };
@@ -2560,19 +2573,19 @@ function blendWashes(raw: string): boolean {
   return WASH_BLEND.test(raw.replace(/!important/gi, "").trim());
 }
 
-/** brightness(8) and brighter wash the line into the page. brightness(4) still leaves the letters. */
+/** brightness(6) and brighter wash the line into the page. brightness(5) still leaves the letters. */
 function brightnessHides(inner: string, hidden: Set<string>, seen?: Set<string>): boolean {
   const arg = (splitArgs(inner)[0] ?? inner).trim();
   const plain = arg.replace(/!important/gi, "").trim();
   const pct = percentOf(plain);
-  if (pct != null) return pct >= 8;
-  if (plain && Number.isFinite(Number(plain))) return Number(plain) >= 8;
+  if (pct != null) return pct >= 6;
+  if (plain && Number.isFinite(Number(plain))) return Number(plain) >= 6;
   const compact = plain.replace(/\s+/g, "");
   const parsed = parseMathSum(compact, 0);
   if (parsed && parsed.i === compact.length && Number.isFinite(parsed.n)) {
     const units = Object.entries(parsed.u).filter(([, exp]) => exp);
-    if (!units.length) return parsed.n >= 8;
-    if (units.length === 1 && units[0]?.[0] === "%" && units[0]?.[1] === 1) return parsed.n >= 800;
+    if (!units.length) return parsed.n >= 6;
+    if (units.length === 1 && units[0]?.[0] === "%" && units[0]?.[1] === 1) return parsed.n >= 600;
   }
   const trail = seen ?? new Set<string>();
   const defined = (hidden as HideVars).defined;
@@ -2868,10 +2881,26 @@ function unitIntervalByte(token: string): number | null {
   return Math.max(0, Math.min(255, Math.round(n * 255)));
 }
 
+function xyzChannel(token: string): number | null {
+  const t = token.trim().toLowerCase();
+  if (t.endsWith("%")) {
+    const n = Number(t.slice(0, -1));
+    if (!Number.isFinite(n)) return null;
+    return n / 100;
+  }
+  const n = Number(t);
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
 function colorFunctionIsPageLight(parts: string[], alpha: string): boolean {
   if (alpha && (alphaIsClear(alpha) || (percentOf(alpha) != null && (percentOf(alpha) ?? 1) < 0.95))) return false;
   if (parts.length < 4) return false;
   const space = (parts[0] ?? "").toLowerCase();
+  if (/^xyz(?:-d(?:50|65))?$/.test(space)) {
+    const y = xyzChannel(parts[2] ?? "");
+    return y != null && y >= 0.7;
+  }
   if (!/^(?:srgb|srgb-linear|display-p3|a98-rgb|prophoto-rgb|rec2020)$/.test(space)) return false;
   const rgb = parts.slice(1, 4).map((part) => unitIntervalByte(part));
   const r = rgb[0];
@@ -2881,19 +2910,60 @@ function colorFunctionIsPageLight(parts: string[], alpha: string): boolean {
   return rgbIsPageLight(r, g, b);
 }
 
+function mixWeight(part: string): { color: string; pct: number | null } {
+  const words = splitTopWords(part).filter(Boolean);
+  if (!words.length) return { color: part.trim(), pct: null };
+  const last = words[words.length - 1] ?? "";
+  const pct = percentOf(last);
+  if (pct != null && words.length > 1) return { color: words.slice(0, -1).join(" "), pct };
+  return { color: part.trim(), pct: null };
+}
+
+function resolveRgb(token: string): [number, number, number] | null {
+  const t = token.trim().toLowerCase();
+  if (t === "white") return [255, 255, 255];
+  if (t === "black") return [0, 0, 0];
+  const hex = /^#([0-9a-f]{3,8})$/.exec(t);
+  if (hex?.[1]) {
+    const h = hex[1];
+    if (h.length === 3 || h.length === 4) return [parseInt(h[0] + h[0], 16), parseInt(h[1] + h[1], 16), parseInt(h[2] + h[2], 16)];
+    if (h.length === 6 || h.length === 8) return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    return null;
+  }
+  const calls = namedFunctionCalls(t, ["rgb", "rgba"]);
+  if (calls.length !== 1 || !calls[0]) return null;
+  const call = calls[0];
+  if (t.replace(/\s+/g, "") !== `${call.name}(${call.inner.replace(/\s+/g, "")})`) return null;
+  const inner = call.inner.trim();
+  const channels = inner.includes(",") ? splitArgs(inner).map((part) => part.trim()).filter(Boolean) : splitTopWords((inner.split("/")[0] ?? "").trim()).filter(Boolean);
+  if (channels.length < 3) return null;
+  const r = channelByte(channels[0] ?? "");
+  const g = channelByte(channels[1] ?? "");
+  const b = channelByte(channels[2] ?? "");
+  if (r == null || g == null || b == null) return null;
+  return [r, g, b];
+}
+
 function mixIsPageLight(inner: string): boolean {
   const bits = splitArgs(inner).map((part) => part.trim()).filter(Boolean);
   if (bits.length < 3 || !/^in\b/i.test(bits[0] ?? "")) return false;
   const colors = bits.slice(1);
   if (colors.length !== 2) return false;
-  return colors.every((part) => {
-    const words = splitTopWords(part).filter(Boolean);
-    if (!words.length) return false;
-    const last = words[words.length - 1] ?? "";
-    const pct = percentOf(last);
-    const colorTok = pct != null && words.length > 1 ? words.slice(0, -1).join(" ") : part.trim();
-    return colorIsPageLight(colorTok);
-  });
+  const weighed = colors.map((part) => mixWeight(part));
+  if (weighed.every((part) => colorIsPageLight(part.color))) return true;
+  const a = resolveRgb(weighed[0]?.color ?? "");
+  const b = resolveRgb(weighed[1]?.color ?? "");
+  if (!a || !b) return false;
+  let pa = weighed[0]?.pct ?? null;
+  let pb = weighed[1]?.pct ?? null;
+  if (pa == null && pb == null) {
+    pa = 0.5;
+    pb = 0.5;
+  } else if (pa == null) pa = Math.max(0, 1 - (pb ?? 0));
+  else if (pb == null) pb = Math.max(0, 1 - pa);
+  const sum = pa + pb;
+  if (sum <= 0) return false;
+  return rgbIsPageLight(Math.round((a[0] * pa + b[0] * pb) / sum), Math.round((a[1] * pa + b[1] * pb) / sum), Math.round((a[2] * pa + b[2] * pb) / sum));
 }
 
 /** A lightness the page already uses as paper. A dark colour is still ink. */
@@ -2955,7 +3025,31 @@ const RELATIVE_CHANNELS: Record<string, string[]> = {
   oklab: ["l", "a", "b"],
 };
 
+function channelTokenIs(token: string, name: string): boolean {
+  const t = token.replace(/\s+/g, "").toLowerCase();
+  if (t === name) return true;
+  const wrapped = /^calc\((.*)\)$/.exec(t);
+  if (!wrapped) return false;
+  const inner = wrapped[1] ?? "";
+  return inner === name || inner === `${name}*1` || inner === `1*${name}` || inner === `${name}+0` || inner === `0+${name}` || inner === `(${name})`;
+}
+
+function relativeColorOrigin(inner: string): string | null {
+  const body = inner.trim().replace(/^from\s+/i, "");
+  const slash = body.lastIndexOf("/");
+  const main = slash >= 0 ? body.slice(0, slash).trim() : body;
+  const words = splitTopWords(main).filter(Boolean);
+  if (words.length < 5) return null;
+  const space = (words[words.length - 4] ?? "").toLowerCase();
+  const want = space.startsWith("xyz") ? ["x", "y", "z"] : ["r", "g", "b"];
+  if (!/^(?:srgb|srgb-linear|display-p3|a98-rgb|prophoto-rgb|rec2020|xyz|xyz-d50|xyz-d65)$/.test(space)) return null;
+  const channels = words.slice(-3);
+  if (channels.some((word, index) => !channelTokenIs(word, want[index] ?? ""))) return null;
+  return words.slice(0, -4).join(" ").trim() || null;
+}
+
 function relativeOrigin(name: string, inner: string): string | null {
+  if (name === "color") return relativeColorOrigin(inner);
   const want = RELATIVE_CHANNELS[name];
   if (!want) return null;
   const body = inner.trim().replace(/^from\s+/i, "");
@@ -2963,13 +3057,13 @@ function relativeOrigin(name: string, inner: string): string | null {
   const main = slash >= 0 ? body.slice(0, slash).trim() : body;
   const words = splitTopWords(main).filter(Boolean);
   if (words.length < want.length + 1) return null;
-  const channels = words.slice(-want.length).map((word) => word.toLowerCase());
-  if (channels.some((word, index) => word !== want[index])) return null;
+  const channels = words.slice(-want.length);
+  if (channels.some((word, index) => !channelTokenIs(word, want[index] ?? ""))) return null;
   return words.slice(0, -want.length).join(" ").trim() || null;
 }
 
 function relativePageLight(value: string): boolean | null {
-  const calls = namedFunctionCalls(value, ["oklch", "oklab", "hsla", "rgba", "hwb", "lch", "lab", "hsl", "rgb"]);
+  const calls = namedFunctionCalls(value, ["color", "oklch", "oklab", "hsla", "rgba", "hwb", "lch", "lab", "hsl", "rgb"]);
   if (calls.length !== 1 || !calls[0]) return null;
   const call = calls[0];
   if (value.replace(/\s+/g, "") !== `${call.name}(${call.inner.replace(/\s+/g, "")})`) return null;
@@ -4182,8 +4276,14 @@ function hidingKeyframeNames(css: string, hidden: Set<string>): Set<string> {
 
 function keyframeHides(part: string, hidden: Set<string>): boolean {
   if (!part.includes(":")) return false;
-  if (declarationHidesDesk(part, hidden)) return true;
-  return withSib(HTML_SIB, () => declarationHidesDesk(part, hidden)) && withSib(BODY_SIB, () => declarationHidesDesk(part, hidden));
+  const prev = activeInk;
+  activeInk = true;
+  try {
+    if (declarationHidesDesk(part, hidden)) return true;
+    return withSib(HTML_SIB, () => declarationHidesDesk(part, hidden)) && withSib(BODY_SIB, () => declarationHidesDesk(part, hidden));
+  } finally {
+    activeInk = prev;
+  }
 }
 
 type DeskEl = { tag: string; index: number; count: number; ofType: number; ofTypeCount: number };
@@ -4644,9 +4744,19 @@ function functionalInner(compound: string): string[] | null {
   return splitSelectorList(hit[1] ?? "");
 }
 
+function withoutLinePseudo(selector: string): string | null {
+  const trimmed = selector.trim();
+  const next = trimmed.replace(/::(?:first-line|first-letter)\s*$/i, "").replace(/:(?:first-line|first-letter)\s*$/i, "").trim();
+  if (next === trimmed) return null;
+  return next || "*";
+}
+
 function branchHidesDesk(selector: string, scopeSel: string | null = null): boolean {
   const sel = selector.trim();
-  if (!sel || sel.includes("::")) return false;
+  if (!sel) return false;
+  const line = withoutLinePseudo(sel);
+  if (line != null) return branchHidesDesk(line, scopeSel);
+  if (sel.includes("::")) return false;
   if (selectorMatchesEl(sel, HTML_EL, scopeSel) || selectorMatchesEl(sel, BODY_EL, scopeSel)) return true;
   if (hidesDeskContents(sel, scopeSel)) return true;
   const steps = splitCombinators(sel.replace(/\s+/g, " "));
@@ -4703,7 +4813,10 @@ function hideProfiles(selector: string, scopeSel: string | null): Sib[] {
 function coversInk(selector: string, scopeSel: string | null): boolean {
   return splitSelectorList(selector).some((part) => {
     const text = part.trim();
-    if (!text || text.includes("::")) return false;
+    if (!text) return false;
+    const line = withoutLinePseudo(text);
+    if (line != null) return coversInk(line, scopeSel);
+    if (text.includes("::")) return false;
     const steps = splitCombinators(text.replace(/\s+/g, " "));
     if (steps.length === 1 && compoundIsUniversal(steps[0]?.compound ?? "")) return true;
     if (hidesDeskContents(text, scopeSel)) return true;
