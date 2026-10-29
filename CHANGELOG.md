@@ -1,3 +1,21 @@
+# Quire 1.9.37 — The ink stays ink
+
+Released 29 October 2026.
+
+- **A page-coloured text fill can no longer paint out the letters.** `-webkit-text-fill-color` and `text-fill-color` in the page colour follow a clear fill. `#f3eee6`, `white`, `canvas`, `light-dark(#f3eee6, #f3eee6)`, `rgb(from #f3eee6 r g b)`, and a variable set to that colour are dropped on `html`, `body`, and a star. `#1c1917` stays. A class may still fill. Colour stays.
+- **A star in the page colour can no longer paint out the letters.** `*{color:#f3eee6}` and `body *{color:white}` set the colour on the writing itself. Those are dropped. `*{color:#1c1917}` and `*{color:red}` stay. `html{color:#f3eee6}` stays, because the desk ink wins. A class may still use the page colour. Colour stays.
+- **A light stroke split across rules, or written as a variable, light-dark, canvas, or rgb(from), can no longer paint out the letters.** A wide width in one rule and a page colour in another are the same stroke. `6px var(--c)`, `light-dark(#f3eee6, #f3eee6)`, `canvas`, `field`, and `rgb(from #f3eee6 r g b)` follow a light hex stroke. The width is dropped. A `1px` light stroke stays. A dark `6px #1c1917` stays. A class may still stroke. Colour stays.
+- **A thick line-through split across rules, or written as a variable or light-dark, can no longer paint out the letters.** The thickness in a second rule follows the shorthand. `line-through 1em var(--c)` and `light-dark(#f3eee6, #1c1917)` follow a page-coloured line. The thickness is dropped. `line-through 0.5em` stays. `underline 1em` stays. A dark `1em` line stays. A class may still draw a line. Colour stays.
+- **A washing blend can no longer hide the desk.** `mix-blend-mode: screen`, `plus-lighter`, `lighten`, `overlay`, `soft-light`, `color`, `hue`, and `color-dodge` on `html`, `body`, or a star blend the writing into the page. Those are dropped. `multiply`, `darken`, `hard-light`, and `normal` stay. A class may still blend. Colour stays.
+- **A hard brightness can no longer wash the line out.** `filter: brightness(8)`, `brightness(12)`, and `brightness(800%)` leave no ink. Those are dropped. `brightness(4)` and `brightness(2)` stay. A grayscale filter stays. A class may still wash. Colour stays.
+- **A slit clip can no longer hide the desk.** A `polygon()` or `shape()` that is a full-width strip of `8px`, `24px`, or `8%`, or a full-height strip of `8px`, misses the writing. A `4px` shape strip does too. Those are dropped on `html`, `body`, and a star. A strip of `80px` stays. A triangle stays. A `10px` triangle stays. A class may still clip. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.36 — The first screen still has the writing
 
 Released 28 October 2026.
