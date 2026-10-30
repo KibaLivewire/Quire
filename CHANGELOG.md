@@ -1,3 +1,24 @@
+# Quire 1.9.41 — The first screen still has the writing
+
+Released 30 October 2026.
+
+- **A mid invert can no longer paint the page gray.** `filter: invert(0.5)` and `invert(50%)` leave no ink. Those are dropped on `html`, `body`, and a star. `invert(1)` and `invert(0.2)` stay. `invert(0)` stays. A class may still invert. Colour stays.
+- **A blur of 6px can no longer wipe the line.** `blur(6px)` and `blur(7px)` follow `blur(12px)`. Those are dropped. `blur(4px)` stays. `blur(10q)` stays. A grayscale filter stays. A class may still blur. Colour stays.
+- **A 1.5px light stroke can no longer paint out the letters.** `-webkit-text-stroke: 1.5px #f3eee6` covers the ink. The width is dropped. A `1px` light stroke stays. A dark stroke stays. A class may still stroke. Colour stays.
+- **A path strip of 40px can no longer hide the desk.** `path('M0 0 H800 V40 H0 Z')` follows the 8px path slit. It is dropped on `html`, `body`, and a star. A path of `80px` stays. A `10px` triangle stays. A class may still clip. Colour stays.
+- **A no-repeat mask the height of a strip can no longer hide the desk.** `mask-size: 100% 20px` with `no-repeat` covers none of the writing. The size is dropped. The mask image stays. `mask-size: 100% 100%` stays. A class may still mask. Colour stays.
+- **A flat line inside a clip can no longer hide the desk.** `line-height: 0` together with `overflow: hidden` leaves no writing. The line height is dropped. The clip stays. `line-height: 0` on its own stays. A class may still use both. Colour stays.
+- **A speck of a scale or zoom can no longer hide the desk.** `scale(0.001)`, `scale(0.2)`, `scaleY(0.05)`, `zoom: 0.001`, and `zoom: 0.25` shrink the writing to nothing. Those are dropped. `scale(0.5)`, `scale(-1)`, and `zoom: 0.5` stay. A class may still shrink. Colour stays.
+- **A hard skew can no longer smear the line.** `skewX(80deg)` turns the writing into streaks. It is dropped. `skewX(45deg)` and `skewX(4deg)` stay. `rotateX(89deg)` stays. A class may still skew. Colour stays.
+- **An opacity of 0.02 can no longer hide the desk.** `html { opacity: 0.02 }` leaves no ink. It is dropped. `opacity: 0.1` and `opacity: 0.5` stay. A star at `0.85` stays. A star `filter: opacity(0.7)` is dropped. `filter: opacity(0.4)` on `html` stays. A class may still fade. Colour stays.
+- **A washing veil can no longer cover the desk.** A fixed `::before` with `backdrop-filter: brightness(3) contrast(0.4)` or `invert(0.5)` paints out the page. That filter is dropped. `backdrop-filter: blur(2px)` stays. A class may still use a veil. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.39 — The first screen still has the writing
 
 Released 29 October 2026.
