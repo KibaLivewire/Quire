@@ -2482,12 +2482,21 @@ function nearDeg(n: number, target: number): boolean {
   return d < 1e-6 || Math.abs(d - 360) < 1e-6;
 }
 
-/** skewX(80deg) smears the line into streaks. skewX(45deg) and skewX(4deg) still read. */
+/** skewX(65deg) and skewX(70deg) walk the line off the page. skewX(60deg) and skewX(45deg) still read. */
 function skewFlattens(token: string, hidden: Set<string>): boolean {
   const deg = angleDegrees(token, hidden);
   if (deg == null) return false;
   const m = ((deg % 180) + 180) % 180;
-  return Math.abs(m - 90) <= 15;
+  return Math.abs(m - 90) <= 25;
+}
+
+/** A star rotateX(45deg) or rotateX(70deg) compounds into a hairline. rotateX(20deg) on a star still reads. html rotateX(70deg) and rotateX(89deg) stay. */
+function starRotateFlattens(token: string, hidden: Set<string>): boolean {
+  if (!activeStar) return false;
+  const deg = angleDegrees(token, hidden);
+  if (deg == null) return false;
+  const m = ((deg % 180) + 180) % 180;
+  return Math.abs(m - 90) <= 45;
 }
 
 function angleIsEdge(token: string, hidden: Set<string>): boolean {
@@ -2534,7 +2543,7 @@ function transformAxisHides(value: string, hidden: Set<string>, seen?: Set<strin
   const found = namedFunctionCalls(value, ["rotate3d", "rotatex", "rotatey", "rotatez", "rotate", "skewx", "skewy", "skew"]);
   for (const call of found) {
     const args = splitArgs(call.inner);
-    if ((call.name === "rotatex" || call.name === "rotatey") && args.some((arg) => angleIsEdge(arg, hidden))) return true;
+    if ((call.name === "rotatex" || call.name === "rotatey") && args.some((arg) => angleIsEdge(arg, hidden) || starRotateFlattens(arg, hidden))) return true;
     if (call.name === "rotate3d" && axisArgsHide(args, hidden, true)) return true;
     if ((call.name === "skewx" || call.name === "skewy" || call.name === "skew") && skewCallHides(call.inner, hidden)) return true;
   }
@@ -2581,7 +2590,7 @@ function rotatePropertyHides(value: string, hidden: Set<string>, seen?: Set<stri
   const parts = rotatePropertyParts(value);
   if (parts.length === 2) {
     const axis = (parts[0] ?? "").toLowerCase();
-    if ((axis === "x" || axis === "y") && angleIsEdge(parts[1] ?? "", hidden)) return true;
+    if ((axis === "x" || axis === "y") && (angleIsEdge(parts[1] ?? "", hidden) || starRotateFlattens(parts[1] ?? "", hidden))) return true;
   }
   if (parts.length === 4 && axisArgsHide(parts, hidden, true)) return true;
   return rotateValueFollows(value, hidden, seen, rotatePropertyHides);
@@ -2669,10 +2678,38 @@ function perspectiveTranslateHides(value: string, hidden: Set<string>, seen?: Se
   return false;
 }
 
+/** A short perspective in front of a turn flattens the desk. perspective(1px) alone stays. perspective(400px) with a small turn stays. */
+function perspectiveTurnHides(value: string, hidden: Set<string>): boolean {
+  const persp = namedFunctionCalls(value, ["perspective"]);
+  const turns = namedFunctionCalls(value, ["rotatex", "rotatey"]);
+  if (!persp.length || !turns.length) return false;
+  const distances = persp
+    .map((call) => lengthPx((splitArgs(call.inner)[0] ?? "").trim()))
+    .filter((n): n is number => n != null && n >= 0);
+  if (!distances.length) return false;
+  const dist = Math.min(...distances);
+  for (const call of turns) {
+    for (const arg of splitArgs(call.inner)) {
+      const deg = angleDegrees(arg.trim(), hidden);
+      if (deg == null) continue;
+      const m360 = ((deg % 360) + 360) % 360;
+      const fromFlat = Math.min(m360, Math.abs(m360 - 180), 360 - m360);
+      const m180 = ((deg % 180) + 180) % 180;
+      const fromEdge = Math.abs(m180 - 90);
+      if (dist <= 100 && fromEdge <= 45) return true;
+      if (activeStar && dist <= 8 && fromFlat >= 10) return true;
+    }
+  }
+  return false;
+}
+
 function blurHides(inner: string, hidden: Set<string>, seen?: Set<string>): boolean {
   const arg = (splitArgs(inner)[0] ?? inner).trim();
   const px = lengthPx(arg);
-  if (px != null) return Math.abs(px) >= (lengthUnit(arg) === "q" ? 12 : 6);
+  if (px != null) {
+    const limit = activeStar ? 2 : lengthUnit(arg) === "q" ? 12 : 6;
+    return Math.abs(px) >= limit;
+  }
   const compact = arg.replace(/!important/gi, "").replace(/\s+/g, "");
   const parsed = parseMathSum(compact, 0);
   if (parsed && parsed.i === compact.length && Number.isFinite(parsed.n)) {
@@ -2680,8 +2717,9 @@ function blurHides(inner: string, hidden: Set<string>, seen?: Set<string>): bool
     if (units.length === 1 && units[0]?.[1] === 1) {
       const unit = units[0]?.[0] ?? "";
       const n = Math.abs(parsed.n);
-      if (unit === "em" || unit === "rem" || unit === "ic" || unit === "ric") return n >= 0.5;
-      if (unit === "lh" || unit === "rlh") return n >= 0.5;
+      const font = activeStar ? 0.15 : 0.5;
+      if (unit === "em" || unit === "rem" || unit === "ic" || unit === "ric") return n >= font;
+      if (unit === "lh" || unit === "rlh") return n >= font;
       if (unit === "cap" || unit === "rcap") return n >= 1;
       if (unit === "ch" || unit === "rch") return n >= 1;
       if (unit === "ex" || unit === "rex") return n >= 1.5;
@@ -2708,9 +2746,9 @@ function blendWashes(raw: string): boolean {
   return WASH_BLEND.test(raw.replace(/!important/gi, "").trim());
 }
 
-/** brightness(5) and brighter wash the line into the page. brightness(4) still leaves the letters. A star compounds, so 1.5 is already gone. */
+/** brightness(5) and brighter wash the line into the page. brightness(4) still leaves the letters. A star compounds, so 1.3 is already white. brightness(1.2) on a star still leaves a line. */
 function brightnessHides(inner: string, hidden: Set<string>, seen?: Set<string>): boolean {
-  const limit = activeInk ? 1.5 : 5;
+  const limit = activeStar ? 1.3 : activeInk ? 1.5 : 5;
   const arg = (splitArgs(inner)[0] ?? inner).trim();
   const plain = arg.replace(/!important/gi, "").trim();
   const pct = percentOf(plain);
@@ -3397,7 +3435,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     ) {
       return true;
     }
-    return matrixFlattens(val, hidden) || matrixShifts(val, hidden) || translateHides(val, hidden) || transformAxisHides(val, hidden) || translateZHides(val, hidden) || perspectiveTranslateHides(val, hidden);
+    return matrixFlattens(val, hidden) || matrixShifts(val, hidden) || translateHides(val, hidden) || transformAxisHides(val, hidden) || translateZHides(val, hidden) || perspectiveTranslateHides(val, hidden) || perspectiveTurnHides(val, hidden);
   }
   if (prop === "rotate") return rotatePropertyHides(val, hidden);
   if (prop === "zoom") return valueCanHide(val, hidden, (raw) => hidesAsZero(raw) || scaleFactorHides(raw));
@@ -3420,7 +3458,16 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "mask" || prop === "mask-image" || prop === "-webkit-mask" || prop === "-webkit-mask-image") return maskHides(val, hidden);
   if (prop === "translate") {
     const args = splitTopWords(val.replace(/!important/gi, ""));
-    return args.slice(0, 2).some((arg) => shiftTokenCovers(arg, hidden));
+    return args.slice(0, 2).some((arg, index) => starShiftToken(arg, index === 0 ? "x" : "y", hidden) || shiftTokenCovers(arg, hidden));
+  }
+  if (prop === "column-width") {
+    return valueCanHide(val, hidden, (raw) => {
+      const token = raw.replace(/!important/gi, "").trim();
+      if (!token || /^(?:auto|initial|inherit|unset)$/i.test(token)) return false;
+      if (hidesAsZero(token)) return true;
+      const px = lengthDeskPx(token);
+      return px != null && Math.abs(px) <= 8;
+    });
   }
   if (SHIFT_PROP.has(prop)) return shiftValueCovers(val, hidden);
   if (prop === "mask-composite" || prop === "-webkit-mask-composite") {
@@ -3532,6 +3579,7 @@ const HTML_SIB: Sib = { index: 1, count: 1 };
 const BODY_SIB: Sib = { index: 2, count: 2 };
 let activeSib: Sib | null = null;
 let activeInk = false;
+let activeStar = false;
 
 function withSib<T>(sib: Sib, fn: () => T): T {
   const prev = activeSib;
@@ -4743,7 +4791,7 @@ function matrixShifts(value: string, hidden: Set<string>): boolean {
     const nums = matrixParts(call.inner);
     const tx = call.name === "matrix" ? (nums[4] ?? "") : (nums[12] ?? "");
     const ty = call.name === "matrix" ? (nums[5] ?? "") : (nums[13] ?? "");
-    return shiftTokenCovers(tx, hidden) || shiftTokenCovers(ty, hidden);
+    return starShiftCovers(tx, "x") || starShiftCovers(ty, "y") || shiftTokenCovers(tx, hidden) || shiftTokenCovers(ty, hidden);
   });
 }
 
@@ -4772,6 +4820,44 @@ function shiftAxisCovers(value: string): boolean {
   return Math.abs(parsed.n) >= 100;
 }
 
+/** A star shift compounds once per element. 60px down, or 80px across, walks the line off the first screen. 55px down and 70px across still leave a line. A shift on html does not compound. */
+function starShiftCovers(token: string, axis: "x" | "y"): boolean {
+  if (!activeStar) return false;
+  const t = token.replace(/!important/gi, "").replace(/\s+/g, "");
+  if (!t) return false;
+  const parsed = parseMathSum(t, 0);
+  if (!parsed || parsed.i !== t.length || !Number.isFinite(parsed.n)) return false;
+  const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+  if (units.length > 1 || (units[0] && units[0][1] !== 1)) return false;
+  const unit = units[0]?.[0] ?? "";
+  const n = Math.abs(parsed.n);
+  const y = axis === "y";
+  if (!unit || unit === "px") return y ? n >= 60 : n >= 80;
+  if (unit === "pt") {
+    const px = (n * 96) / 72;
+    return y ? px >= 60 : px >= 80;
+  }
+  if (unit === "em" || unit === "rem") return y ? n >= 4 : n >= 5;
+  if (/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) || /^cq(?:w|h|i|b|min|max)$/.test(unit)) return n >= 9;
+  return false;
+}
+
+function starShiftToken(token: string, axis: "x" | "y", hidden: Set<string>, seen?: Set<string>): boolean {
+  if (starShiftCovers(token, axis)) return true;
+  const trail = seen ?? new Set<string>();
+  const defined = (hidden as HideVars).defined;
+  for (const call of varCalls(token)) {
+    const raw = defined?.get(call.name);
+    if (raw && !trail.has(call.name)) {
+      const next = new Set(trail);
+      next.add(call.name);
+      if (starShiftToken(raw, axis, hidden, next)) return true;
+    }
+    if (call.fallback && starShiftToken(call.fallback, hidden, trail)) return true;
+  }
+  return false;
+}
+
 function shiftTokenCovers(token: string, hidden: Set<string>, seen?: Set<string>): boolean {
   if (shiftAxisCovers(token)) return true;
   const trail = seen ?? new Set<string>();
@@ -4797,7 +4883,11 @@ function translateHides(value: string, hidden: Set<string>): boolean {
       .flatMap((part) => splitTopWords(part))
       .filter(Boolean);
     const axes = call.name === "translatex" || call.name === "translatey" ? args : args.slice(0, 2);
-    return axes.some((arg) => shiftTokenCovers(arg, hidden));
+    const axisOf = call.name === "translatey" ? "y" : call.name === "translatex" ? "x" : "";
+    return axes.some((arg, index) => {
+      const axis = axisOf === "y" || (!axisOf && index === 1) ? "y" : "x";
+      return starShiftToken(arg, axis, hidden) || shiftTokenCovers(arg, hidden);
+    });
   });
 }
 
@@ -5503,7 +5593,12 @@ function coversInk(selector: string, scopeSel: string | null): boolean {
 
 function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, desk: boolean, scopeSel: string | null = null, nestingSel: string | null = null, profiles: Sib[] = [], stackBefore = false): string {
   const prevInk = activeInk;
-  if (desk) activeInk = coversInk(nestingSel ?? "", scopeSel);
+  const prevStar = activeStar;
+  if (desk) {
+    const ink = coversInk(nestingSel ?? "", scopeSel);
+    activeInk = ink;
+    activeStar = ink;
+  }
   try {
   const scope = deskClipScope(nestingSel ?? "");
   if (!body.includes("{")) return desk ? scrubHideBody(body, hidden, anims, profiles, scope) : body.trim();
@@ -5629,6 +5724,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   return out.replace(/;\s*$/g, "").trim();
   } finally {
     activeInk = prevInk;
+    activeStar = prevStar;
   }
 }
 

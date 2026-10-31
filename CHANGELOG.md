@@ -1,3 +1,21 @@
+# Quire 1.9.43 — The first screen still has the writing
+
+Released 31 October 2026.
+
+- **A star brightness of 1.3 can no longer wash the page white.** `*{filter:brightness(1.3)}` and `brightness(1.4)` compound until there is no ink. Those are dropped. `*{filter:brightness(1.2)}` and `brightness(1.25)` stay. `brightness(4)` on `html` stays. A class may still wash. Colour stays.
+- **A star blur of 2px can no longer wipe the line.** `*{filter:blur(2px)}`, `blur(3px)`, and `blur(0.15em)` smear the writing. Those are dropped. `blur(1px)`, `blur(1.5px)`, and `blur(0.1em)` on a star stay. `blur(4px)` and `blur(5px)` on `html` stay. A class may still blur. Colour stays.
+- **A skew of 65 degrees can no longer walk the line off the page.** `skewX(65deg)` and `skewX(70deg)` leave no writing. Those are dropped. `skewX(60deg)` and `skewX(45deg)` stay. A class may still skew. Colour stays.
+- **A star shift can no longer walk the writing off the first screen.** `*{transform:translateY(60px)}`, `translateY(4em)`, `translateY(9vh)`, `translateX(80px)`, and `translate: 0 60px` compound off the page. Those are dropped. `55px`, `40px`, `3em`, `8vh`, and `translateX(70px)` stay. The same shift on `html` stays, because it does not compound. A class may still shift. Colour stays.
+- **A star turn on its side can no longer flatten the desk.** `*{transform:rotateX(45deg)}` and `rotateX(70deg)` leave a hairline or a blank. Those are dropped. `rotateX(20deg)` on a star stays. `rotateX(70deg)` and `rotateX(89deg)` on `html` stay. A class may still turn. Colour stays.
+- **A short perspective in front of a turn can no longer flatten the desk.** `perspective(1px) rotateX(70deg)` on `html`, `perspective(100px) rotateX(70deg)`, and a star `perspective(1px) rotateX(10deg)` leave no writing. Those are dropped. `perspective(1px)` alone stays. `perspective(400px) rotateX(20deg)` stays. A class may still turn. Colour stays.
+- **A column of no width can no longer pile the letters.** `*{column-width:0}` and `column-width:8px` overlap until the line is gone. Those are dropped. `column-width:40px` stays. A class may still set a column. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.42 — The first screen still has the writing
 
 Released 31 October 2026.
