@@ -622,14 +622,17 @@ function clampsToZero(value: string): boolean {
   return units.length === 0 || (units.length === 1 && units[0] === "%");
 }
 
-/** scale(0.5) and scale(-1) still show the line. scale(0.2) and zoom(0.25) shrink it to a speck. */
+/** scale(0.5) and scale(-1) still show the line. scale(0.2) and zoom(0.25) shrink it to a speck. A star compounds, so scale(0.7) is already gone. scale(0.85) on a star still reads. A calculation of that speck does too. */
 function scaleFactorHides(value: string): boolean {
   const token = value.replace(/!important/gi, "").trim();
   if (!token || /^(?:none|auto|initial|inherit|unset)$/i.test(token)) return false;
+  const limit = activeInk ? 0.85 : 0.4;
   const pct = percentOf(token);
-  if (pct != null) return Math.abs(pct) < 0.4;
+  if (pct != null) return Math.abs(pct) < limit;
   const n = Number(token);
-  return Number.isFinite(n) && Math.abs(n) < 0.4;
+  if (Number.isFinite(n)) return Math.abs(n) < limit;
+  const amount = filterAmount(token);
+  return amount != null && Math.abs(amount) < limit;
 }
 
 function varNameParen(value: string, i: number): number {
@@ -2160,9 +2163,9 @@ function polygonStrips(inner: string): boolean {
     const pair = splitTopWords(bit);
     if (pair.length < 2) continue;
     const read = (token: string) => {
-      const m = /^([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)(%|px|em|rem)?$/i.exec(token.trim());
-      if (!m?.[1]) return null;
-      return { n: Number(m[1]), unit: (m[2] ?? "").toLowerCase() };
+      const resolved = resolvedSide(token);
+      if (!resolved) return null;
+      return { n: resolved.n, unit: resolved.unit };
     };
     const x = read(pair[0] ?? "");
     const y = read(pair[1] ?? "");
@@ -2775,7 +2778,13 @@ function filterAmount(raw: string): number | null {
     const n = Number(token.slice(0, -1));
     return Number.isFinite(n) ? n / 100 : null;
   }
-  if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(token.replace(/\s+/g, ""))) return Number(token);
+  const compact = token.replace(/\s+/g, "");
+  if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(compact)) return Number(compact);
+  const parsed = parseMathSum(compact, 0);
+  if (!parsed || parsed.i !== compact.length || !Number.isFinite(parsed.n)) return null;
+  const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+  if (!units.length) return parsed.n;
+  if (units.length === 1 && units[0]?.[0] === "%" && units[0]?.[1] === 1) return parsed.n / 100;
   return null;
 }
 
@@ -3659,17 +3668,17 @@ function parkedMaskDrops(part: string, on: boolean): boolean {
 }
 
 function maskAxisThin(token: string): boolean {
-  const pct = percentOf(token);
-  if (pct != null) return pct >= 0 && pct <= 0.08;
-  const px = lengthDeskPx(token);
+  const resolved = resolvedSide(token);
+  if (resolved?.unit === "%") return resolved.n >= 0 && resolved.n <= 8;
+  const px = resolved && resolved.unit ? lengthDeskPx(`${resolved.n}${resolved.unit}`) : lengthDeskPx(token);
   return px != null && px >= 0 && px <= 72;
 }
 
 function maskAxisLong(token: string): boolean {
   if (/^(?:auto|cover|contain)$/i.test(token)) return true;
-  const pct = percentOf(token);
-  if (pct != null) return pct >= 0.5;
-  const px = lengthDeskPx(token);
+  const resolved = resolvedSide(token);
+  if (resolved?.unit === "%") return resolved.n >= 50;
+  const px = resolved && resolved.unit ? lengthDeskPx(`${resolved.n}${resolved.unit}`) : lengthDeskPx(token);
   return px != null && px >= 400;
 }
 
@@ -3698,6 +3707,251 @@ function maskStrip(parts: string[], hidden: Set<string>): boolean {
 
 function maskStripDrops(part: string, on: boolean): boolean {
   return on && maskSizeIsStrip(part);
+}
+
+const DESK_PX = 800;
+
+type MaskPlace = { place: number; origin: number };
+
+function maskPlace(token: string, axis: "x" | "y"): MaskPlace | null {
+  const t = token.trim().toLowerCase();
+  if (t === "center") return { place: DESK_PX / 2, origin: 0.5 };
+  if (axis === "x" && (t === "left" || t === "x-start")) return { place: 0, origin: 0 };
+  if (axis === "x" && (t === "right" || t === "x-end")) return { place: DESK_PX, origin: 1 };
+  if (axis === "y" && (t === "top" || t === "y-start")) return { place: 0, origin: 0 };
+  if (axis === "y" && (t === "bottom" || t === "y-end")) return { place: DESK_PX, origin: 1 };
+  const resolved = resolvedSide(t);
+  if (resolved?.unit === "%") return { place: (resolved.n / 100) * DESK_PX, origin: resolved.n / 100 };
+  if (resolved && !resolved.unit) return resolved.n === 0 ? { place: 0, origin: 0 } : null;
+  const px = resolved && resolved.unit ? lengthDeskPx(`${resolved.n}${resolved.unit}`) : lengthDeskPx(t);
+  if (px == null) return null;
+  return { place: px, origin: 0 };
+}
+
+function maskPlaces(value: string): { x: MaskPlace; y: MaskPlace } | null {
+  const tokens = splitTopWords(value.replace(/!important/gi, "")).filter((token) => token && !/^(?:round|space)$/i.test(token));
+  if (!tokens.length || tokens.length > 2) return null;
+  const horiz = /^(?:left|right|x-start|x-end)$/i;
+  const vert = /^(?:top|bottom|y-start|y-end)$/i;
+  let xTok = tokens[0] ?? "center";
+  let yTok = tokens[1] ?? "center";
+  if (tokens.length === 2 && vert.test(tokens[0] ?? "") && horiz.test(tokens[1] ?? "")) {
+    yTok = tokens[0] ?? "center";
+    xTok = tokens[1] ?? "center";
+  } else if (tokens.length === 1 && vert.test(tokens[0] ?? "")) {
+    yTok = tokens[0] ?? "center";
+    xTok = "center";
+  }
+  const x = maskPlace(xTok, "x");
+  const y = maskPlace(yTok, "y");
+  if (!x || !y) return null;
+  return { x, y };
+}
+
+function maskExtent(value: string): { w: number; h: number } | null {
+  const dims = splitTopWords(value.replace(/!important/gi, "")).filter((token) => token && !/^(?:round|space)$/i.test(token));
+  if (!dims.length) return null;
+  const axis = (token: string) => {
+    if (/^(?:auto|cover|contain)$/i.test(token)) return DESK_PX;
+    const resolved = resolvedSide(token);
+    if (resolved?.unit === "%") return (resolved.n / 100) * DESK_PX;
+    if (resolved && resolved.unit) return lengthDeskPx(`${resolved.n}${resolved.unit}`);
+    return lengthDeskPx(token);
+  };
+  const w = axis(dims[0] ?? "");
+  const h = axis(dims[1] ?? dims[0] ?? "");
+  if (w == null || h == null) return null;
+  return { w, h };
+}
+
+/** The mask image still covers the first line. A window parked off that line does not. */
+function maskWindowShows(sizeVal: string, posVal: string): boolean {
+  const size = maskExtent(sizeVal);
+  const place = maskPlaces(posVal);
+  if (!size || !place) return true;
+  const y0 = place.y.place - size.h * place.y.origin;
+  const x0 = place.x.place - size.w * place.x.origin;
+  return y0 <= 8 && y0 + size.h >= 80 && x0 <= 40 && x0 + size.w >= 240;
+}
+
+function maskShiftMisses(parts: string[], hidden: Set<string>): boolean {
+  if (!parts.some((part) => isRealMask(part, hidden))) return false;
+  const repeat = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && (piece.prop === "mask-repeat" || piece.prop === "-webkit-mask-repeat") && /no-repeat/i.test(piece.val));
+  });
+  if (!repeat) return false;
+  const size = parts.map((part) => pieceProp(part)).find((piece) => piece && (piece.prop === "mask-size" || piece.prop === "-webkit-mask-size"));
+  const pos = parts.map((part) => pieceProp(part)).find((piece) => piece && (piece.prop === "mask-position" || piece.prop === "-webkit-mask-position"));
+  if (!size || !pos) return false;
+  return !maskWindowShows(size.val, pos.val) && maskWindowShows(size.val, "0px 0px");
+}
+
+function maskShiftDrops(part: string, on: boolean): boolean {
+  if (!on) return false;
+  const piece = pieceProp(part);
+  return Boolean(piece && (piece.prop === "mask-position" || piece.prop === "-webkit-mask-position"));
+}
+
+function sizeLikeToken(token: string): boolean {
+  if (/^(?:auto|cover|contain)$/i.test(token)) return true;
+  const compact = token.replace(/\s+/g, "");
+  const parsed = parseMathSum(compact, 0);
+  return Boolean(parsed && parsed.i === compact.length && Number.isFinite(parsed.n));
+}
+
+function readCssToken(value: string, at: number): { text: string; end: number } | null {
+  let i = at;
+  while (value[i] === " " || value[i] === "\t") i += 1;
+  if (i >= value.length) return null;
+  const start = i;
+  let depth = 0;
+  let quote = "";
+  while (i < value.length) {
+    const ch = value[i] ?? "";
+    const next = value[i + 1] ?? "";
+    if (quote) {
+      if (ch === "\\" && next) {
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "(") {
+      depth += 1;
+      i += 1;
+      continue;
+    }
+    if (ch === ")" && depth > 0) {
+      depth -= 1;
+      i += 1;
+      continue;
+    }
+    if (depth === 0 && (ch === " " || ch === "\t" || ch === "," || ch === "/")) break;
+    i += 1;
+  }
+  const text = value.slice(start, i).trim();
+  if (!text) return null;
+  return { text, end: i };
+}
+
+/** A slash size inside mask: that is only a strip. The position and the image stay. */
+function slashStrip(layer: string): { from: number; to: number } | null {
+  let depth = 0;
+  let quote = "";
+  for (let i = 0; i < layer.length; i += 1) {
+    const ch = layer[i] ?? "";
+    const next = layer[i + 1] ?? "";
+    if (quote) {
+      if (ch === "\\" && next) {
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "(") {
+      depth += 1;
+      continue;
+    }
+    if (ch === ")" && depth > 0) {
+      depth -= 1;
+      continue;
+    }
+    if (depth !== 0 || ch !== "/") continue;
+    let j = i + 1;
+    const tokens: string[] = [];
+    while (tokens.length < 2) {
+      const token = readCssToken(layer, j);
+      if (!token || !sizeLikeToken(token.text)) break;
+      tokens.push(token.text);
+      j = token.end;
+    }
+    if (!tokens.length) return null;
+    if (!maskSizeIsStrip(`mask-size:${tokens.join(" ")}`)) return null;
+    if (!/(?:^|[\s,/])no-repeat(?=$|[\s,/])/i.test(layer)) return null;
+    return { from: i, to: j };
+  }
+  return null;
+}
+
+function stripMaskLayer(layer: string): string {
+  const hit = slashStrip(layer);
+  if (!hit) return layer;
+  return `${layer.slice(0, hit.from)} ${layer.slice(hit.to)}`.replace(/[ \t]{2,}/g, " ").trim();
+}
+
+function isMaskPosToken(text: string): boolean {
+  if (/^(?:left|right|top|bottom|center|x-start|x-end|y-start|y-end)$/i.test(text)) return true;
+  return resolvedSide(text) != null || lengthDeskPx(text) != null;
+}
+
+function layerTokens(layer: string): { text: string; from: number; to: number }[] {
+  const tokens: { text: string; from: number; to: number }[] = [];
+  let i = 0;
+  while (i < layer.length) {
+    while (layer[i] === " " || layer[i] === "\t") i += 1;
+    if (i >= layer.length) break;
+    if (layer[i] === "/") {
+      tokens.push({ text: "/", from: i, to: i + 1 });
+      i += 1;
+      continue;
+    }
+    const token = readCssToken(layer, i);
+    if (!token) break;
+    tokens.push({ text: token.text, from: i, to: token.end });
+    i = token.end;
+  }
+  return tokens;
+}
+
+/** A position in mask: that parks a window off the first line. The size and the image stay. */
+function stripParkedPosition(layer: string): string {
+  if (!/(?:^|[\s,/])no-repeat(?=$|[\s,/])/i.test(layer)) return layer;
+  const tokens = layerTokens(layer);
+  const slash = tokens.findIndex((token) => token.text === "/");
+  if (slash < 0) return layer;
+  const size: string[] = [];
+  for (let i = slash + 1; i < tokens.length && size.length < 2; i += 1) {
+    if (!sizeLikeToken(tokens[i]?.text ?? "")) break;
+    size.push(tokens[i]?.text ?? "");
+  }
+  if (!size.length) return layer;
+  const pos: { text: string; from: number; to: number }[] = [];
+  for (let i = slash - 1; i >= 0; i -= 1) {
+    const token = tokens[i];
+    if (!token || !isMaskPosToken(token.text)) break;
+    pos.unshift(token);
+  }
+  if (!pos.length) return layer;
+  const sizeVal = size.join(" ");
+  const posVal = pos.map((token) => token.text).join(" ");
+  if (maskWindowShows(sizeVal, posVal) || !maskWindowShows(sizeVal, "0px 0px")) return layer;
+  const from = pos[0]?.from ?? 0;
+  const to = pos[pos.length - 1]?.to ?? from;
+  return `${layer.slice(0, from)} ${layer.slice(to)}`.replace(/[ \t]{2,}/g, " ").trim();
+}
+
+function softenMaskShorthand(part: string): string {
+  const piece = pieceProp(part);
+  if (!piece || (piece.prop !== "mask" && piece.prop !== "-webkit-mask")) return part;
+  const layers = splitArgs(piece.val);
+  if (!layers.length) return part;
+  const next = layers.map((layer) => stripParkedPosition(stripMaskLayer(layer))).join(",");
+  if (next.replace(/\s+/g, "") === piece.val.replace(/\s+/g, "")) return part;
+  const idx = part.indexOf(":");
+  return `${part.slice(0, idx + 1)}${next}`;
 }
 
 function pieceProp(part: string): { prop: string; val: string } | null {
@@ -4063,13 +4317,15 @@ function scrubHideBody(body: string, hidden: Set<string>, anims: Set<string> = n
   const mask = maskCollapsesFor(parts, hidden, profiles);
   const parked = parkedMask(parts, hidden);
   const strip = maskStrip(parts, hidden);
+  const parkedOff = maskShiftMisses(parts, hidden);
   const pair = pairedHide(parts, hidden);
   const stroke = lightStrokeDrops(parts, hidden);
   const decor = decorationDrops(parts, hidden);
   const flexOn = flexCollapses(parts, hidden);
   const sizeClip = sizeClipPair(parts);
   return parts
-    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !pair(part) && !stroke(part) && !decor(part) && !paintPairDrops(part, hidden) && !sliverDrops(part, hidden, scope) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles))) && !paintPieceDrops(part, hidden, profiles, paint) && !maskZeroDrops(part, hidden, mask) && !parkedMaskDrops(part, parked) && !maskStripDrops(part, strip) && !flexPieceDrops(part, hidden, flexOn) && !containSizeDrops(part, sizeClip))
+    .map((part) => softenMaskShorthand(part))
+    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !pair(part) && !stroke(part) && !decor(part) && !paintPairDrops(part, hidden) && !sliverDrops(part, hidden, scope) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles))) && !paintPieceDrops(part, hidden, profiles, paint) && !maskZeroDrops(part, hidden, mask) && !parkedMaskDrops(part, parked) && !maskStripDrops(part, strip) && !maskShiftDrops(part, parkedOff) && !flexPieceDrops(part, hidden, flexOn) && !containSizeDrops(part, sizeClip))
     .join("; ");
 }
 
@@ -5257,6 +5513,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const mask = desk && maskCollapsesFor(decls, hidden, profiles);
   const parked = desk && parkedMask(decls, hidden);
   const strip = desk && maskStrip(decls, hidden);
+  const parkedOff = desk && maskShiftMisses(decls, hidden);
   const pair = desk ? pairedHide(decls, hidden) : () => false;
   const decor = desk ? decorationDrops(decls, hidden) : () => false;
   const flexOn = desk && flexCollapses(decls, hidden);
@@ -5275,6 +5532,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     if (maskZeroDrops(next, hidden, mask)) return;
     if (parkedMaskDrops(next, parked)) return;
     if (maskStripDrops(next, strip)) return;
+    if (maskShiftDrops(next, parkedOff)) return;
     out += `${next}; `;
   };
   while (i < body.length) {

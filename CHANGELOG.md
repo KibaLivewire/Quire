@@ -1,3 +1,20 @@
+# Quire 1.9.42 — The first screen still has the writing
+
+Released 31 October 2026.
+
+- **A calculation of a dropped amount can no longer hide the desk.** `invert(calc(0.5))`, `invert(calc(50%))`, `contrast(calc(0.02))`, `opacity: calc(0.02)`, `opacity: calc(2%)`, a star `opacity: calc(0.8)`, a star `filter: opacity(calc(0.7))`, `scale(calc(0.2))`, and `zoom: calc(0.2)` follow the plain numbers. Those are dropped. `invert(calc(0.2))`, `invert(calc(1))`, `contrast(calc(0.5))`, `opacity: calc(0.5)`, `opacity: calc(0.1)`, a star at `0.85`, `filter: opacity(calc(0.4))` on `html`, `scale(calc(0.5))`, `scale(calc(-1))`, `zoom: calc(0.5)`, and `brightness(calc(4))` stay. A class may still fade, wash, or shrink. Colour stays.
+- **A mask shorthand the height of a strip can no longer hide the desk.** `mask: linear-gradient(#000,#000) no-repeat center / 100% 20px` and `-webkit-mask` at `8px` follow the longhand size. The size is dropped. The mask image stays. `mask-size: 100% 100%` stays. A `20px` size without `no-repeat` stays. A class may still mask. Colour stays.
+- **A clip coordinate written as a calculation can no longer hide the desk.** `polygon` at `calc(40px)`, `calc(72px)`, and `min(72px, 80px)` follows the plain strip. Those are dropped. `calc(80px)` stays. A `10px` triangle stays. A class may still clip. Colour stays.
+- **A calculated mask size the height of a strip can no longer hide the desk.** `mask-size: calc(100%) calc(20px)` with `no-repeat` follows the plain strip. The size is dropped. The mask image stays. `calc(100%) calc(100%)` stays. A class may still mask. Colour stays.
+- **A mask window parked off the first line can no longer hide the desk.** `mask-position: 0 -80px` on a `100px` no-repeat mask, and the same window at `bottom` or `center`, misses the writing. The position is dropped. The size stays. `0px 0px` and `top left` stay. A full mask shifted by `-80px` stays. A class may still place a mask. Colour stays.
+- **A star scale under 0.85 can no longer shrink the desk to a speck.** `*{transform:scale(0.7)}`, `scale(0.5)`, and `*{zoom:0.5}` compound until the writing is gone. Those are dropped. `scale(0.85)` on a star stays. `scale(0.5)`, `scale(-1)`, and `zoom:0.5` on `html` stay. A class may still shrink. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.41 — The first screen still has the writing
 
 Released 30 October 2026.
