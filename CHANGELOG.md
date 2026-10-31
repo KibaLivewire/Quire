@@ -1,3 +1,21 @@
+# Quire 1.9.44 — The ink is not the page
+
+Released 31 October 2026.
+
+- **A desk colour variable can no longer paint out the letters.** `*{color:var(--color-paper)}`, `--color-background`, `--color-cream`, `--color-paper-raised`, and the other surface tokens follow a page colour. `light-dark` and `rgb(from …)` of those tokens follow. A `6px` stroke in that variable follows. Those are dropped on a star. `*{color:var(--color-ink)}` stays. A `1px` stroke stays. A class may still use the paper token. Colour stays.
+- **A system window colour can no longer paint out the letters.** `Window`, `ButtonFace`, `ThreeDFace`, `Menu`, `InfoBackground`, `Highlight`, `HighlightText`, and `Mark` follow `canvas`. Those are dropped on a star. `GrayText` and `CanvasText` stay. A class may still use a window colour. Colour stays.
+- **A near-black brightness can no longer hide the desk.** `brightness(0.08)` and `brightness(8%)` paint the page black. Those are dropped. `brightness(0.2)` and `brightness(4)` stay. A grayscale filter stays. A class may still dim. Colour stays.
+- **A small matrix can no longer hide the desk.** `matrix(0.15, 0, 0, 0.15, 0, 0)` follows `scale(0.2)`. It is dropped. On a star, `matrix(0.5, 0, 0, 0.5, 0, 0)` compounds the same way `scale(0.5)` does. That is dropped. `matrix(0.5, …)` on `html` stays. `matrix(0.9, …)` on a star stays. A turn stays. A class may still shrink. Colour stays.
+- **A viewport outline pulled inward can no longer cover the desk.** `outline: 80vmax` with `outline-offset: -80vmax` paints out the page. The outline is dropped. An `80px` frame stays. A class may still outline. Colour stays.
+- **A viewport border can no longer eat the writing.** `border: 80vmax` inside a clipped `border-box` of `height: 100vh` leaves no line. A fixed `::before` with `border: 40vmax` does the same. Those widths are dropped. A border on its own stays. An `8px` frame stays. A class may still use a viewport border. Colour stays.
+- **A gap of 80vw can no longer leave one glyph.** `letter-spacing: 80vw` and `word-spacing: 80vw` push the rest of the line off the page. Those are dropped. `letter-spacing: 0.04em` and `word-spacing: 0.2em` stay. A class may still space. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.43 — The first screen still has the writing
 
 Released 31 October 2026.
