@@ -1,4 +1,23 @@
+# Quire 1.9.46 — The ink is not the page
+
+Released 1 November 2026.
+
+- **A pale colour can no longer paint out the letters.** Contrast under 1.95 against the desk is dropped on a star, a paragraph, and a div. `#bbb`, `#b0b0b0`, `silver`, `lightgray`, `gainsboro`, `yellow`, `hsl(36 16% 70%)`, `hwb(36 70% 8%)`, `color(srgb 0.82 0.78 0.72)`, and an 80% mix with the page colour are that page. `#aaa`, `GrayText`, `darkgray`, `hsl(36 14% 66%)`, and a 60% mix still leave a line. A class may still use a pale colour. Colour stays.
+- **A light oklch or lab can no longer paint out the letters.** `oklch(0.76)`, `oklch(0.8)`, and `oklch(0.86)` leave no ink. `lab(72%)` and `lab(74%)` do the same. `oklch(from #1c1917 0.78 c h)` follows, because the lightness is replaced. The same replacement in `hsl()` and `rgb()` follows. `oklch(0.72)`, `oklch(0.74)`, `lab(70%)`, and `oklch(from #1c1917 0.55 c h)` stay. An unchanged `rgb(from #1c1917 calc(r) calc(g) calc(b))` stays. A class may still use them. Colour stays.
+- **An important clear colour can no longer paint out the letters.** `transparent !important`, a clear hex, and a clear `rgb()` were still applied. Those are dropped on the desk. `html { color: #f3eee6 !important }` is dropped. `html { color: #f3eee6 }` without that flag stays. `html { color: #1c1917 !important }` stays. Colour stays.
+- **An opacity under 0.35 can no longer fade the desk.** `opacity: 0.1`, `0.2`, and `0.3` leave no line. `1e-1` is the same fade. Those are dropped. `opacity: 0.35` and `0.5` stay. `filter: opacity(0.4)` stays. A star at `0.85` stays. A class may still fade. Colour stays.
+- **A face of 4px or less can no longer leave no word.** `font-size: 0.01px`, `1px`, `3px`, and `4px` do not leave a word. `font: 4px Georgia` is the same face. Those are dropped on the desk. `font-size: 5px`, `18px`, and `1.125rem` stay. A class may still set a size. Colour stays.
+- **A font-size-adjust of 0.1 can no longer shrink the letters off.** `0.1` leaves no word. It is dropped. `0.15` still paints. A class may still adjust. Colour stays.
+- **A blur of 0.4em can no longer wipe the line.** `blur(0.4em)` is that smear. It is dropped. `blur(0.35em)` and `blur(5px)` still leave a line. A class may still blur. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.45 — The writing is still on the desk
+
 
 Released 1 November 2026.
 

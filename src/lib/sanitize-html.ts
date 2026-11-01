@@ -611,6 +611,12 @@ function hidesAsZero(value: string): boolean {
   return isZeroAmount(value) || calcEvaluatesZero(value) || mathEvaluatesZero(value);
 }
 
+/** A face of 4px or less leaves no word. 5px still reads. em and rem use the 16px root. */
+function fontFaceTiny(value: string): boolean {
+  const px = lengthDeskPx(value.replace(/!important/gi, "").trim());
+  return px != null && px > 0 && px <= 4;
+}
+
 /** A negative opacity, brightness, or contrast is clamped to zero. A negative scale is a flip and is not. */
 function clampsToZero(value: string): boolean {
   if (hidesAsZero(value)) return true;
@@ -724,6 +730,7 @@ function wholeFunction(value: string, name: string): boolean {
 }
 
 function valueCanHide(value: string, hidden: Set<string>, pred: (v: string) => boolean, seen?: Set<string>): boolean {
+  value = value.replace(/!important/gi, "");
   if (wholeFunction(value, "if")) return ifCanHide(value, hidden, pred, seen);
   if (pred(value)) return true;
   if (ifCanHide(value, hidden, pred, seen)) return true;
@@ -2717,9 +2724,9 @@ function blurHides(inner: string, hidden: Set<string>, seen?: Set<string>): bool
     if (units.length === 1 && units[0]?.[1] === 1) {
       const unit = units[0]?.[0] ?? "";
       const n = Math.abs(parsed.n);
-      const font = activeStar ? 0.15 : 0.5;
-      if (unit === "em" || unit === "rem" || unit === "ic" || unit === "ric") return n >= font;
-      if (unit === "lh" || unit === "rlh") return n >= font;
+      const emLimit = activeStar ? 0.15 : 0.375;
+      if (unit === "em" || unit === "rem" || unit === "ic" || unit === "ric") return n >= emLimit;
+      if (unit === "lh" || unit === "rlh") return n >= (activeStar ? 0.15 : 0.5);
       if (unit === "cap" || unit === "rcap") return n >= 1;
       if (unit === "ch" || unit === "rch") return n >= 1;
       if (unit === "ex" || unit === "rex") return n >= 1.5;
@@ -2813,11 +2820,11 @@ function sepiaHides(inner: string): boolean {
   return amount != null && amount >= 0.75;
 }
 
-/** A star fades the same way the opacity property does. html at 0.1 still reads. html at 0.02 does not. */
+/** A star fades the same way the opacity property does. html under 0.35 leaves no line. html at 0.35 still reads. A star at 0.83 is already gone. */
 function opacityAmountHides(raw: string): boolean {
   const n = filterAmount(raw.replace(/!important/gi, "").trim());
   if (n == null || n < 0) return false;
-  return activeStar ? n <= 0.83 : activeInk ? n <= 0.8 : n < 0.1;
+  return activeStar ? n <= 0.83 : activeInk ? n <= 0.8 : n < 0.35;
 }
 
 function filterAmount(raw: string): number | null {
@@ -2914,7 +2921,7 @@ function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): 
   return false;
 }
 
-/** A zero aspect, or one too small to leave a letter, hides the line. 0.1 and from-font still paint. A calculation of that aspect does too. */
+/** A zero aspect, or one too small to leave a letter, hides the line. 0.1 leaves no word. 0.15 and from-font still paint. A calculation of that aspect does too. */
 function fontAspectHides(value: string, hidden: Set<string>): boolean {
   return valueCanHide(value, hidden, (raw) => {
     let token = raw.replace(/!important/gi, "").trim().toLowerCase();
@@ -2923,13 +2930,13 @@ function fontAspectHides(value: string, hidden: Set<string>): boolean {
     if (!token || token === "none" || token === "from-font") return false;
     if (hidesAsZero(token)) return true;
     const plain = Number(token);
-    if (Number.isFinite(plain)) return plain > 0 && plain < 0.1;
+    if (Number.isFinite(plain)) return plain > 0 && plain <= 0.1;
     const compact = token.replace(/\s+/g, "");
     const parsed = parseMathSum(compact, 0);
     if (!parsed || parsed.i !== compact.length || !Number.isFinite(parsed.n)) return false;
     const units = Object.keys(parsed.u).filter((key) => parsed.u[key]);
     if (units.length) return false;
-    return parsed.n === 0 || (parsed.n > 0 && parsed.n < 0.1);
+    return parsed.n === 0 || (parsed.n > 0 && parsed.n <= 0.1);
   });
 }
 
@@ -2978,16 +2985,110 @@ function channelByte(token: string): number | null {
   return Math.max(0, Math.min(255, Math.round(n)));
 }
 
-function rgbIsPageLight(r: number, g: number, b: number): boolean {
-  const lin = (c: number) => {
-    const s = c / 255;
-    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+function linearToSrgbByte(c: number): number {
+  const x = Math.min(Math.max(c, 0), 1);
+  const s = x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055;
+  return Math.round(Math.min(Math.max(s, 0), 1) * 255);
+}
+
+function srgbByteToLinear(c: number): number {
+  const s = c / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+}
+
+function oklabToRgb(L: number, a: number, b: number): [number, number, number] {
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.291485548 * b;
+  const l = l_ ** 3;
+  const m = m_ ** 3;
+  const s = s_ ** 3;
+  return [
+    linearToSrgbByte(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+    linearToSrgbByte(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+    linearToSrgbByte(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
+  ];
+}
+
+function oklchToRgb(L: number, C: number, H: number): [number, number, number] {
+  const h = (H * Math.PI) / 180;
+  return oklabToRgb(L, C * Math.cos(h), C * Math.sin(h));
+}
+
+function rgbToOklab(r: number, g: number, b: number): [number, number, number] {
+  const R = srgbByteToLinear(r);
+  const G = srgbByteToLinear(g);
+  const B = srgbByteToLinear(b);
+  const l = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B);
+  const m = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B);
+  const s = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B);
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  ];
+}
+
+function labToRgb(L: number, a: number, b: number): [number, number, number] {
+  const e = 216 / 24389;
+  const k = 24389 / 27;
+  const fy = (L + 16) / 116;
+  const fx = fy + a / 500;
+  const fz = fy - b / 200;
+  const f = (t: number) => {
+    const t3 = t ** 3;
+    return t3 > e ? t3 : (116 * t - 16) / k;
   };
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) >= 0.7;
+  const x = f(fx) * 0.96422;
+  const y = f(fy);
+  const z = f(fz) * 0.82521;
+  return [
+    linearToSrgbByte(3.1338561 * x - 1.6168667 * y - 0.4906146 * z),
+    linearToSrgbByte(-0.9787684 * x + 1.9161415 * y + 0.033454 * z),
+    linearToSrgbByte(0.0719453 * x - 0.2289914 * y + 1.4052427 * z),
+  ];
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  const R = r / 255;
+  const G = g / 255;
+  const B = b / 255;
+  const max = Math.max(R, G, B);
+  const min = Math.min(R, G, B);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === R) h = (G - B) / d + (G < B ? 6 : 0);
+  else if (max === G) h = (B - R) / d + 2;
+  else h = (R - G) / d + 4;
+  return [h * 60, s, l];
+}
+
+function axisNumber(token: string, percentFull: number): number | null {
+  const t = token.trim().toLowerCase();
+  if (!t || t === "none") return 0;
+  if (t.endsWith("%")) {
+    const n = Number(t.slice(0, -1));
+    if (!Number.isFinite(n)) return null;
+    return (n / 100) * percentFull;
+  }
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+function hueOrNone(token: string): number | null {
+  if (/^none$/i.test(token.trim())) return 0;
+  return hueDegrees(token);
+}
+
+/** Contrast under 1.95 against the desk (#f3eee6) leaves no ink. #aaa still reads. */
+function rgbIsPageLight(r: number, g: number, b: number): boolean {
+  return contrastVsPaper(r, g, b) < 1.95;
 }
 
 const SURFACE_COLOR = new Set(["window", "buttonface", "threedface", "menu", "infobackground", "highlight", "highlighttext", "mark", "buttonhighlight", "buttonshadow", "activecaption", "inactivecaption", "scrollbar", "background", "appworkspace", "accentcolortext", "selecteditemtext"]);
-
 /** These tokens are the page, on every built-in desk. Ink tokens such as --color-ink are not. */
 const PAPER_VARS = new Set([
   "--color-paper",
@@ -3040,13 +3141,66 @@ const PAGE_LIGHT = new Set([
   "lemonchiffon",
 ]);
 
+/** Named colours whose contrast against the desk is under 1.95. A darker name such as gray stays. */
+const WASH_NAMED = new Set([
+  "silver",
+  "lime",
+  "yellow",
+  "aqua",
+  "aquamarine",
+  "burlywood",
+  "chartreuse",
+  "cyan",
+  "darkkhaki",
+  "darkseagreen",
+  "darkturquoise",
+  "deepskyblue",
+  "gainsboro",
+  "gold",
+  "goldenrod",
+  "greenyellow",
+  "khaki",
+  "lavender",
+  "lawngreen",
+  "lightblue",
+  "lightgray",
+  "lightgrey",
+  "lightgreen",
+  "lightpink",
+  "lightsalmon",
+  "lightskyblue",
+  "lightsteelblue",
+  "limegreen",
+  "mediumaquamarine",
+  "mediumspringgreen",
+  "mediumturquoise",
+  "moccasin",
+  "navajowhite",
+  "orange",
+  "palegoldenrod",
+  "palegreen",
+  "paleturquoise",
+  "peachpuff",
+  "pink",
+  "plum",
+  "powderblue",
+  "sandybrown",
+  "skyblue",
+  "springgreen",
+  "tan",
+  "thistle",
+  "turquoise",
+  "wheat",
+  "yellowgreen",
+]);
+
 /** A stroke in the page colour paints out the ink. A dark stroke is still ink. */
 function colorIsPageLight(token: string): boolean {
   const t = token.replace(/!important/gi, "").trim().toLowerCase();
   if (!t || pieceIsClearColor(t)) return false;
   const relative = relativePageLight(t);
   if (relative != null) return relative;
-  if (PAGE_LIGHT.has(t) || t === "canvas" || t === "field" || SURFACE_COLOR.has(t) || isPaperVarToken(t)) return true;
+  if (PAGE_LIGHT.has(t) || WASH_NAMED.has(t) || t === "canvas" || t === "field" || SURFACE_COLOR.has(t) || isPaperVarToken(t)) return true;
   const hex = /^#([0-9a-f]{3,8})$/.exec(t);
   if (hex?.[1]) {
     const h = hex[1];
@@ -3299,17 +3453,34 @@ function functionIsPageLight(name: string, inner: string): boolean {
     const [r, g, b] = hwbToRgb(h, w, bk);
     return rgbIsPageLight(r, g, b);
   }
-  if (name === "oklch" || name === "oklab") {
-    const light = parts[0] ?? "";
-    if (light.endsWith("%")) return (percentOf(light) ?? 0) >= 0.9;
-    const n = Number(light);
-    return Number.isFinite(n) && n >= 0.9;
+  if (name === "oklch") {
+    if (parts.length < 3) return false;
+    const L = axisNumber(parts[0] ?? "", 1);
+    const C = axisNumber(parts[1] ?? "", 0.4);
+    const H = hueOrNone(parts[2] ?? "");
+    if (L == null || C == null || H == null) return false;
+    const [r, g, b] = oklchToRgb(L, C, H);
+    return rgbIsPageLight(r, g, b);
+  }
+  if (name === "oklab") {
+    if (parts.length < 3) return false;
+    const L = axisNumber(parts[0] ?? "", 1);
+    const a = axisNumber(parts[1] ?? "", 0.4);
+    const b = axisNumber(parts[2] ?? "", 0.4);
+    if (L == null || a == null || b == null) return false;
+    const [r, g, bb] = oklabToRgb(L, a, b);
+    return rgbIsPageLight(r, g, bb);
   }
   if (name === "lab" || name === "lch") {
-    const light = parts[0] ?? "";
-    if (light.endsWith("%")) return (percentOf(light) ?? 0) >= 0.9;
-    const n = Number(light);
-    return Number.isFinite(n) && n >= 90;
+    if (parts.length < 3) return false;
+    const L = axisNumber(parts[0] ?? "", 100);
+    const second = axisNumber(parts[1] ?? "", name === "lch" ? 150 : 125);
+    const third = name === "lch" ? hueOrNone(parts[2] ?? "") : axisNumber(parts[2] ?? "", 125);
+    if (L == null || second == null || third == null) return false;
+    const a = name === "lch" ? second * Math.cos((third * Math.PI) / 180) : second;
+    const b = name === "lch" ? second * Math.sin((third * Math.PI) / 180) : third;
+    const [r, g, bb] = labToRgb(L, a, b);
+    return rgbIsPageLight(r, g, bb);
   }
   if (name === "color") return colorFunctionIsPageLight(parts, alpha);
   if (name === "color-mix") return mixIsPageLight(inner);
@@ -3369,15 +3540,80 @@ function relativeOrigin(name: string, inner: string): string | null {
   return words.slice(0, -want.length).join(" ").trim() || null;
 }
 
+function relativeSplit(name: string, inner: string): { origin: string; channels: string[] } | null {
+  if (!/^from\s+/i.test(inner.trim())) return null;
+  const want = RELATIVE_CHANNELS[name];
+  if (!want) return null;
+  const body = inner.trim().replace(/^from\s+/i, "");
+  const slash = body.lastIndexOf("/");
+  const main = slash >= 0 ? body.slice(0, slash).trim() : body;
+  const words = splitTopWords(main).filter(Boolean);
+  if (words.length < want.length + 1) return null;
+  const channels = words.slice(-want.length);
+  const origin = words.slice(0, -want.length).join(" ").trim();
+  if (!origin) return null;
+  return { origin, channels };
+}
+
+function evaluateRelativeRgb(name: string, origin: string, channels: string[]): [number, number, number] | null {
+  const base = resolveRgb(origin);
+  if (!base) return null;
+  if (name === "rgb" || name === "rgba") {
+    const next = channels.map((token, index) => {
+      const id = ["r", "g", "b"][index] ?? "";
+      if (channelTokenIs(token, id)) return base[index] ?? 0;
+      return axisNumber(token, 255);
+    });
+    if (next.some((n) => n == null)) return null;
+    return [Math.round(next[0] ?? 0), Math.round(next[1] ?? 0), Math.round(next[2] ?? 0)];
+  }
+  if (name === "hsl" || name === "hsla") {
+    const [h0, s0, l0] = rgbToHsl(base[0], base[1], base[2]);
+    const h = channelTokenIs(channels[0] ?? "", "h") ? h0 : hueOrNone(channels[0] ?? "");
+    const s = channelTokenIs(channels[1] ?? "", "s") ? s0 : axisNumber(channels[1] ?? "", 1);
+    const l = channelTokenIs(channels[2] ?? "", "l") ? l0 : axisNumber(channels[2] ?? "", 1);
+    if (h == null || s == null || l == null) return null;
+    return hslToRgb(h, s, l);
+  }
+  if (name === "oklch") {
+    const [L0, a0, b0] = rgbToOklab(base[0], base[1], base[2]);
+    const C0 = Math.hypot(a0, b0);
+    const H0 = (Math.atan2(b0, a0) * 180) / Math.PI;
+    const L = channelTokenIs(channels[0] ?? "", "l") ? L0 : axisNumber(channels[0] ?? "", 1);
+    const C = channelTokenIs(channels[1] ?? "", "c") ? C0 : axisNumber(channels[1] ?? "", 0.4);
+    const H = channelTokenIs(channels[2] ?? "", "h") ? H0 : hueOrNone(channels[2] ?? "");
+    if (L == null || C == null || H == null) return null;
+    return oklchToRgb(L, C, H);
+  }
+  if (name === "oklab") {
+    const [L0, a0, b0] = rgbToOklab(base[0], base[1], base[2]);
+    const L = channelTokenIs(channels[0] ?? "", "l") ? L0 : axisNumber(channels[0] ?? "", 1);
+    const a = channelTokenIs(channels[1] ?? "", "a") ? a0 : axisNumber(channels[1] ?? "", 0.4);
+    const b = channelTokenIs(channels[2] ?? "", "b") ? b0 : axisNumber(channels[2] ?? "", 0.4);
+    if (L == null || a == null || b == null) return null;
+    return oklabToRgb(L, a, b);
+  }
+  return null;
+}
+
 function relativePageLight(value: string): boolean | null {
   const calls = namedFunctionCalls(value, ["color", "oklch", "oklab", "hsla", "rgba", "hwb", "lch", "lab", "hsl", "rgb"]);
   if (calls.length !== 1 || !calls[0]) return null;
   const call = calls[0];
   if (value.replace(/\s+/g, "") !== `${call.name}(${call.inner.replace(/\s+/g, "")})`) return null;
   if (!/^from\s+/i.test(call.inner.trim())) return null;
-  const origin = relativeOrigin(call.name, call.inner);
-  if (!origin) return false;
-  return colorIsPageLight(origin);
+  if (call.name === "color") {
+    const origin = relativeOrigin(call.name, call.inner);
+    if (!origin) return false;
+    return colorIsPageLight(origin);
+  }
+  const split = relativeSplit(call.name, call.inner);
+  if (!split) return false;
+  const want = RELATIVE_CHANNELS[call.name];
+  if (want && split.channels.every((word, index) => channelTokenIs(word, want[index] ?? ""))) return colorIsPageLight(split.origin);
+  const rgb = evaluateRelativeRgb(call.name, split.origin, split.channels);
+  if (!rgb) return false;
+  return rgbIsPageLight(rgb[0], rgb[1], rgb[2]);
 }
 
 function strokeShorthandHides(raw: string, hidden: Set<string>): boolean {
@@ -3463,7 +3699,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     return functionCallsNamed(val, ["blur"]).some((inner) => blurHides(inner, hidden));
   }
   if (prop === "mix-blend-mode") return valueCanHide(val, hidden, blendWashes);
-  if (prop === "color" && (activeInk || activePaint)) return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw) || inkTooFaint(raw));
+  if (prop === "color" && (activeInk || activePaint || /!important/i.test(val))) return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw) || inkTooFaint(raw));
   if (prop === "scale") {
     return splitScaleParts(val.replace(/!important/gi, "")).some((arg) => valueCanHide(arg, hidden, (raw) => hidesAsZero(raw) || scaleFactorHides(raw)));
   }
@@ -3479,7 +3715,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   }
   if (prop === "rotate") return rotatePropertyHides(val, hidden);
   if (prop === "zoom") return valueCanHide(val, hidden, (raw) => hidesAsZero(raw) || scaleFactorHides(raw));
-  if (prop === "font-size") return valueCanHide(val, hidden, hidesAsZero);
+  if (prop === "font-size") return valueCanHide(val, hidden, (v) => hidesAsZero(v) || fontFaceTiny(v));
   if (prop === "font") return valueCanHide(val, hidden, fontShorthandHides);
   if (prop === "font-size-adjust") return fontAspectHides(val, hidden);
   if (prop === "letter-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 12, 0.5));
@@ -6842,7 +7078,7 @@ function fontShorthandHides(raw: string): boolean {
     const head = (word.split("/")[0] ?? "").trim();
     if (!head || FONT_SKIP.test(head) || /^[1-9]00$/.test(head) || /(?:deg|turn|grad|rad)$/i.test(head)) continue;
     if (FONT_ABS.test(head)) return false;
-    return hidesAsZero(head);
+    return hidesAsZero(head) || fontFaceTiny(head);
   }
   return false;
 }
