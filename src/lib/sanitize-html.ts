@@ -632,7 +632,7 @@ function clampsToZero(value: string): boolean {
 function scaleFactorHides(value: string): boolean {
   const token = value.replace(/!important/gi, "").trim();
   if (!token || /^(?:none|auto|initial|inherit|unset)$/i.test(token)) return false;
-  const limit = activeStar ? 0.95 : activeRepeat ? 0.93 : activeInk ? 0.85 : 0.4;
+  const limit = activeStar ? 0.95 : activeRepeat ? 0.93 : activeInk ? 0.85 : activePage ? 0.1 : 0.4;
   const pct = percentOf(token);
   if (pct != null) return Math.abs(pct) < limit;
   const n = Number(token);
@@ -2824,7 +2824,7 @@ function sepiaHides(inner: string): boolean {
 function opacityAmountHides(raw: string): boolean {
   const n = filterAmount(raw.replace(/!important/gi, "").trim());
   if (n == null || n < 0) return false;
-  return activeStar ? n <= 0.83 : activeInk ? n <= 0.8 : n < 0.35;
+  return activeStar ? n <= 0.83 : activeInk ? n <= 0.8 : activePage ? n < 0.05 : n < 0.35;
 }
 
 function filterAmount(raw: string): number | null {
@@ -3859,6 +3859,7 @@ let activeStar = false;
 let activeRepeat = false;
 let activeChain = false;
 let activePaint = false;
+let activePage = false;
 
 function withSib<T>(sib: Sib, fn: () => T): T {
   const prev = activeSib;
@@ -5155,7 +5156,7 @@ function matrixScalesDown(value: string, hidden: Set<string>): boolean {
   const found = namedFunctionCalls(value, ["matrix3d", "matrix"]);
   return found.some((call) => {
     const nums = splitArgs(call.inner).map((arg) => coeffOf(arg, hidden));
-    const limit = activeStar ? 0.95 : activeInk ? 0.85 : 0.4;
+    const limit = activeStar ? 0.95 : activeInk ? 0.85 : activePage ? 0.1 : 0.4;
     const small = (x: number, y: number) => Number.isFinite(x) && Number.isFinite(y) && Math.hypot(x, y) < limit;
     if (call.name === "matrix") {
       if (nums.length < 4) return false;
@@ -5448,10 +5449,11 @@ const BODY_EL: DeskEl = { tag: "body", index: 2, count: 2, ofType: 1, ofTypeCoun
 const HEAD_EL: DeskEl = { tag: "head", index: 1, count: 2, ofType: 1, ofTypeCount: 1 };
 
 function attrMatchesDesk(inner: string, el: DeskEl): boolean {
-  if (el.tag !== "html") return false;
   const match = /^([a-zA-Z_][\w:.-]*)(?:\s*([~|^$*]?=)\s*(?:"([^"]*)"|'([^']*)'|([^\s]+)))?(?:\s+([iIsS]))?\s*$/.exec(inner.trim());
   if (!match) return false;
   const name = (match[1] ?? "").toLowerCase();
+  if (name === "contenteditable") return el.tag === "div" || WRITING_TAGS.has(el.tag);
+  if (el.tag !== "html") return false;
   const op = match[2] ?? "";
   const rawValue = match[3] ?? match[4] ?? match[5] ?? "";
   const flag = (match[6] ?? "").toLowerCase();
@@ -5698,6 +5700,11 @@ function compoundMatches(compound: string, el: DeskEl, scopeSel: string | null =
       continue;
     }
     if (name === "defined" || name === "read-only") continue;
+    if (name === "hover" || name === "focus-within" || name === "active") continue;
+    if (name === "read-write" || name === "focus" || name === "focus-visible") {
+      if (el.tag !== "div" && !WRITING_TAGS.has(el.tag)) return false;
+      continue;
+    }
     if (STATE_PSEUDO.test(name)) return false;
     if (name === "first-line") continue;
     if (name === "before" || name === "after" || name === "first-letter" || name === "selection" || name === "placeholder" || name === "marker" || name === "backdrop") return false;
@@ -5923,7 +5930,7 @@ function branchHidesDesk(selector: string, scopeSel: string | null = null): bool
   if (sel.includes("::")) return false;
   if (selectorMatchesEl(sel, HTML_EL, scopeSel) || selectorMatchesEl(sel, BODY_EL, scopeSel)) return true;
   if (hidesDeskContents(sel, scopeSel)) return true;
-  if (repeatsDiv(sel, scopeSel) || writesDesk(sel, scopeSel)) return true;
+  if (repeatsDiv(sel, scopeSel) || writesDesk(sel, scopeSel) || editsDesk(sel, scopeSel) || coversPage(sel, scopeSel)) return true;
   const steps = splitCombinators(sel.replace(/\s+/g, " "));
   if (steps.length !== 1) return false;
   const inner = functionalInner(steps[0]?.compound ?? "");
@@ -5998,10 +6005,46 @@ function repeatsDiv(selector: string, scopeSel: string | null): boolean {
     const steps = splitCombinators(text.replace(/\s+/g, " "));
     if (!steps.length) return false;
     const last = steps[steps.length - 1];
-    if (!last || !compoundIsBareTag(last.compound, "div")) return false;
+    if (!last) return false;
+    const bare = compoundIsBareTag(last.compound, "div");
+    const liveDiv = !bare && /^(\*\|)?div(?![\w-])/i.test(last.compound.trim()) && compoundMatches(last.compound, CHILD_PROBES[0] as DeskEl, scopeSel);
+    if (!bare && !liveDiv) return false;
     if (steps.length === 1) return true;
     const left = steps.slice(0, -1);
     return matchSteps(left, left.length - 1, HTML_EL, scopeSel) || matchSteps(left, left.length - 1, BODY_EL, scopeSel);
+  });
+}
+
+function compoundNamesEditor(compound: string): boolean {
+  return /\[(?:[^\]"']|"[^"]*"|'[^']*')*contenteditable\b/i.test(compound) || /:(?:read-write|focus-visible|focus)(?![\w-])/i.test(compound);
+}
+
+/** The open page is a contenteditable div. A class on that div may still hide it. */
+function editsDesk(selector: string, scopeSel: string | null): boolean {
+  const editor = CHILD_PROBES[0] as DeskEl;
+  return splitSelectorList(selector).some((part) => {
+    const text = part.trim();
+    if (!text || text.includes("::")) return false;
+    const steps = splitCombinators(text.replace(/\s+/g, " "));
+    if (!steps.length) return false;
+    const last = steps[steps.length - 1];
+    if (!last || !compoundNamesEditor(last.compound)) return false;
+    if (compoundMatches(last.compound, editor, scopeSel)) return true;
+    return [...WRITING_TAGS].some((tag) => compoundMatches(last.compound, writingEl(tag), scopeSel));
+  });
+}
+
+/** The open page is a section. A class on that section may still hide it. */
+function coversPage(selector: string, scopeSel: string | null): boolean {
+  const page = CHILD_PROBES[1] as DeskEl;
+  return splitSelectorList(selector).some((part) => {
+    const text = part.trim();
+    if (!text || text.includes("::")) return false;
+    const steps = splitCombinators(text.replace(/\s+/g, " "));
+    if (!steps.length) return false;
+    const last = steps[steps.length - 1];
+    if (!last || !compoundMatches(last.compound, page, scopeSel)) return false;
+    return !compoundIsUniversal(last.compound) && !compoundStacks(last.compound, scopeSel);
   });
 }
 
@@ -6053,6 +6096,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const prevRepeat = activeRepeat;
   const prevChain = activeChain;
   const prevPaint = activePaint;
+  const prevPage = activePage;
   if (desk) {
     const sel = nestingSel ?? "";
     const ink = coversInk(sel, scopeSel);
@@ -6060,7 +6104,8 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activeStar = ink;
     activeRepeat = !ink && repeatsDiv(sel, scopeSel);
     activeChain = !ink && !activeRepeat && chainsDesk(sel, scopeSel);
-    activePaint = ink || writesDesk(sel, scopeSel);
+    activePage = !ink && !activeRepeat && !activeChain && (coversPage(sel, scopeSel) || editsDesk(sel, scopeSel));
+    activePaint = ink || writesDesk(sel, scopeSel) || editsDesk(sel, scopeSel);
   }
   try {
   const scope = deskClipScope(nestingSel ?? "");
@@ -6198,6 +6243,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activeRepeat = prevRepeat;
     activeChain = prevChain;
     activePaint = prevPaint;
+    activePage = prevPage;
   }
 }
 

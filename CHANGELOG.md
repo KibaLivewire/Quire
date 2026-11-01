@@ -1,3 +1,18 @@
+# Quire 1.9.47 — The page stays while you write
+
+Released 1 November 2026.
+
+- **A section rule can no longer blank the open page.** The desk is a section. `section { display: none }`, `visibility: hidden`, `content-visibility: hidden`, `opacity: 0`, `height: 0` with a clip, and `scale(0)` remove it. A `section::before` sheet in the page colour covers it. Those are dropped. `opacity: 0.1` and `opacity: 0.2` still read. `scale(0.15)` still leaves a line. `scale(0.05)` does not. `brightness(4)` still reads. A section colour without `!important` does not reach the letters. A class on the section may still hide it. Colour stays.
+- **The writing box can no longer be switched off.** `:read-write`, `:focus`, and `[contenteditable]` are the open page. `display: none`, `visibility: hidden`, a page colour, a face of `2px`, `opacity: 0`, and `letter-spacing: 80vw` are dropped. `font-size: 1.125rem` and `opacity: 0.2` stay. A class may still hide that box. Colour stays.
+- **Hovering or typing can no longer wipe the desk.** `:hover`, `:focus-within`, and `:active` match the page while it is in use. `body:hover { display: none }`, `html:hover { opacity: 0 }`, `html:focus-within { display: none }`, `section:hover`, `section:focus-within`, `div:hover { display: none }`, and `:focus-within { color: #f3eee6 !important }` are dropped. `html:hover { opacity: 0.5 }` stays. `div:hover { brightness(1.2) }` stays. `div:hover { brightness(1.25) }` is dropped, the same stack as a div. `:focus-within { color: red }` stays. A class may still hide on hover. Colour stays.
+- **A read-only or defined div can no longer blank the stack.** `div:read-only { display: none }` and `div:defined { display: none }` remove the boxes around the writing. Those are dropped. A red colour on them stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.46 — The ink is not the page
 
 Released 1 November 2026.
