@@ -1,3 +1,22 @@
+# Quire 1.9.45 — The writing is still on the desk
+
+Released 1 November 2026.
+
+- **A star brightness of 1.18 can no longer wash the real desk.** The writing sits deep enough that `*{filter:brightness(1.2)}` and `brightness(1.25)` paint the page white. Those are dropped. `brightness(1.15)` stays. `brightness(4)` on `html` stays. A class may still wash. Colour stays.
+- **A star scale under 0.95 can no longer shrink the desk to a speck.** `scale(0.85)`, `zoom(0.85)`, and `matrix(0.9)` on a star leave no line. Those are dropped. `scale(0.95)`, `zoom(0.95)`, and `matrix(0.96)` stay. `scale(0.5)` on `html` stays. A class may still shrink. Colour stays.
+- **A star sepia of 0.8 can no longer paint the ink into the page.** `sepia(0.8)` and `sepia(1)` on a star leave no ink. Those are dropped. `sepia(0.6)` stays. `sepia(1)` on `html` stays. A class may still sepia. Colour stays.
+- **A selector that is not written as a star can no longer paint every box.** `:not(#quire-missing)`, `:not(:not(*))`, `:where(:not(#id))`, `:is(:not(#id))`, and `:not(span)` match the desk the way `*` does. A page colour on them is dropped. A class may still use the page colour. Colour stays.
+- **A div rule can no longer blank the desk.** `div{display:none}` and `body > div{display:none}` remove the writing. Those are dropped. `div{color:red}` stays. `div{filter:brightness(1.2)}` stays. `brightness(1.25)` on a div is dropped. A class may still use `display:none`. Colour stays.
+- **A paragraph colour or a zero face can no longer hide the writing.** `p{color:#f3eee6}` and `p{font-size:0}` paint out the line. Those are dropped. A dark paragraph colour and a real size stay. `p::first-line` may still set a size. Headings, list items, quotes, preformatted lines, and table cells follow the same colour rule. Colour stays.
+- **A short chain brightness can no longer wash the desk.** `:not(div){filter:brightness(1.8)}` leaves no ink. It is dropped. `brightness(1.7)` stays. `brightness(4)` on `html` stays. Colour stays.
+- **More system colours can no longer paint out the letters.** `ButtonHighlight`, `ButtonShadow`, `ActiveCaption`, `InactiveCaption`, `Scrollbar`, `Background`, `AppWorkspace`, `AccentColorText`, and `SelectedItemText` follow `Window`. Those are dropped on a star. `GrayText` and `CanvasText` stay. A class may still use a window colour. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.44 — The ink is not the page
 
 Released 31 October 2026.

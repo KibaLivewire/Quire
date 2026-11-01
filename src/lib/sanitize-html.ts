@@ -626,7 +626,7 @@ function clampsToZero(value: string): boolean {
 function scaleFactorHides(value: string): boolean {
   const token = value.replace(/!important/gi, "").trim();
   if (!token || /^(?:none|auto|initial|inherit|unset)$/i.test(token)) return false;
-  const limit = activeInk ? 0.85 : 0.4;
+  const limit = activeStar ? 0.95 : activeRepeat ? 0.93 : activeInk ? 0.85 : 0.4;
   const pct = percentOf(token);
   if (pct != null) return Math.abs(pct) < limit;
   const n = Number(token);
@@ -2746,9 +2746,9 @@ function blendWashes(raw: string): boolean {
   return WASH_BLEND.test(raw.replace(/!important/gi, "").trim());
 }
 
-/** brightness(5) and brighter wash the line into the page. brightness(0.08) and dimmer paint it black. brightness(4) still leaves the letters. A star compounds, so 1.3 is already white. brightness(1.2) on a star still leaves a line. */
+/** brightness(1.18) and brighter, on a star, wash the line out of the real desk. brightness(1.15) still leaves ink. A stack of divs washes at 1.25. A short chain that still includes html washes at 1.75. brightness(4) on html alone still leaves the letters. */
 function brightnessHides(inner: string, hidden: Set<string>, seen?: Set<string>): boolean {
-  const limit = activeStar ? 1.3 : activeInk ? 1.5 : 5;
+  const limit = activeStar ? 1.18 : activeRepeat ? 1.25 : activeChain ? 1.75 : activeInk ? 1.5 : 5;
   const arg = (splitArgs(inner)[0] ?? inner).trim();
   const plain = arg.replace(/!important/gi, "").trim();
   const amount = filterAmount(plain);
@@ -2805,11 +2805,19 @@ function invertHides(inner: string): boolean {
   return amount != null && amount > 0.35 && amount < 0.65;
 }
 
+/** sepia(0.8) and sepia(1) on a star turn the ink into the page. sepia(0.6) still reads. html sepia(1) stays. */
+function sepiaHides(inner: string): boolean {
+  if (!activeStar && !activeRepeat) return false;
+  const arg = (splitArgs(inner)[0] ?? inner).trim();
+  const amount = filterAmount(arg.replace(/!important/gi, "").trim());
+  return amount != null && amount >= 0.75;
+}
+
 /** A star fades the same way the opacity property does. html at 0.1 still reads. html at 0.02 does not. */
 function opacityAmountHides(raw: string): boolean {
   const n = filterAmount(raw.replace(/!important/gi, "").trim());
   if (n == null || n < 0) return false;
-  return activeInk ? n <= 0.8 : n < 0.1;
+  return activeStar ? n <= 0.83 : activeInk ? n <= 0.8 : n < 0.1;
 }
 
 function filterAmount(raw: string): number | null {
@@ -2978,7 +2986,7 @@ function rgbIsPageLight(r: number, g: number, b: number): boolean {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) >= 0.7;
 }
 
-const SURFACE_COLOR = new Set(["window", "buttonface", "threedface", "menu", "infobackground", "highlight", "highlighttext", "mark"]);
+const SURFACE_COLOR = new Set(["window", "buttonface", "threedface", "menu", "infobackground", "highlight", "highlighttext", "mark", "buttonhighlight", "buttonshadow", "activecaption", "inactivecaption", "scrollbar", "background", "appworkspace", "accentcolortext", "selecteditemtext"]);
 
 /** These tokens are the page, on every built-in desk. Ink tokens such as --color-ink are not. */
 const PAPER_VARS = new Set([
@@ -3450,11 +3458,12 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     if (functionCallsNamed(val, ["brightness"]).some((inner) => brightnessHides(inner, hidden))) return true;
     if (functionCallsNamed(val, ["contrast"]).some((inner) => contrastHides(inner, hidden))) return true;
     if (functionCallsNamed(val, ["invert"]).some((inner) => invertHides(inner))) return true;
+    if (functionCallsNamed(val, ["sepia"]).some((inner) => sepiaHides(inner))) return true;
     if (functionCallsNamed(val, ["opacity"]).some((inner) => opacityAmountHides(inner))) return true;
     return functionCallsNamed(val, ["blur"]).some((inner) => blurHides(inner, hidden));
   }
   if (prop === "mix-blend-mode") return valueCanHide(val, hidden, blendWashes);
-  if (prop === "color" && activeInk) return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw) || inkTooFaint(raw));
+  if (prop === "color" && (activeInk || activePaint)) return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw) || inkTooFaint(raw));
   if (prop === "scale") {
     return splitScaleParts(val.replace(/!important/gi, "")).some((arg) => valueCanHide(arg, hidden, (raw) => hidesAsZero(raw) || scaleFactorHides(raw)));
   }
@@ -3611,6 +3620,9 @@ const BODY_SIB: Sib = { index: 2, count: 2 };
 let activeSib: Sib | null = null;
 let activeInk = false;
 let activeStar = false;
+let activeRepeat = false;
+let activeChain = false;
+let activePaint = false;
 
 function withSib<T>(sib: Sib, fn: () => T): T {
   const prev = activeSib;
@@ -4907,7 +4919,7 @@ function matrixScalesDown(value: string, hidden: Set<string>): boolean {
   const found = namedFunctionCalls(value, ["matrix3d", "matrix"]);
   return found.some((call) => {
     const nums = splitArgs(call.inner).map((arg) => coeffOf(arg, hidden));
-    const limit = activeInk ? 0.85 : 0.4;
+    const limit = activeStar ? 0.95 : activeInk ? 0.85 : 0.4;
     const small = (x: number, y: number) => Number.isFinite(x) && Number.isFinite(y) && Math.hypot(x, y) < limit;
     if (call.name === "matrix") {
       if (nums.length < 4) return false;
@@ -5668,10 +5680,14 @@ function branchHidesDesk(selector: string, scopeSel: string | null = null): bool
   const sel = selector.trim();
   if (!sel) return false;
   const line = withoutLinePseudo(sel);
-  if (line != null) return branchHidesDesk(line, scopeSel);
+  if (line != null) {
+    if (WRITING_TAGS.has(line.trim().toLowerCase())) return false;
+    return branchHidesDesk(line, scopeSel);
+  }
   if (sel.includes("::")) return false;
   if (selectorMatchesEl(sel, HTML_EL, scopeSel) || selectorMatchesEl(sel, BODY_EL, scopeSel)) return true;
   if (hidesDeskContents(sel, scopeSel)) return true;
+  if (repeatsDiv(sel, scopeSel) || writesDesk(sel, scopeSel)) return true;
   const steps = splitCombinators(sel.replace(/\s+/g, " "));
   if (steps.length !== 1) return false;
   const inner = functionalInner(steps[0]?.compound ?? "");
@@ -5723,6 +5739,63 @@ function hideProfiles(selector: string, scopeSel: string | null): Sib[] {
   return profiles;
 }
 
+const WRITING_TAGS = new Set(["p", "h1", "h2", "h3", "li", "blockquote", "pre", "td", "th"]);
+
+function compoundIsBareTag(compound: string, tag: string): boolean {
+  const text = compound.trim().toLowerCase();
+  return text === tag || text === `*|${tag}`;
+}
+
+function writingEl(tag: string): DeskEl {
+  return { tag, index: 1, count: 1, ofType: 1, ofTypeCount: 1 };
+}
+
+/** A compound that matches html and a div reaches the writing through the real desk, the same way a star does. */
+function compoundStacks(compound: string, scopeSel: string | null): boolean {
+  return compoundMatches(compound, HTML_EL, scopeSel) && compoundMatches(compound, CHILD_PROBES[0] as DeskEl, scopeSel);
+}
+
+function repeatsDiv(selector: string, scopeSel: string | null): boolean {
+  return splitSelectorList(selector).some((part) => {
+    const text = part.trim();
+    if (!text || text.includes("::")) return false;
+    const steps = splitCombinators(text.replace(/\s+/g, " "));
+    if (!steps.length) return false;
+    const last = steps[steps.length - 1];
+    if (!last || !compoundIsBareTag(last.compound, "div")) return false;
+    if (steps.length === 1) return true;
+    const left = steps.slice(0, -1);
+    return matchSteps(left, left.length - 1, HTML_EL, scopeSel) || matchSteps(left, left.length - 1, BODY_EL, scopeSel);
+  });
+}
+
+function writesDesk(selector: string, scopeSel: string | null): boolean {
+  return splitSelectorList(selector).some((part) => {
+    const text = part.trim();
+    if (!text || text.includes("::")) return false;
+    const steps = splitCombinators(text.replace(/\s+/g, " "));
+    if (steps.length !== 1) return false;
+    const compound = steps[0]?.compound ?? "";
+    return [...WRITING_TAGS].some((tag) => compoundMatches(compound, writingEl(tag), scopeSel));
+  });
+}
+
+/** html plus another box, but not a div, is a short chain. It is not the full star. */
+function chainsDesk(selector: string, scopeSel: string | null): boolean {
+  let html = false;
+  let div = false;
+  let other = false;
+  const section = CHILD_PROBES[1] as DeskEl;
+  for (const part of splitSelectorList(selector)) {
+    const text = part.trim();
+    if (!text || text.includes("::")) continue;
+    if (selectorMatchesEl(text, HTML_EL, scopeSel)) html = true;
+    if (selectorMatchesEl(text, CHILD_PROBES[0] as DeskEl, scopeSel)) div = true;
+    if (selectorMatchesEl(text, BODY_EL, scopeSel) || selectorMatchesEl(text, section, scopeSel)) other = true;
+  }
+  return html && other && !div;
+}
+
 function coversInk(selector: string, scopeSel: string | null): boolean {
   return splitSelectorList(selector).some((part) => {
     const text = part.trim();
@@ -5731,7 +5804,7 @@ function coversInk(selector: string, scopeSel: string | null): boolean {
     if (line != null) return coversInk(line, scopeSel);
     if (text.includes("::")) return false;
     const steps = splitCombinators(text.replace(/\s+/g, " "));
-    if (steps.length === 1 && compoundIsUniversal(steps[0]?.compound ?? "")) return true;
+    if (steps.length === 1 && (compoundIsUniversal(steps[0]?.compound ?? "") || compoundStacks(steps[0]?.compound ?? "", scopeSel))) return true;
     if (hidesDeskContents(text, scopeSel)) return true;
     const inner = steps.length === 1 ? functionalInner(steps[0]?.compound ?? "") : null;
     return Boolean(inner?.some((bit) => coversInk(bit, scopeSel)));
@@ -5741,10 +5814,17 @@ function coversInk(selector: string, scopeSel: string | null): boolean {
 function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, desk: boolean, scopeSel: string | null = null, nestingSel: string | null = null, profiles: Sib[] = [], stackBefore = false): string {
   const prevInk = activeInk;
   const prevStar = activeStar;
+  const prevRepeat = activeRepeat;
+  const prevChain = activeChain;
+  const prevPaint = activePaint;
   if (desk) {
-    const ink = coversInk(nestingSel ?? "", scopeSel);
+    const sel = nestingSel ?? "";
+    const ink = coversInk(sel, scopeSel);
     activeInk = ink;
     activeStar = ink;
+    activeRepeat = !ink && repeatsDiv(sel, scopeSel);
+    activeChain = !ink && !activeRepeat && chainsDesk(sel, scopeSel);
+    activePaint = ink || writesDesk(sel, scopeSel);
   }
   try {
   const scope = deskClipScope(nestingSel ?? "");
@@ -5879,6 +5959,9 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   } finally {
     activeInk = prevInk;
     activeStar = prevStar;
+    activeRepeat = prevRepeat;
+    activeChain = prevChain;
+    activePaint = prevPaint;
   }
 }
 
