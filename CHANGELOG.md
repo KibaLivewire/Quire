@@ -1,3 +1,20 @@
+# Quire 1.9.48 — The writing is still in the boxes
+
+Released 3 November 2026.
+
+- **A descendant of the page can no longer blank the writing.** `section p`, `div div`, `body p`, `section > div`, `:is(section) p`, and `section:hover p` were not the desk. `display: none`, a page colour, a zero face, `opacity: 0`, and `visibility: hidden` on them hid the letters. Those are dropped. A readable colour and `1.125rem` stay. A class may still hide. Colour stays.
+- **A :has() on the section or a div can no longer blank the desk.** `section:has(p)`, `div:has(p)`, `div:has(textarea)`, and `div:has(section)` match the open page. Those hides are dropped. `html:has(section)` was already dropped.
+- **A sibling after the header, the title, or a button can no longer blank the page.** `header + div`, `header ~ div`, `textarea ~ div`, and `button + div` remove the column that holds the writing. Those are dropped. `header p` is the crumb, not the page, and stays. `textarea + div` does not match, because a button sits between them. `textarea { display: none }` can still hide the title field. The page letters stay.
+- **A selection colour can no longer paint the marked letters out.** `::selection` and `p::selection` in the page colour are dropped. A dark selection colour stays. Colour stays.
+- **A div fade under 0.8 can no longer wash the stack.** `div { filter: opacity(0.4) }` and `opacity(0.75)` compound until the writing is gone. Those are dropped. `opacity(0.8)` and `div { opacity: 0.85 }` still read. `filter: opacity(0.4)` on `html` stays. Colour stays.
+- **A blur on the writing can no longer smear the line away.** `section p { filter: blur(0.2em) }`, `blur(0.35em)`, and `blur(3px)` leave no words. Those are dropped. `blur(1.5px)` and `blur(0.1em)` still read. `blur(5px)` and `blur(0.35em)` on `html` stay. A class may still blur. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.47 — The page stays while you write
 
 Released 1 November 2026.

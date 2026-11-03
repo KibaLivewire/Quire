@@ -2714,7 +2714,7 @@ function blurHides(inner: string, hidden: Set<string>, seen?: Set<string>): bool
   const arg = (splitArgs(inner)[0] ?? inner).trim();
   const px = lengthPx(arg);
   if (px != null) {
-    const limit = activeStar ? 2 : lengthUnit(arg) === "q" ? 12 : 6;
+    const limit = activeStar ? 2 : activePage ? 3 : lengthUnit(arg) === "q" ? 12 : 6;
     return Math.abs(px) >= limit;
   }
   const compact = arg.replace(/!important/gi, "").replace(/\s+/g, "");
@@ -2724,7 +2724,7 @@ function blurHides(inner: string, hidden: Set<string>, seen?: Set<string>): bool
     if (units.length === 1 && units[0]?.[1] === 1) {
       const unit = units[0]?.[0] ?? "";
       const n = Math.abs(parsed.n);
-      const emLimit = activeStar ? 0.15 : 0.375;
+      const emLimit = activeStar || activePage ? 0.15 : 0.375;
       if (unit === "em" || unit === "rem" || unit === "ic" || unit === "ric") return n >= emLimit;
       if (unit === "lh" || unit === "rlh") return n >= (activeStar ? 0.15 : 0.5);
       if (unit === "cap" || unit === "rcap") return n >= 1;
@@ -2824,7 +2824,7 @@ function sepiaHides(inner: string): boolean {
 function opacityAmountHides(raw: string): boolean {
   const n = filterAmount(raw.replace(/!important/gi, "").trim());
   if (n == null || n < 0) return false;
-  return activeStar ? n <= 0.83 : activeInk ? n <= 0.8 : activePage ? n < 0.05 : n < 0.35;
+  return activeStar ? n <= 0.83 : activeRepeat ? n < 0.8 : activeInk ? n <= 0.8 : activePage ? n < 0.05 : n < 0.35;
 }
 
 function filterAmount(raw: string): number | null {
@@ -5857,8 +5857,22 @@ function siblingsOf(el: DeskEl): DeskEl[] {
 }
 
 function knownUnder(el: DeskEl, childOnly: boolean): DeskEl[] {
-  if (el.tag === "html") return childOnly ? [HEAD_EL, BODY_EL] : [HEAD_EL, BODY_EL, ...CHILD_PROBES];
-  if (el.tag === "body") return [...CHILD_PROBES];
+  const writing = [...WRITING_TAGS].map((tag) => writingEl(tag));
+  const extra = ["textarea", "button", "header", "footer", "a", "img", "svg", "table", "tr", "ul", "ol", "label", "input"].map(
+    (tag) => ({ tag, index: 1, count: 1, ofType: 1, ofTypeCount: 1 }) as DeskEl,
+  );
+  if (el.tag === "html") return childOnly ? [HEAD_EL, BODY_EL] : [HEAD_EL, BODY_EL, ...CHILD_PROBES, ...writing, ...extra];
+  if (el.tag === "body") return childOnly ? [...CHILD_PROBES] : [...CHILD_PROBES, ...writing, ...extra];
+  if (el.tag === "div" || el.tag === "section" || el.tag === "main" || el.tag === "article") {
+    const direct = [
+      { tag: "div", index: 1, count: 1, ofType: 1, ofTypeCount: 1 },
+      { tag: "header", index: 1, count: 1, ofType: 1, ofTypeCount: 1 },
+      { tag: "footer", index: 1, count: 1, ofType: 1, ofTypeCount: 1 },
+      { tag: "textarea", index: 1, count: 1, ofType: 1, ofTypeCount: 1 },
+      { tag: "button", index: 1, count: 1, ofType: 1, ofTypeCount: 1 },
+    ] as DeskEl[];
+    return childOnly ? direct : [...CHILD_PROBES, ...writing, ...extra];
+  }
   return [];
 }
 
@@ -5919,18 +5933,219 @@ function withoutLinePseudo(selector: string): string | null {
   return next || "*";
 }
 
+type LiveNode = DeskEl & {
+  parent: LiveNode | null;
+  children: LiveNode[];
+  pageText: boolean;
+  guardsPage: boolean;
+};
+
+type LiveSpec = { tag: string; pageText?: boolean; children?: LiveSpec[] };
+
+/** The open page: a section, the nested boxes, the title, and the writing. A class is not part of this tree. */
+const DESK_SPEC: LiveSpec = {
+  tag: "html",
+  children: [
+    { tag: "head" },
+    {
+      tag: "body",
+      children: [
+        {
+          tag: "div",
+          children: [
+            {
+              tag: "section",
+              children: [
+                { tag: "header", children: [{ tag: "button" }, { tag: "p" }] },
+                {
+                  tag: "div",
+                  children: [
+                    {
+                      tag: "div",
+                      children: [
+                        {
+                          tag: "div",
+                          children: [
+                            { tag: "textarea" },
+                            { tag: "button" },
+                            {
+                              tag: "div",
+                              children: [
+                                {
+                                  tag: "div",
+                                  children: [
+                                    {
+                                      tag: "div",
+                                      children: [
+                                        {
+                                          tag: "div",
+                                          children: [
+                                            { tag: "span" },
+                                            {
+                                              tag: "div",
+                                              children: [
+                                                {
+                                                  tag: "div",
+                                                  children: [
+                                                    { tag: "p", pageText: true },
+                                                    { tag: "h1", pageText: true },
+                                                    { tag: "h2", pageText: true },
+                                                    { tag: "h3", pageText: true },
+                                                    { tag: "ul", children: [{ tag: "li", pageText: true }] },
+                                                    { tag: "blockquote", pageText: true },
+                                                    { tag: "pre", pageText: true },
+                                                    {
+                                                      tag: "table",
+                                                      children: [{ tag: "tr", children: [{ tag: "td", pageText: true }, { tag: "th", pageText: true }] }],
+                                                    },
+                                                  ],
+                                                },
+                                              ],
+                                            },
+                                          ],
+                                        },
+                                      ],
+                                    },
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+                { tag: "footer", children: [{ tag: "span" }, { tag: "button" }] },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+function buildLive(spec: LiveSpec, parent: LiveNode | null): LiveNode {
+  const node: LiveNode = {
+    tag: spec.tag,
+    index: 1,
+    count: 1,
+    ofType: 1,
+    ofTypeCount: 1,
+    parent,
+    children: [],
+    pageText: spec.pageText === true,
+    guardsPage: false,
+  };
+  node.children = (spec.children ?? []).map((kid) => buildLive(kid, node));
+  const typeCount = new Map<string, number>();
+  for (const kid of node.children) typeCount.set(kid.tag, (typeCount.get(kid.tag) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  node.children.forEach((kid, i) => {
+    kid.index = i + 1;
+    kid.count = node.children.length;
+    const n = (seen.get(kid.tag) ?? 0) + 1;
+    seen.set(kid.tag, n);
+    kid.ofType = n;
+    kid.ofTypeCount = typeCount.get(kid.tag) ?? 1;
+  });
+  return node;
+}
+
+function markLiveGuards(node: LiveNode): boolean {
+  let hit = node.pageText;
+  for (const kid of node.children) if (markLiveGuards(kid)) hit = true;
+  node.guardsPage = hit;
+  return hit;
+}
+
+let liveRootCache: LiveNode | null = null;
+let liveListCache: LiveNode[] | null = null;
+
+function liveRoot(): LiveNode {
+  if (!liveRootCache) {
+    liveRootCache = buildLive(DESK_SPEC, null);
+    markLiveGuards(liveRootCache);
+  }
+  return liveRootCache;
+}
+
+function liveList(): LiveNode[] {
+  if (!liveListCache) {
+    const all: LiveNode[] = [];
+    const walk = (node: LiveNode) => {
+      all.push(node);
+      for (const kid of node.children) walk(kid);
+    };
+    walk(liveRoot());
+    liveListCache = all;
+  }
+  return liveListCache;
+}
+
+function matchLiveSteps(steps: { combinator: string; compound: string }[], index: number, el: LiveNode, scopeSel: string | null): boolean {
+  const step = steps[index];
+  if (!step || !compoundMatches(step.compound, el, scopeSel)) return false;
+  if (index === 0) return true;
+  const comb = step.combinator;
+  if (comb === ">") return Boolean(el.parent) && matchLiveSteps(steps, index - 1, el.parent as LiveNode, scopeSel);
+  if (comb === " ") {
+    let ancestor = el.parent;
+    while (ancestor) {
+      if (matchLiveSteps(steps, index - 1, ancestor, scopeSel)) return true;
+      ancestor = ancestor.parent;
+    }
+    return false;
+  }
+  if (comb === "+" || comb === "~") {
+    const sibs = el.parent?.children ?? [];
+    const at = sibs.indexOf(el);
+    const prevs = sibs.slice(0, Math.max(0, at));
+    const list = comb === "+" ? prevs.slice(-1) : prevs;
+    return list.some((sib) => matchLiveSteps(steps, index - 1, sib, scopeSel));
+  }
+  return false;
+}
+
+type LiveHit = { desk: boolean; writing: boolean; div: boolean; page: boolean };
+
+/** A selector that reaches the writing, or a box around it, on the open page. A class still does not. */
+function liveHit(selector: string, scopeSel: string | null): LiveHit {
+  const hit: LiveHit = { desk: false, writing: false, div: false, page: false };
+  for (const part of splitSelectorList(selector)) {
+    const text = part.trim();
+    if (!text || text.includes("::")) continue;
+    const steps = splitCombinators(text.replace(/\s+/g, " "));
+    if (!steps.length) continue;
+    for (const el of liveList()) {
+      if (!el.guardsPage) continue;
+      if (!matchLiveSteps(steps, steps.length - 1, el, scopeSel)) continue;
+      hit.desk = true;
+      if (el.pageText) hit.writing = true;
+      if (el.tag === "div") hit.div = true;
+      if (el.tag === "section") hit.page = true;
+    }
+  }
+  return hit;
+}
+
 function branchHidesDesk(selector: string, scopeSel: string | null = null): boolean {
   const sel = selector.trim();
   if (!sel) return false;
   const line = withoutLinePseudo(sel);
   if (line != null) {
     if (WRITING_TAGS.has(line.trim().toLowerCase())) return false;
+    const hit = liveHit(line, scopeSel);
+    if (hit.writing && !hit.div && !hit.page) return false;
     return branchHidesDesk(line, scopeSel);
   }
+  if (/::selection\b/i.test(sel)) return true;
   if (sel.includes("::")) return false;
   if (selectorMatchesEl(sel, HTML_EL, scopeSel) || selectorMatchesEl(sel, BODY_EL, scopeSel)) return true;
   if (hidesDeskContents(sel, scopeSel)) return true;
   if (repeatsDiv(sel, scopeSel) || writesDesk(sel, scopeSel) || editsDesk(sel, scopeSel) || coversPage(sel, scopeSel)) return true;
+  if (liveHit(sel, scopeSel).desk) return true;
   const steps = splitCombinators(sel.replace(/\s+/g, " "));
   if (steps.length !== 1) return false;
   const inner = functionalInner(steps[0]?.compound ?? "");
@@ -6100,12 +6315,15 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   if (desk) {
     const sel = nestingSel ?? "";
     const ink = coversInk(sel, scopeSel);
-    activeInk = ink;
-    activeStar = ink;
-    activeRepeat = !ink && repeatsDiv(sel, scopeSel);
-    activeChain = !ink && !activeRepeat && chainsDesk(sel, scopeSel);
-    activePage = !ink && !activeRepeat && !activeChain && (coversPage(sel, scopeSel) || editsDesk(sel, scopeSel));
-    activePaint = ink || writesDesk(sel, scopeSel) || editsDesk(sel, scopeSel);
+    const live = liveHit(sel, scopeSel);
+    const editing = editsDesk(sel, scopeSel);
+    const compound = !ink && !editing && live.div && live.writing;
+    activeInk = ink || compound;
+    activeStar = ink || compound;
+    activeRepeat = !activeStar && ((!ink && repeatsDiv(sel, scopeSel)) || (!editing && live.div));
+    activeChain = !activeStar && !activeRepeat && chainsDesk(sel, scopeSel);
+    activePage = !activeStar && !activeRepeat && !activeChain && (coversPage(sel, scopeSel) || editing || live.page || live.writing);
+    activePaint = activeInk || writesDesk(sel, scopeSel) || editing || live.writing || /::selection\b/i.test(sel);
   }
   try {
   const scope = deskClipScope(nestingSel ?? "");
