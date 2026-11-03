@@ -632,7 +632,7 @@ function clampsToZero(value: string): boolean {
 function scaleFactorHides(value: string): boolean {
   const token = value.replace(/!important/gi, "").trim();
   if (!token || /^(?:none|auto|initial|inherit|unset)$/i.test(token)) return false;
-  const limit = activeStar ? 0.95 : activeRepeat ? 0.93 : activeInk ? 0.85 : activePage ? 0.1 : 0.4;
+  const limit = activeStar ? 0.95 : activeRepeat ? 0.93 : activeInk ? 0.85 : activePaint ? 0.25 : activePage ? 0.13 : 0.4;
   const pct = percentOf(token);
   if (pct != null) return Math.abs(pct) < limit;
   const n = Number(token);
@@ -907,11 +907,11 @@ function coordSpanHides(inner: string): boolean {
   }
   const x = axisIsSliver(xs);
   const y = axisIsSliver(ys);
-  return (x.sliver && y.wide) || (y.sliver && x.wide);
+  return (x.sliver && y.wide) || (y.sliver && x.wide) || (activePaint && x.px <= 12 && y.px <= 12);
 }
 
-function axisIsSliver(coords: { n: number; u: string }[]): { sliver: boolean; wide: boolean } {
-  if (coords.some((coord) => !Number.isFinite(coord.n))) return { sliver: false, wide: false };
+function axisIsSliver(coords: { n: number; u: string }[]): { sliver: boolean; wide: boolean; px: number } {
+  if (coords.some((coord) => !Number.isFinite(coord.n))) return { sliver: false, wide: false, px: Number.POSITIVE_INFINITY };
   const nonzero = coords.filter((coord) => coord.n !== 0);
   const units = new Set((nonzero.length ? nonzero : coords).map((coord) => coord.u));
   const span = Math.max(...coords.map((coord) => coord.n)) - Math.min(...coords.map((coord) => coord.n));
@@ -923,11 +923,11 @@ function axisIsSliver(coords: { n: number; u: string }[]): { sliver: boolean; wi
   const pxSpan = Math.max(...px) - Math.min(...px);
   if (units.size === 1) {
     const unit = [...units][0] ?? "";
-    if (unit === "%") return { sliver: span <= 8, wide: span >= 50 };
-    if (unit === "em" || unit === "rem") return { sliver: span <= 2, wide: span >= 25 };
-    return { sliver: span <= 32, wide: pxSpan >= 400 };
+    if (unit === "%") return { sliver: span <= 8, wide: span >= 50, px: pxSpan };
+    if (unit === "em" || unit === "rem") return { sliver: span <= 2, wide: span >= 25, px: pxSpan };
+    return { sliver: span <= 32, wide: pxSpan >= 400, px: pxSpan };
   }
-  return { sliver: pxSpan <= 32, wide: pxSpan >= 400 };
+  return { sliver: pxSpan <= 32, wide: pxSpan >= 400, px: pxSpan };
 }
 function polygonAreaZero(inner: string): boolean {
   let body = inner.trim().replace(/^(?:evenodd|nonzero)\s*,\s*/i, "");
@@ -2506,6 +2506,15 @@ function starRotateFlattens(token: string, hidden: Set<string>): boolean {
   return Math.abs(m - 90) <= 45;
 }
 
+/** rotateX(89deg) on the writing itself is a hairline. The same turn on html still reads. */
+function paintRotateFlattens(token: string, hidden: Set<string>): boolean {
+  if (!activePaint) return false;
+  const deg = angleDegrees(token, hidden);
+  if (deg == null) return false;
+  const m = ((deg % 180) + 180) % 180;
+  return Math.abs(m - 90) <= 8;
+}
+
 function angleIsEdge(token: string, hidden: Set<string>): boolean {
   const deg = angleDegrees(token, hidden);
   return deg != null && (nearDeg(deg, 90) || nearDeg(deg, 270));
@@ -2550,7 +2559,7 @@ function transformAxisHides(value: string, hidden: Set<string>, seen?: Set<strin
   const found = namedFunctionCalls(value, ["rotate3d", "rotatex", "rotatey", "rotatez", "rotate", "skewx", "skewy", "skew"]);
   for (const call of found) {
     const args = splitArgs(call.inner);
-    if ((call.name === "rotatex" || call.name === "rotatey") && args.some((arg) => angleIsEdge(arg, hidden) || starRotateFlattens(arg, hidden))) return true;
+    if ((call.name === "rotatex" || call.name === "rotatey") && args.some((arg) => angleIsEdge(arg, hidden) || starRotateFlattens(arg, hidden) || paintRotateFlattens(arg, hidden))) return true;
     if (call.name === "rotate3d" && axisArgsHide(args, hidden, true)) return true;
     if ((call.name === "skewx" || call.name === "skewy" || call.name === "skew") && skewCallHides(call.inner, hidden)) return true;
   }
@@ -2714,7 +2723,7 @@ function blurHides(inner: string, hidden: Set<string>, seen?: Set<string>): bool
   const arg = (splitArgs(inner)[0] ?? inner).trim();
   const px = lengthPx(arg);
   if (px != null) {
-    const limit = activeStar ? 2 : activePage ? 3 : lengthUnit(arg) === "q" ? 12 : 6;
+    const limit = activeStack ? 1 : activeStar ? 2 : activePage ? 3 : lengthUnit(arg) === "q" ? 12 : 6;
     return Math.abs(px) >= limit;
   }
   const compact = arg.replace(/!important/gi, "").replace(/\s+/g, "");
@@ -2824,7 +2833,14 @@ function sepiaHides(inner: string): boolean {
 function opacityAmountHides(raw: string): boolean {
   const n = filterAmount(raw.replace(/!important/gi, "").trim());
   if (n == null || n < 0) return false;
-  return activeStar ? n <= 0.83 : activeRepeat ? n < 0.8 : activeInk ? n <= 0.8 : activePage ? n < 0.05 : n < 0.35;
+  return activeStar ? n <= 0.83 : activeRepeat ? n < 0.8 : activeInk ? n <= 0.8 : activePage ? n < 0.1 : n < 0.35;
+}
+
+/** filter:opacity(0.2) on the letters leaves no ink. The opacity property at 0.2 still reads. html at 0.4 stays. */
+function filterOpacityWashes(raw: string): boolean {
+  if (!activePaint) return false;
+  const n = filterAmount(raw.replace(/!important/gi, "").trim());
+  return n != null && n >= 0 && n < 0.35;
 }
 
 function filterAmount(raw: string): number | null {
@@ -2905,6 +2921,15 @@ function spacingHides(value: string, hidden: Set<string>, limit: number, emLimit
   return shiftTokenCovers(token, hidden);
 }
 function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
+  const compact = value.replace(/!important/gi, "").replace(/\s+/g, "");
+  const parsed = parseMathSum(compact, 0);
+  if (parsed && parsed.i === compact.length && Number.isFinite(parsed.n)) {
+    const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+    if (units.length === 1 && units[0]?.[1] === 1) {
+      const unit = units[0]?.[0] ?? "";
+      if (/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) || /^cq(?:w|h|i|b|min|max)$/.test(unit)) return Math.abs(parsed.n) >= 80;
+    }
+  }
   const px = lengthDeskPx(value);
   if (px != null) return Math.abs(px) >= 880;
   const trail = seen ?? new Set<string>();
@@ -3684,7 +3709,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (wholeFunction(val, "if")) return ifCanHide(val, hidden, (branch) => declarationHidesDesk(`${prop}: ${branch}`, hidden));
   if (prop === "display" || prop === "pointer-events") return valueCanHide(val, hidden, (v) => /\bnone\b/i.test(v));
   if (prop === "visibility") return valueCanHide(val, hidden, (v) => /\b(?:hidden|collapse)\b/i.test(v));
-  if (prop === "content-visibility") return valueCanHide(val, hidden, (v) => /\bhidden\b/i.test(v));
+  if (prop === "content-visibility") return valueCanHide(val, hidden, (v) => /\bhidden\b/i.test(v) || ((activePaint || activePage) && /\bauto\b/i.test(v)));
   if (prop === "opacity") {
     if (valueCanHide(val, hidden, clampsToZero)) return true;
     return valueCanHide(val, hidden, opacityAmountHides);
@@ -3695,7 +3720,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     if (functionCallsNamed(val, ["contrast"]).some((inner) => contrastHides(inner, hidden))) return true;
     if (functionCallsNamed(val, ["invert"]).some((inner) => invertHides(inner))) return true;
     if (functionCallsNamed(val, ["sepia"]).some((inner) => sepiaHides(inner))) return true;
-    if (functionCallsNamed(val, ["opacity"]).some((inner) => opacityAmountHides(inner))) return true;
+    if (functionCallsNamed(val, ["opacity"]).some((inner) => opacityAmountHides(inner) || filterOpacityWashes(inner))) return true;
     return functionCallsNamed(val, ["blur"]).some((inner) => blurHides(inner, hidden));
   }
   if (prop === "mix-blend-mode") return valueCanHide(val, hidden, blendWashes);
@@ -3722,6 +3747,9 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "word-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 96));
   if (prop === "-webkit-text-fill-color" || prop === "text-fill-color") {
     return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw));
+  }
+  if ((prop === "background-clip" || prop === "-webkit-background-clip") && activePaint) {
+    return valueCanHide(val, hidden, (raw) => /\btext\b/i.test(raw.replace(/!important/gi, "")));
   }
   if (prop === "-webkit-text-security" || prop === "text-security") {
     return valueCanHide(val, hidden, (raw) => /^(?:disc|circle|square)$/i.test(raw.replace(/!important/gi, "").trim()));
@@ -3860,6 +3888,8 @@ let activeRepeat = false;
 let activeChain = false;
 let activePaint = false;
 let activePage = false;
+let activeStack = false;
+let activeDivs = 0;
 
 function withSib<T>(sib: Sib, fn: () => T): T {
   const prev = activeSib;
@@ -3897,9 +3927,17 @@ function isBoxZero(part: string, hidden: Set<string>): boolean {
   return BOX_SIZE.has(prop) && valueCanHide(part.slice(idx + 1), hidden, hidesAsZero);
 }
 
+function isPageSliver(part: string): boolean {
+  if (!activePage && !activePaint) return false;
+  const piece = pieceProp(part);
+  if (!piece || !BOX_SIZE.has(piece.prop)) return false;
+  const px = lengthDeskPx(piece.val.replace(/!important/gi, "").trim());
+  return px != null && px >= 0 && px <= 12;
+}
+
 /** A zero width or height plus a clip overflow hides the desk. A full-height scroll stays. A class may still collapse. */
 function boxCollapses(parts: string[], hidden: Set<string>): boolean {
-  return parts.some((part) => isBoxClip(part)) && parts.some((part) => isBoxZero(part, hidden));
+  return parts.some((part) => isBoxClip(part)) && parts.some((part) => isBoxZero(part, hidden) || isPageSliver(part));
 }
 
 function boxCollapsesFor(parts: string[], hidden: Set<string>, profiles: Sib[]): boolean {
@@ -4726,6 +4764,79 @@ function columnDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
+function isShortBlock(part: string, hidden: Set<string>): boolean {
+  const piece = pieceProp(part);
+  return Boolean(piece && BLOCK_SLIVER.has(piece.prop) && sliverLength(piece.val, hidden, 24));
+}
+
+function quarterTurn(value: string, hidden: Set<string>): boolean {
+  return namedFunctionCalls(value, ["rotate", "rotatez"]).some((call) =>
+    splitArgs(call.inner).some((arg) => {
+      const deg = angleDegrees(arg.trim(), hidden);
+      if (deg == null) return false;
+      const turned = ((deg % 180) + 180) % 180;
+      return Math.abs(turned - 90) <= 8;
+    }),
+  );
+}
+
+function isQuarterTurn(part: string, hidden: Set<string>): boolean {
+  const piece = pieceProp(part);
+  if (!piece) return false;
+  if (piece.prop === "rotate") return quarterTurn(`rotate(${piece.val})`, hidden);
+  if (piece.prop === "transform" || piece.prop === "-webkit-transform") return quarterTurn(piece.val, hidden);
+  return false;
+}
+
+function turnedClip(parts: string[], hidden: Set<string>): boolean {
+  return parts.some((part) => isBoxClip(part)) && parts.some((part) => isQuarterTurn(part, hidden)) && parts.some((part) => isShortBlock(part, hidden));
+}
+
+function borderWidthPx(value: string): number | null {
+  let widest = 0;
+  let saw = false;
+  for (const token of splitTopWords(value.replace(/!important/gi, ""))) {
+    const px = lengthDeskPx(token);
+    if (px == null || px < 0) continue;
+    saw = true;
+    widest = Math.max(widest, px);
+  }
+  return saw ? widest : null;
+}
+
+function borderFills(parts: string[]): boolean {
+  let box = false;
+  let clip = false;
+  let border = 0;
+  let size: number | null = null;
+  for (const part of parts) {
+    const piece = pieceProp(part);
+    if (!piece) continue;
+    if (piece.prop === "box-sizing" && /border-box/i.test(piece.val)) box = true;
+    if (isBoxClip(part)) clip = true;
+    if (piece.prop === "border" || piece.prop === "border-width" || /^border-(?:top|right|bottom|left|block|inline)(?:-width)?$/.test(piece.prop)) {
+      const width = borderWidthPx(piece.val);
+      if (width != null) border = Math.max(border, width);
+    }
+    if (BLOCK_SLIVER.has(piece.prop)) {
+      const token = splitTopWords(piece.val.replace(/!important/gi, "")).find(Boolean);
+      const px = token ? lengthDeskPx(token) : null;
+      if (px != null) size = size == null ? px : Math.min(size, px);
+    }
+  }
+  return box && clip && size != null && border > 0 && border * 2 >= size;
+}
+
+function isBorderDecl(part: string): boolean {
+  const piece = pieceProp(part);
+  return Boolean(piece && (piece.prop === "border" || piece.prop === "border-width" || /^border-(?:top|right|bottom|left|block|inline)(?:-width)?$/.test(piece.prop)));
+}
+
+function measuredPairDrops(part: string, hidden: Set<string>, turned: boolean, filled: boolean): boolean {
+  if (turned && (isBoxClip(part) || isShortBlock(part, hidden))) return true;
+  return filled && isBorderDecl(part);
+}
+
 function scrubHideBody(body: string, hidden: Set<string>, anims: Set<string> = new Set(), profiles: Sib[] = [HTML_SIB, BODY_SIB], scope: ClipScope = { body: false, whole: false }) {
   const parts = splitCssDeclarations(body)
     .map((part) => part.trim())
@@ -4744,9 +4855,11 @@ function scrubHideBody(body: string, hidden: Set<string>, anims: Set<string> = n
   const outline = outlineDrops(parts);
   const border = borderEats(parts);
   const column = columnDrops(parts);
+  const turned = turnedClip(parts, hidden);
+  const filled = borderFills(parts);
   return parts
     .map((part) => softenMaskShorthand(part))
-    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !pair(part) && !stroke(part) && !decor(part) && !paintPairDrops(part, hidden) && !sliverDrops(part, hidden, scope) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles))) && !paintPieceDrops(part, hidden, profiles, paint) && !maskZeroDrops(part, hidden, mask) && !parkedMaskDrops(part, parked) && !maskStripDrops(part, strip) && !maskShiftDrops(part, parkedOff) && !flexPieceDrops(part, hidden, flexOn) && !containSizeDrops(part, sizeClip) && !outline(part) && !border(part) && !column(part))
+    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !pair(part) && !stroke(part) && !decor(part) && !paintPairDrops(part, hidden) && !sliverDrops(part, hidden, scope) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles) || isPageSliver(part))) && !paintPieceDrops(part, hidden, profiles, paint) && !maskZeroDrops(part, hidden, mask) && !parkedMaskDrops(part, parked) && !maskStripDrops(part, strip) && !maskShiftDrops(part, parkedOff) && !flexPieceDrops(part, hidden, flexOn) && !containSizeDrops(part, sizeClip) && !outline(part) && !border(part) && !column(part) && !measuredPairDrops(part, hidden, turned, filled))
     .join("; ");
 }
 
@@ -5156,7 +5269,7 @@ function matrixScalesDown(value: string, hidden: Set<string>): boolean {
   const found = namedFunctionCalls(value, ["matrix3d", "matrix"]);
   return found.some((call) => {
     const nums = splitArgs(call.inner).map((arg) => coeffOf(arg, hidden));
-    const limit = activeStar ? 0.95 : activeInk ? 0.85 : activePage ? 0.1 : 0.4;
+    const limit = activeStar ? 0.95 : activeInk ? 0.85 : activePaint ? 0.25 : activePage ? 0.13 : 0.4;
     const small = (x: number, y: number) => Number.isFinite(x) && Number.isFinite(y) && Math.hypot(x, y) < limit;
     if (call.name === "matrix") {
       if (nums.length < 4) return false;
@@ -5187,7 +5300,7 @@ function matrixShifts(value: string, hidden: Set<string>): boolean {
     const nums = matrixParts(call.inner);
     const tx = call.name === "matrix" ? (nums[4] ?? "") : (nums[12] ?? "");
     const ty = call.name === "matrix" ? (nums[5] ?? "") : (nums[13] ?? "");
-    return starShiftCovers(tx, "x") || starShiftCovers(ty, "y") || shiftTokenCovers(tx, hidden) || shiftTokenCovers(ty, hidden);
+    return starShiftCovers(tx, "x") || starShiftCovers(ty, "y") || pageShiftCovers(tx) || pageShiftCovers(ty) || shiftTokenCovers(tx, hidden) || shiftTokenCovers(ty, hidden);
   });
 }
 
@@ -5238,8 +5351,24 @@ function starShiftCovers(token: string, axis: "x" | "y"): boolean {
   return false;
 }
 
+/** A chain of boxes compounds a viewport shift. 80vh on section div walks the writing off the first screen. 8vh still leaves the line. One box needs 70vh. A shift on html does not use this limit. */
+function pageShiftCovers(token: string): boolean {
+  if (activeDivs < 1 && !activePage && !activePaint) return false;
+  const t = token.replace(/!important/gi, "").replace(/\s+/g, "");
+  if (!t) return false;
+  const parsed = parseMathSum(t, 0);
+  if (!parsed || parsed.i !== t.length || !Number.isFinite(parsed.n)) return false;
+  const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+  if (units.length !== 1 || units[0]?.[1] !== 1) return false;
+  const unit = units[0]?.[0] ?? "";
+  if (!/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) && !/^cq(?:w|h|i|b|min|max)$/.test(unit)) return false;
+  const n = Math.abs(parsed.n);
+  if (activeDivs >= 2) return n >= 9;
+  return n >= 70;
+}
+
 function starShiftToken(token: string, axis: "x" | "y", hidden: Set<string>, seen?: Set<string>): boolean {
-  if (starShiftCovers(token, axis)) return true;
+  if (starShiftCovers(token, axis) || pageShiftCovers(token)) return true;
   const trail = seen ?? new Set<string>();
   const defined = (hidden as HideVars).defined;
   for (const call of varCalls(token)) {
@@ -5442,7 +5571,7 @@ function keyframeHides(part: string, hidden: Set<string>): boolean {
   }
 }
 
-type DeskEl = { tag: string; index: number; count: number; ofType: number; ofTypeCount: number };
+type DeskEl = { tag: string; index: number; count: number; ofType: number; ofTypeCount: number; attrs?: string[] };
 
 const HTML_EL: DeskEl = { tag: "html", index: 1, count: 1, ofType: 1, ofTypeCount: 1 };
 const BODY_EL: DeskEl = { tag: "body", index: 2, count: 2, ofType: 1, ofTypeCount: 1 };
@@ -5452,9 +5581,10 @@ function attrMatchesDesk(inner: string, el: DeskEl): boolean {
   const match = /^([a-zA-Z_][\w:.-]*)(?:\s*([~|^$*]?=)\s*(?:"([^"]*)"|'([^']*)'|([^\s]+)))?(?:\s+([iIsS]))?\s*$/.exec(inner.trim());
   if (!match) return false;
   const name = (match[1] ?? "").toLowerCase();
-  if (name === "contenteditable") return el.tag === "div" || WRITING_TAGS.has(el.tag);
-  if (el.tag !== "html") return false;
   const op = match[2] ?? "";
+  if (name === "contenteditable") return el.tag === "div" || WRITING_TAGS.has(el.tag);
+  if (el.attrs?.some((attr) => attr === name)) return true;
+  if (el.tag !== "html") return false;
   const rawValue = match[3] ?? match[4] ?? match[5] ?? "";
   const flag = (match[6] ?? "").toLowerCase();
   const value = flag === "i" ? rawValue.toLowerCase() : rawValue;
@@ -5938,9 +6068,10 @@ type LiveNode = DeskEl & {
   children: LiveNode[];
   pageText: boolean;
   guardsPage: boolean;
+  editor: boolean;
 };
 
-type LiveSpec = { tag: string; pageText?: boolean; children?: LiveSpec[] };
+type LiveSpec = { tag: string; pageText?: boolean; editor?: boolean; attrs?: string[]; children?: LiveSpec[] };
 
 /** The open page: a section, the nested boxes, the title, and the writing. A class is not part of this tree. */
 const DESK_SPEC: LiveSpec = {
@@ -5979,13 +6110,17 @@ const DESK_SPEC: LiveSpec = {
                                       children: [
                                         {
                                           tag: "div",
+                                          attrs: ["data-border"],
                                           children: [
                                             { tag: "span" },
                                             {
                                               tag: "div",
+                                              attrs: ["data-recipe"],
                                               children: [
                                                 {
                                                   tag: "div",
+                                                  editor: true,
+                                                  attrs: ["contenteditable", "spellcheck"],
                                                   children: [
                                                     { tag: "p", pageText: true },
                                                     { tag: "h1", pageText: true },
@@ -6037,6 +6172,8 @@ function buildLive(spec: LiveSpec, parent: LiveNode | null): LiveNode {
     children: [],
     pageText: spec.pageText === true,
     guardsPage: false,
+    editor: spec.editor === true,
+    attrs: spec.attrs,
   };
   node.children = (spec.children ?? []).map((kid) => buildLive(kid, node));
   const typeCount = new Map<string, number>();
@@ -6290,6 +6427,18 @@ function chainsDesk(selector: string, scopeSel: string | null): boolean {
   return html && other && !div;
 }
 
+/** Two or more divs around the writing compound a filter. One div does not use this limit. */
+function stackedBoxes(selector: string, scopeSel: string | null): boolean {
+  return splitSelectorList(selector).some((part) => {
+    const text = part.trim();
+    if (!text || text.includes("::")) return false;
+    const steps = splitCombinators(text.replace(/\s+/g, " "));
+    if (steps.length < 2) return false;
+    const live = liveHit(text, scopeSel);
+    return live.div && !live.writing;
+  });
+}
+
 function coversInk(selector: string, scopeSel: string | null): boolean {
   return splitSelectorList(selector).some((part) => {
     const text = part.trim();
@@ -6305,6 +6454,147 @@ function coversInk(selector: string, scopeSel: string | null): boolean {
   });
 }
 
+function specTuple(selector: string): { a: number; b: number; c: number } {
+  let a = 0;
+  let b = 0;
+  let c = 0;
+  let i = 0;
+  while (i < selector.length) {
+    const ch = selector[i] ?? "";
+    if (ch === '"' || ch === "'") {
+      i += 1;
+      while (i < selector.length) {
+        if (selector[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (selector[i] === ch) {
+          i += 1;
+          break;
+        }
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === "#") {
+      a += 1;
+      i += 1;
+      while (/[A-Za-z0-9_-]/.test(selector[i] ?? "")) i += 1;
+      continue;
+    }
+    if (ch === ".") {
+      b += 1;
+      i += 1;
+      while (/[A-Za-z0-9_-]/.test(selector[i] ?? "")) i += 1;
+      continue;
+    }
+    if (ch === "[") {
+      b += 1;
+      let quote = "";
+      i += 1;
+      for (; i < selector.length; i += 1) {
+        const cch = selector[i] ?? "";
+        if (quote) {
+          if (cch === "\\") {
+            i += 1;
+            continue;
+          }
+          if (cch === quote) quote = "";
+          continue;
+        }
+        if (cch === '"' || cch === "'") {
+          quote = cch;
+          continue;
+        }
+        if (cch === "]") {
+          i += 1;
+          break;
+        }
+      }
+      continue;
+    }
+    if (ch === ":" && selector[i + 1] === ":") {
+      c += 1;
+      i += 2;
+      while (/[A-Za-z-]/.test(selector[i] ?? "")) i += 1;
+      if (selector[i] === "(") {
+        const end = matchingParen(selector, i);
+        i = end < 0 ? selector.length : end + 1;
+      }
+      continue;
+    }
+    if (ch === ":") {
+      i += 1;
+      const nameMatch = /^([A-Za-z-]+)/.exec(selector.slice(i));
+      const name = (nameMatch?.[1] ?? "").toLowerCase();
+      i += nameMatch?.[0].length ?? 0;
+      if (selector[i] === "(") {
+        const end = matchingParen(selector, i);
+        const inner = end < 0 ? "" : selector.slice(i + 1, end);
+        i = end < 0 ? selector.length : end + 1;
+        const takes = name === "not" || name === "is" || name === "has" || name === "matches" || name === "-webkit-any";
+        if (name === "where") continue;
+        if (takes || name === "nth-child" || name === "nth-last-child") {
+          const of = inner.split(/\s+of\s+/i);
+          const source = of.length > 1 ? of.slice(1).join(" of ") : takes ? inner : "";
+          if (source) {
+            let best = { a: 0, b: 0, c: 0 };
+            for (const part of splitSelectorList(source)) {
+              const score = specTuple(part);
+              if (score.a > best.a || (score.a === best.a && (score.b > best.b || (score.b === best.b && score.c > best.c)))) best = score;
+            }
+            a += best.a;
+            b += best.b;
+            c += best.c;
+            continue;
+          }
+        }
+        if (name) b += 1;
+        continue;
+      }
+      if (name) b += 1;
+      continue;
+    }
+    if (/[A-Za-z_]/.test(ch)) {
+      c += 1;
+      i += 1;
+      while (/[A-Za-z0-9_-]/.test(selector[i] ?? "")) i += 1;
+      continue;
+    }
+    i += 1;
+  }
+  return { a, b, c };
+}
+
+/** A class on the writing box sets the ink. A rule that matches that box and beats the class paints over it. A bare div does not. */
+function beatsEditorInk(selector: string, scopeSel: string | null): boolean {
+  return splitSelectorList(selector).some((part) => {
+    const text = part.trim();
+    if (!text || text.includes("::")) return false;
+    const steps = splitCombinators(text.replace(/\s+/g, " "));
+    if (!steps.length) return false;
+    const hit = liveList().some((el) => el.editor && matchLiveSteps(steps, steps.length - 1, el, scopeSel));
+    if (!hit) return false;
+    const score = specTuple(text);
+    return score.a > 0 || score.b > 0;
+  });
+}
+
+function countLiveDivs(selector: string, scopeSel: string | null): number {
+  let n = 0;
+  for (const part of splitSelectorList(selector)) {
+    const text = part.trim();
+    if (!text || text.includes("::")) continue;
+    const steps = splitCombinators(text.replace(/\s+/g, " "));
+    if (!steps.length) continue;
+    for (const el of liveList()) {
+      if (el.tag !== "div" || !el.guardsPage) continue;
+      if (matchLiveSteps(steps, steps.length - 1, el, scopeSel)) n += 1;
+    }
+  }
+  return n;
+}
+
 function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, desk: boolean, scopeSel: string | null = null, nestingSel: string | null = null, profiles: Sib[] = [], stackBefore = false): string {
   const prevInk = activeInk;
   const prevStar = activeStar;
@@ -6312,6 +6602,10 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const prevChain = activeChain;
   const prevPaint = activePaint;
   const prevPage = activePage;
+  const prevStack = activeStack;
+  const prevDivs = activeDivs;
+  activeStack = false;
+  activeDivs = 0;
   if (desk) {
     const sel = nestingSel ?? "";
     const ink = coversInk(sel, scopeSel);
@@ -6323,7 +6617,9 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activeRepeat = !activeStar && ((!ink && repeatsDiv(sel, scopeSel)) || (!editing && live.div));
     activeChain = !activeStar && !activeRepeat && chainsDesk(sel, scopeSel);
     activePage = !activeStar && !activeRepeat && !activeChain && (coversPage(sel, scopeSel) || editing || live.page || live.writing);
-    activePaint = activeInk || writesDesk(sel, scopeSel) || editing || live.writing || /::selection\b/i.test(sel);
+    activePaint = activeInk || writesDesk(sel, scopeSel) || editing || live.writing || /::selection\b/i.test(sel) || beatsEditorInk(sel, scopeSel);
+    activeStack = !activeStar && stackedBoxes(sel, scopeSel);
+    activeDivs = countLiveDivs(sel, scopeSel);
   }
   try {
   const scope = deskClipScope(nestingSel ?? "");
@@ -6351,7 +6647,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     const next = piece.trim();
     if (!next) return;
     if (desk && (declarationHidesFor(next, hidden, profiles) || declarationUsesHidingAnim(next, anims) || pair(next) || decor(next) || paintPairDrops(next, hidden) || sliverDrops(next, hidden, scope) || flexPieceDrops(next, hidden, flexOn) || containSizeDrops(next, sizeClip) || outline(next) || border(next) || column(next))) return;
-    if (flat && (isBoxClip(next) || isBoxZeroFor(next, hidden, profiles))) return;
+    if (flat && (isBoxClip(next) || isBoxZeroFor(next, hidden, profiles) || isPageSliver(next))) return;
     if (paintPieceDrops(next, hidden, profiles, paint)) return;
     if (maskZeroDrops(next, hidden, mask)) return;
     if (parkedMaskDrops(next, parked)) return;
@@ -6453,7 +6749,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     i += 1;
   }
   const tail = decl.trim();
-  if (tail && !(desk && (declarationHidesFor(tail, hidden, profiles) || declarationUsesHidingAnim(tail, anims) || pair(tail) || decor(tail) || paintPairDrops(tail, hidden) || sliverDrops(tail, hidden, scope) || flexPieceDrops(tail, hidden, flexOn) || containSizeDrops(tail, sizeClip) || outline(tail) || border(tail) || column(tail))) && !(flat && (isBoxClip(tail) || isBoxZeroFor(tail, hidden, profiles))) && !paintPieceDrops(tail, hidden, profiles, paint) && !maskZeroDrops(tail, hidden, mask) && !parkedMaskDrops(tail, parked)) out += tail;
+  if (tail && !(desk && (declarationHidesFor(tail, hidden, profiles) || declarationUsesHidingAnim(tail, anims) || pair(tail) || decor(tail) || paintPairDrops(tail, hidden) || sliverDrops(tail, hidden, scope) || flexPieceDrops(tail, hidden, flexOn) || containSizeDrops(tail, sizeClip) || outline(tail) || border(tail) || column(tail))) && !(flat && (isBoxClip(tail) || isBoxZeroFor(tail, hidden, profiles) || isPageSliver(tail))) && !paintPieceDrops(tail, hidden, profiles, paint) && !maskZeroDrops(tail, hidden, mask) && !parkedMaskDrops(tail, parked)) out += tail;
   return out.replace(/;\s*$/g, "").trim();
   } finally {
     activeInk = prevInk;
@@ -6462,6 +6758,8 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activeChain = prevChain;
     activePaint = prevPaint;
     activePage = prevPage;
+    activeStack = prevStack;
+    activeDivs = prevDivs;
   }
 }
 

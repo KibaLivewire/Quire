@@ -1,3 +1,21 @@
+# Quire 1.9.49 — The sheet still has its letters
+
+Released 3 November 2026.
+
+- **The recipe, the border, and the spelling box can no longer blank the page.** `[data-recipe]`, `div[data-recipe]`, `[data-border]`, and `[spellcheck]` are the open sheet. `display: none`, `visibility: hidden`, `opacity: 0`, `scale(0.05)`, a clipped `height: 0`, `letter-spacing: 80vw`, and `content-visibility: hidden` hid the letters. A page colour and a `1px` face on `[spellcheck]` did the same. Those are dropped. `[spellcheck] { color: #1c1917 }` stays. `[data-recipe] { color: #f3eee6 }` stays, because the writing box sets its own ink. A class may still hide. Colour stays.
+- **A :not() that names a class can no longer paint the writing out.** `div:not(.missing) { color: #f3eee6 }` matches the writing box and beats its class. That colour is dropped. `div { color: #f3eee6 }` does not beat the class, and stays. `div:not(span) { color: #f3eee6 }` stays. `div { color: red }` stays. `div:not(.missing) { brightness(1.2) }` stays. Colour stays.
+- **A filter fade, a small zoom, and a long shift can no longer take the line.** `div p { filter: opacity(0.2) }` leaves no ink. `div p { zoom: 0.2 }` shrinks the face under `4px`. `section div { translateY(80vh) }` walks the stack off the first screen. Those are dropped. `section p { opacity: 0.2 }` still reads. `div p { filter: opacity(0.4) }` still reads. `div p { zoom: 0.3 }` still reads. `section { scale(0.15) }` still leaves a line. `section div { translateY(8vh) }` stays. `header + div { translateY(10vh) }` stays. `html { filter: opacity(0.4) }` stays. Colour stays.
+- **A stack of divs can no longer blur the page away.** `div div { filter: blur(1px) }` compounds until there is no ink. It is dropped. `*{ filter: blur(1px) }` stays. `div div { brightness(1.2) }` stays. `brightness(1.25)` on that stack is dropped. Colour stays.
+- **A section scale of 0.12, or an opacity of 0.08, can no longer leave no writing.** Those are dropped. `scale(0.15)`, `opacity: 0.1`, and `opacity: 0.2` still read. Colour stays.
+- **A sliver, an indent, a speck of a clip, and content-visibility: auto can no longer remove the line.** `section { max-height: 8px; overflow: hidden }` leaves a strip. `div p { text-indent: -100vw }` pushes the words off the page. An `8px` polygon on the writing covers nothing. `content-visibility: auto` on the writing reserves no line. Those are dropped. `text-indent: 2em` stays. A `10px` shape on `html` stays. A class may still use `content-visibility: auto`. Colour stays.
+- **A quarter turn, a thick border, a flat turn, and a text clip can no longer cover the letters.** `section { rotate(90deg); height: 20px; overflow: hidden }` cuts the page into a slit. The height and the clip are dropped. The turn stays. `p { border: 40px; height: 1em; overflow: hidden; box-sizing: border-box }` paints the page colour over the words. The border is dropped. An `8px` frame stays. `p { rotateX(89deg) }` is a hairline. `p { background-clip: text }` with no paint is empty. Those are dropped. `html { rotateX(89deg) }` stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.48 — The writing is still in the boxes
 
 Released 3 November 2026.
