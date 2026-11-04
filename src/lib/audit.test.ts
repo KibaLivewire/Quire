@@ -2571,6 +2571,28 @@ describe("page styles", () => {
     assert.match(sanitizePluginCss("header + div{transform:translateY(10vh)}"), /10vh/);
     assert.match(sanitizePluginCss(".quire-doc{display:none}"), /display:\s*none/);
     assert.match(sanitizePluginCss("footer{display:none}"), /display:\s*none/);
+    assert.equal(/rotateX\(89deg\)/.test(sanitizePluginCss("div{transform:rotateX(89deg)}")), false);
+    assert.equal(/rotateX\(68deg\)/.test(sanitizePluginCss("div{transform:rotateX(68deg)}")), false);
+    assert.equal(/rotateX\(75deg\)/.test(sanitizePluginCss("div{transform:rotateY(75deg)}")), false);
+    assert.match(sanitizePluginCss("div{transform:rotateX(60deg)}"), /60deg/);
+    assert.match(sanitizePluginCss("div{transform:rotateX(45deg)}"), /45deg/);
+    assert.equal(/rotateX\(89deg\)/.test(sanitizePluginCss("section div{transform:rotateX(89deg)}")), false);
+    assert.equal(/rotateX\(89deg\)/.test(sanitizePluginCss("div div{transform:rotateX(89deg)}")), false);
+    assert.match(sanitizePluginCss("header + div{transform:rotateX(89deg)}"), /89deg/);
+    assert.match(sanitizePluginCss("html{transform:rotateX(89deg)}"), /89deg/);
+    assert.equal(/89deg/.test(sanitizePluginCss("div{rotate:x 89deg}")), false);
+    assert.equal(/89deg/.test(sanitizePluginCss("p{rotate:x 89deg}")), false);
+    assert.equal(/89deg/.test(sanitizePluginCss("p{rotate:y 89deg}")), false);
+    assert.equal(/89deg/.test(sanitizePluginCss("[contenteditable]{rotate:x 89deg}")), false);
+    assert.equal(/89deg/.test(sanitizePluginCss("[spellcheck]{rotate:x 89deg}")), false);
+    assert.equal(/89deg/.test(sanitizePluginCss(":read-write{rotate:x 89deg}")), false);
+    assert.match(sanitizePluginCss("p{rotate:x 80deg}"), /80deg/);
+    assert.match(sanitizePluginCss("html{rotate:x 89deg}"), /89deg/);
+    assert.match(sanitizePluginCss("p{rotate:x 89deg;color:red}"), /red/);
+    assert.equal(/70px/.test(sanitizePluginCss("*{transform:translateY(var(--nope, 70px))}")), false);
+    assert.match(sanitizePluginCss("*{transform:translateY(var(--nope, 70px));color:red}"), /red/);
+    assert.match(sanitizePluginCss("*{transform:translateY(var(--nope, 40px))}"), /40px/);
+    assert.match(sanitizePluginCss("*{transform:translateX(var(--nope, 70px))}"), /70px/);
   });
 });
 

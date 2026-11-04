@@ -2515,6 +2515,17 @@ function paintRotateFlattens(token: string, hidden: Set<string>): boolean {
   return Math.abs(m - 90) <= 8;
 }
 
+/** A stack of divs compounds a turn. rotateX(68deg) on every div leaves no line. rotateX(60deg) still reads. Two hairlines leave none. One box at 89deg still reads. */
+function repeatRotateFlattens(token: string, hidden: Set<string>): boolean {
+  if (activeDivs < 2) return false;
+  const deg = angleDegrees(token, hidden);
+  if (deg == null) return false;
+  const m = ((deg % 180) + 180) % 180;
+  const fromEdge = Math.abs(m - 90);
+  if (activeDivs >= 6) return fromEdge <= 22;
+  return fromEdge <= 8;
+}
+
 function angleIsEdge(token: string, hidden: Set<string>): boolean {
   const deg = angleDegrees(token, hidden);
   return deg != null && (nearDeg(deg, 90) || nearDeg(deg, 270));
@@ -2559,7 +2570,7 @@ function transformAxisHides(value: string, hidden: Set<string>, seen?: Set<strin
   const found = namedFunctionCalls(value, ["rotate3d", "rotatex", "rotatey", "rotatez", "rotate", "skewx", "skewy", "skew"]);
   for (const call of found) {
     const args = splitArgs(call.inner);
-    if ((call.name === "rotatex" || call.name === "rotatey") && args.some((arg) => angleIsEdge(arg, hidden) || starRotateFlattens(arg, hidden) || paintRotateFlattens(arg, hidden))) return true;
+    if ((call.name === "rotatex" || call.name === "rotatey") && args.some((arg) => angleIsEdge(arg, hidden) || starRotateFlattens(arg, hidden) || paintRotateFlattens(arg, hidden) || repeatRotateFlattens(arg, hidden))) return true;
     if (call.name === "rotate3d" && axisArgsHide(args, hidden, true)) return true;
     if ((call.name === "skewx" || call.name === "skewy" || call.name === "skew") && skewCallHides(call.inner, hidden)) return true;
   }
@@ -2606,7 +2617,7 @@ function rotatePropertyHides(value: string, hidden: Set<string>, seen?: Set<stri
   const parts = rotatePropertyParts(value);
   if (parts.length === 2) {
     const axis = (parts[0] ?? "").toLowerCase();
-    if ((axis === "x" || axis === "y") && (angleIsEdge(parts[1] ?? "", hidden) || starRotateFlattens(parts[1] ?? "", hidden))) return true;
+    if ((axis === "x" || axis === "y") && (angleIsEdge(parts[1] ?? "", hidden) || starRotateFlattens(parts[1] ?? "", hidden) || paintRotateFlattens(parts[1] ?? "", hidden) || repeatRotateFlattens(parts[1] ?? "", hidden))) return true;
   }
   if (parts.length === 4 && axisArgsHide(parts, hidden, true)) return true;
   return rotateValueFollows(value, hidden, seen, rotatePropertyHides);
@@ -5378,7 +5389,7 @@ function starShiftToken(token: string, axis: "x" | "y", hidden: Set<string>, see
       next.add(call.name);
       if (starShiftToken(raw, axis, hidden, next)) return true;
     }
-    if (call.fallback && starShiftToken(call.fallback, hidden, trail)) return true;
+    if (call.fallback && starShiftToken(call.fallback, axis, hidden, trail)) return true;
   }
   return false;
 }

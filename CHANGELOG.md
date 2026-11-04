@@ -1,3 +1,17 @@
+# Quire 1.9.50 — The line is not a hairline
+
+Released 4 November 2026.
+
+- **A stack of divs can no longer turn the writing flat.** `div { transform: rotateX(68deg) }` and steeper, and the same turn on `rotateY`, compound until there is no line. `rotate: x 68deg` is the same turn. Those are dropped. `rotateX(60deg)` and `rotateX(45deg)` still read. One box at `rotateX(89deg)` still reads. `html { rotateX(89deg) }` stays. Colour stays.
+- **The rotate property can no longer leave the writing as a hairline.** `transform: rotateX(89deg)` on the writing was already dropped. `p { rotate: x 89deg }`, `rotate: y 89deg`, and the same turn on `[contenteditable]`, `[spellcheck]`, and `:read-write` were still applied. Those are dropped. `rotate: x 80deg` still reads. `html { rotate: x 89deg }` stays. Colour stays.
+- **A variable fallback is read on the axis it is written on.** `*{ transform: translateY(var(--nope, 70px)) }` kept 70px down, because the fallback was checked as an across-shift. 70px down is dropped. 40px down stays. 70px across stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.49 — The sheet still has its letters
 
 Released 3 November 2026.
