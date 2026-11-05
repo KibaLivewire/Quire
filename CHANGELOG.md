@@ -1,3 +1,23 @@
+# Quire 1.9.51 — The first screen still has the writing
+
+Released 5 November 2026.
+
+- **A margin or a padding in em can no longer push the writing off the first screen.** `*{ margin-top: 8em }` and `*{ padding-top: 2em }` compound down the boxes. `p { margin-top: 18em }` and `p { padding-top: 18em }` start too far down the page. `section { margin-top: 36em }` does the same for the sheet. Those are dropped. `*{ margin-top: 4em }` still leaves the line. `p { margin-top: 12em }` still leaves the line. `section { margin-top: 24em }` stays. `div { margin-top: 8em }` stays. Colour stays.
+- **An origin far from the page can no longer throw the writing out.** `div { transform-origin: -2400px 40px; transform: rotate(18deg) }` swings the line off the first screen. The origin is dropped. The turn stays. `transform-origin: -400px` with the same turn still reads. `*{ transform: rotate(18deg) }` stays. Colour stays.
+- **A short perspective can no longer flatten the boxes.** `div { transform: perspective(4px) rotateY(25deg) }` and `*{ transform: perspective(1px) translateZ(4px) }` leave no line. Those are dropped. `p { transform: perspective(100px) rotateY(25deg) }` still reads. `perspective(400px)` with a small turn stays. Colour stays.
+- **Columns with a wide gap can no longer leave no first column.** `*{ column-count: 12; column-gap: 8vw; overflow: hidden }` clips the writing out of the first screen. The count and the gap are dropped. The clip stays. `*{ column-count: 2; column-gap: 1em }` with no clip stays. A class may still set columns. Colour stays.
+- **A zero grid row on the boxes can no longer collapse the page.** `div { display: grid; grid-template-rows: 0px; overflow: hidden }` removes the writing. The row is dropped. `div { grid-template-rows: 8px }` stays. A class may still use a zero row. Colour stays.
+- **A 1px clip and a 1px width can no longer leave no letters.** `*{ clip-path: rect(0px 1px 1px 0px) }` covers nothing. `div { width: 1px; overflow: hidden }` is a slit. Those are dropped. `p { clip-path: rect(0px 80px 40px 0px) }` still leaves a line. `p { width: 24px }` stays. Colour stays.
+- **rotate3d, and the four-number rotate, can no longer turn the stack flat.** `div { transform: rotate3d(1, 0, 0, 70deg) }` and `div { rotate: 1 0 0 89deg }` are the same turn as `rotateX` on that stack. Those are dropped. `div { transform: rotateX(60deg) }` still reads. `header + div { transform: rotateX(89deg) }` stays. `html { transform: rotateX(89deg) }` stays. Colour stays.
+- **A hard shear on a star can no longer throw the writing out.** `*{ transform: matrix(0.02, 1.2, -1.2, 0.02, 0, 0) }` compounds until there is no line. It is dropped. `*{ transform: matrix(1, 0.4, -0.2, 1, 0, 0) }` still reads. Colour stays.
+- **A long shift on html can no longer walk the desk off.** `html { transform: translateY(90vh) }` and the same shift through a missing variable leave no writing. Those are dropped. `html { transform: translateY(70vh) }` still leaves the line. `html { transform: translateY(8vh) }` stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.50 — The line is not a hairline
 
 Released 4 November 2026.

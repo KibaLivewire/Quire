@@ -2314,7 +2314,11 @@ function rectHides(inner: string): boolean {
   if (!top || !right || !bottom || !left) return false;
   const unit = top.unit;
   if (right.unit !== unit || bottom.unit !== unit || left.unit !== unit) return false;
-  return right.n - left.n === 0 || bottom.n - top.n === 0;
+  const width = right.n - left.n;
+  const height = bottom.n - top.n;
+  if (width === 0 || height === 0) return true;
+  if ((unit === "px" || unit === "") && (Math.abs(width) <= 2 || Math.abs(height) <= 2)) return true;
+  return false;
 }
 
 /** An empty path, or a path that only moves, has no area. A curve stays. A triangle stays. */
@@ -2566,12 +2570,23 @@ function axisArgsHide(args: string[], hidden: Set<string>, edge: boolean): boole
   return z === 0 && (x !== 0 || y !== 0);
 }
 
+/** rotate3d(1, 0, 0, 68deg) is the same turn as rotateX. The four-number rotate property is too. */
+function axisTurnHides(args: string[], hidden: Set<string>): boolean {
+  if (axisArgsHide(args, hidden, true)) return true;
+  const angle = args[3] ?? "";
+  const x = coeffOf(args[0] ?? "", hidden);
+  const y = coeffOf(args[1] ?? "", hidden);
+  const z = coeffOf(args[2] ?? "", hidden);
+  if (x == null || y == null || z == null || z !== 0 || (x === 0 && y === 0)) return false;
+  return starRotateFlattens(angle, hidden) || paintRotateFlattens(angle, hidden) || repeatRotateFlattens(angle, hidden);
+}
+
 function transformAxisHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
   const found = namedFunctionCalls(value, ["rotate3d", "rotatex", "rotatey", "rotatez", "rotate", "skewx", "skewy", "skew"]);
   for (const call of found) {
     const args = splitArgs(call.inner);
     if ((call.name === "rotatex" || call.name === "rotatey") && args.some((arg) => angleIsEdge(arg, hidden) || starRotateFlattens(arg, hidden) || paintRotateFlattens(arg, hidden) || repeatRotateFlattens(arg, hidden))) return true;
-    if (call.name === "rotate3d" && axisArgsHide(args, hidden, true)) return true;
+    if (call.name === "rotate3d" && axisTurnHides(args, hidden)) return true;
     if ((call.name === "skewx" || call.name === "skewy" || call.name === "skew") && skewCallHides(call.inner, hidden)) return true;
   }
   const trail = seen ?? new Set<string>();
@@ -2619,7 +2634,7 @@ function rotatePropertyHides(value: string, hidden: Set<string>, seen?: Set<stri
     const axis = (parts[0] ?? "").toLowerCase();
     if ((axis === "x" || axis === "y") && (angleIsEdge(parts[1] ?? "", hidden) || starRotateFlattens(parts[1] ?? "", hidden) || paintRotateFlattens(parts[1] ?? "", hidden) || repeatRotateFlattens(parts[1] ?? "", hidden))) return true;
   }
-  if (parts.length === 4 && axisArgsHide(parts, hidden, true)) return true;
+  if (parts.length === 4 && axisTurnHides(parts, hidden)) return true;
   return rotateValueFollows(value, hidden, seen, rotatePropertyHides);
 }
 
@@ -2688,6 +2703,7 @@ function perspectiveTranslateHides(value: string, hidden: Set<string>, seen?: Se
     const z = lengthPx(token.trim());
     if (z == null) continue;
     if (distance === 0) return true;
+    if (activeStar && distance <= 40) return true;
     const scale = Math.abs(distance / (distance - z));
     if (Number.isFinite(scale) && scale < 0.2) return true;
   }
@@ -2725,6 +2741,7 @@ function perspectiveTurnHides(value: string, hidden: Set<string>): boolean {
       const fromEdge = Math.abs(m180 - 90);
       if (dist <= 100 && fromEdge <= 45) return true;
       if (activeStar && dist <= 8 && fromFlat >= 10) return true;
+      if ((activeStar || activeRepeat) && dist <= 80 && fromFlat >= 12) return true;
     }
   }
   return false;
@@ -3784,7 +3801,10 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
       return px != null && Math.abs(px) <= 8;
     });
   }
-  if (SHIFT_PROP.has(prop)) return shiftValueCovers(val, hidden);
+  if (SHIFT_PROP.has(prop)) {
+    if (verticalPushHides(prop, val)) return true;
+    return shiftValueCovers(val, hidden);
+  }
   if (prop === "mask-composite" || prop === "-webkit-mask-composite") {
     return valueCanHide(val, hidden, (raw) => /\b(?:exclude|xor|subtract|source-out|destination-out)\b/i.test(raw));
   }
@@ -3901,6 +3921,7 @@ let activePaint = false;
 let activePage = false;
 let activeStack = false;
 let activeDivs = 0;
+let activeRoot = false;
 
 function withSib<T>(sib: Sib, fn: () => T): T {
   const prev = activeSib;
@@ -4752,6 +4773,147 @@ function borderEats(parts: string[]): (part: string) => boolean {
   };
 }
 
+function topPushEm(value: string): number | null {
+  const parts = splitTopWords(value.replace(/!important/gi, "")).filter((token) => token.toLowerCase() !== "auto");
+  if (!parts.length) return null;
+  const px = lengthDeskPx(parts[0] ?? "");
+  if (px == null) return null;
+  return px / 16;
+}
+
+/** A padding on every box compounds. A margin on the writing walks it off the first screen. A smaller push stays. */
+function verticalPushHides(prop: string, value: string): boolean {
+  const vertical =
+    prop === "margin" ||
+    prop === "margin-top" ||
+    prop === "margin-bottom" ||
+    prop === "margin-block" ||
+    prop === "margin-block-start" ||
+    prop === "margin-block-end" ||
+    prop === "padding" ||
+    prop === "padding-top" ||
+    prop === "padding-bottom" ||
+    prop === "padding-block" ||
+    prop === "padding-block-start" ||
+    prop === "padding-block-end";
+  if (!vertical) return false;
+  const em = topPushEm(value);
+  if (em == null || em < 0) return false;
+  const padding = prop.startsWith("padding");
+  if (activeStar && padding && em >= 2) return true;
+  if (activeStar && !padding && em >= 8) return true;
+  if (activePaint && em >= 18) return true;
+  if (activePage && em >= 32) return true;
+  return false;
+}
+
+function gapEats(value: string): boolean {
+  const token = (splitTopWords(value.replace(/!important/gi, "")).find(Boolean) ?? "").replace(/\s+/g, "");
+  if (!token) return false;
+  const parsed = parseMathSum(token, 0);
+  if (!parsed || parsed.i !== token.length || !Number.isFinite(parsed.n)) return false;
+  const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+  if (units.length !== 1 || units[0]?.[1] !== 1) return false;
+  const unit = units[0]?.[0] ?? "";
+  return (/^(?:[dls])?v(?:w|i|min|max)$/.test(unit) || unit === "%") && Math.abs(parsed.n) >= 8;
+}
+
+/** Columns with a wide gap, and a clip, leave no first column. A class may still set columns. */
+function columnSpreadDrops(parts: string[]): (part: string) => boolean {
+  if (!activeStar && !activeRepeat) return () => false;
+  const clip = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && overflowClips(piece.prop, piece.val));
+  });
+  if (!clip) return () => false;
+  let count = 0;
+  let wide = false;
+  for (const part of parts) {
+    const piece = pieceProp(part);
+    if (!piece) continue;
+    if (piece.prop === "column-count" || piece.prop === "columns") {
+      const n = Number(piece.val.replace(/!important/gi, "").trim());
+      if (Number.isFinite(n)) count = Math.max(count, n);
+    }
+    if ((piece.prop === "column-gap" || piece.prop === "gap" || piece.prop === "column-gap") && gapEats(piece.val)) wide = true;
+  }
+  if (!(count >= 2 && wide)) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && (piece.prop === "column-count" || piece.prop === "column-gap" || piece.prop === "columns" || piece.prop === "gap"));
+  };
+}
+
+/** A zero grid row on the boxes around the writing, clipped, removes the page. An 8px row stays. */
+function trackRowDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  if (!activeStar && !activeRepeat && !activePage) return () => false;
+  const clip = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && overflowClips(piece.prop, piece.val));
+  });
+  if (!clip) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && TRACK_PROP.has(piece.prop) && firstTrackSliver(piece.val, hidden));
+  };
+}
+
+/** A 1px width with a clip, on the boxes, leaves no letters. 8px on one line can still show. */
+function narrowClipDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  if (!activeStar && !activeRepeat && !activePage) return () => false;
+  const clip = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && overflowClips(piece.prop, piece.val));
+  });
+  if (!clip) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && INLINE_SLIVER.has(piece.prop) && sliverLength(piece.val, hidden, 4));
+  };
+}
+
+function planeTurn(value: string, hidden: Set<string>): number {
+  let angle = 0;
+  for (const call of namedFunctionCalls(value, ["rotate", "rotatez"])) {
+    for (const arg of splitArgs(call.inner)) {
+      const deg = angleDegrees(arg.trim(), hidden);
+      if (deg == null) continue;
+      const m = Math.abs(deg % 360);
+      angle = Math.max(angle, Math.min(m, 360 - m));
+    }
+  }
+  return angle;
+}
+
+/** An origin far off the page, with a small turn, throws the writing out. The turn without that origin stays. */
+function originFlingDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  let origin = 0;
+  let angle = 0;
+  for (const part of parts) {
+    const piece = pieceProp(part);
+    if (!piece) continue;
+    if (piece.prop === "transform-origin") {
+      for (const token of splitTopWords(piece.val.replace(/!important/gi, ""))) {
+        const px = lengthDeskPx(token);
+        if (px != null) origin = Math.max(origin, Math.abs(px));
+      }
+    }
+    if (piece.prop === "transform" || piece.prop === "-webkit-transform") angle = Math.max(angle, planeTurn(piece.val, hidden));
+    if (piece.prop === "rotate") angle = Math.max(angle, planeTurn(`rotate(${piece.val})`, hidden));
+  }
+  const flung = origin >= 1600 && angle >= 8 && origin * Math.sin((angle * Math.PI) / 180) >= 500;
+  return (part) => {
+    if (!flung) return false;
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop === "transform-origin");
+  };
+}
+
+function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  const drops = [columnSpreadDrops(parts), trackRowDrops(parts, hidden), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden)];
+  return (part) => drops.some((drop) => drop(part));
+}
+
 function columnLengthTiny(value: string): boolean {
   for (const token of splitTopWords(value.replace(/!important/gi, ""))) {
     const px = lengthDeskPx(token) ?? lengthPx(token);
@@ -4866,11 +5028,12 @@ function scrubHideBody(body: string, hidden: Set<string>, anims: Set<string> = n
   const outline = outlineDrops(parts);
   const border = borderEats(parts);
   const column = columnDrops(parts);
+  const extra = deskExtraDrops(parts, hidden);
   const turned = turnedClip(parts, hidden);
   const filled = borderFills(parts);
   return parts
     .map((part) => softenMaskShorthand(part))
-    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !pair(part) && !stroke(part) && !decor(part) && !paintPairDrops(part, hidden) && !sliverDrops(part, hidden, scope) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles) || isPageSliver(part))) && !paintPieceDrops(part, hidden, profiles, paint) && !maskZeroDrops(part, hidden, mask) && !parkedMaskDrops(part, parked) && !maskStripDrops(part, strip) && !maskShiftDrops(part, parkedOff) && !flexPieceDrops(part, hidden, flexOn) && !containSizeDrops(part, sizeClip) && !outline(part) && !border(part) && !column(part) && !measuredPairDrops(part, hidden, turned, filled))
+    .filter((part) => part && !declarationHidesFor(part, hidden, profiles) && !declarationUsesHidingAnim(part, anims) && !pair(part) && !stroke(part) && !decor(part) && !paintPairDrops(part, hidden) && !sliverDrops(part, hidden, scope) && !(flat && (isBoxClip(part) || isBoxZeroFor(part, hidden, profiles) || isPageSliver(part))) && !paintPieceDrops(part, hidden, profiles, paint) && !maskZeroDrops(part, hidden, mask) && !parkedMaskDrops(part, parked) && !maskStripDrops(part, strip) && !maskShiftDrops(part, parkedOff) && !flexPieceDrops(part, hidden, flexOn) && !containSizeDrops(part, sizeClip) && !outline(part) && !border(part) && !column(part) && !extra(part) && !measuredPairDrops(part, hidden, turned, filled))
     .join("; ");
 }
 
@@ -5286,6 +5449,7 @@ function matrixScalesDown(value: string, hidden: Set<string>): boolean {
       if (nums.length < 4) return false;
       const [a, b, c, d] = nums;
       if (a == null || b == null || c == null || d == null) return false;
+      if (activeStar && (Math.abs(b) >= 0.9 || Math.abs(c) >= 0.9)) return true;
       return small(a, b) || small(c, d);
     }
     if (nums.length < 16) return false;
@@ -5362,9 +5526,8 @@ function starShiftCovers(token: string, axis: "x" | "y"): boolean {
   return false;
 }
 
-/** A chain of boxes compounds a viewport shift. 80vh on section div walks the writing off the first screen. 8vh still leaves the line. One box needs 70vh. A shift on html does not use this limit. */
+/** A chain of boxes compounds a viewport shift. 80vh on section div walks the writing off the first screen. 8vh still leaves the line. One box needs 70vh. html at 70vh still leaves the line. html at 80vh does not. */
 function pageShiftCovers(token: string): boolean {
-  if (activeDivs < 1 && !activePage && !activePaint) return false;
   const t = token.replace(/!important/gi, "").replace(/\s+/g, "");
   if (!t) return false;
   const parsed = parseMathSum(t, 0);
@@ -5374,6 +5537,8 @@ function pageShiftCovers(token: string): boolean {
   const unit = units[0]?.[0] ?? "";
   if (!/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) && !/^cq(?:w|h|i|b|min|max)$/.test(unit)) return false;
   const n = Math.abs(parsed.n);
+  if (activeRoot && n >= 80) return true;
+  if (activeDivs < 1 && !activePage && !activePaint) return false;
   if (activeDivs >= 2) return n >= 9;
   return n >= 70;
 }
@@ -6591,6 +6756,14 @@ function beatsEditorInk(selector: string, scopeSel: string | null): boolean {
   });
 }
 
+function coversRoot(selector: string, scopeSel: string | null): boolean {
+  return splitSelectorList(selector).some((part) => {
+    const text = part.trim();
+    if (!text || text.includes("::") || compoundIsUniversal(text)) return false;
+    return selectorMatchesEl(text, HTML_EL, scopeSel) || selectorMatchesEl(text, BODY_EL, scopeSel);
+  });
+}
+
 function countLiveDivs(selector: string, scopeSel: string | null): number {
   let n = 0;
   for (const part of splitSelectorList(selector)) {
@@ -6615,8 +6788,10 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const prevPage = activePage;
   const prevStack = activeStack;
   const prevDivs = activeDivs;
+  const prevRoot = activeRoot;
   activeStack = false;
   activeDivs = 0;
+  activeRoot = false;
   if (desk) {
     const sel = nestingSel ?? "";
     const ink = coversInk(sel, scopeSel);
@@ -6631,6 +6806,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activePaint = activeInk || writesDesk(sel, scopeSel) || editing || live.writing || /::selection\b/i.test(sel) || beatsEditorInk(sel, scopeSel);
     activeStack = !activeStar && stackedBoxes(sel, scopeSel);
     activeDivs = countLiveDivs(sel, scopeSel);
+    activeRoot = !activeStar && coversRoot(sel, scopeSel);
   }
   try {
   const scope = deskClipScope(nestingSel ?? "");
@@ -6649,6 +6825,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const outline = desk ? outlineDrops(decls) : () => false;
   const border = desk ? borderEats(decls) : () => false;
   const column = desk ? columnDrops(decls) : () => false;
+  const extra = desk ? deskExtraDrops(decls, hidden) : () => false;
   let out = "";
   let decl = "";
   let i = 0;
@@ -6657,7 +6834,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const keep = (piece: string) => {
     const next = piece.trim();
     if (!next) return;
-    if (desk && (declarationHidesFor(next, hidden, profiles) || declarationUsesHidingAnim(next, anims) || pair(next) || decor(next) || paintPairDrops(next, hidden) || sliverDrops(next, hidden, scope) || flexPieceDrops(next, hidden, flexOn) || containSizeDrops(next, sizeClip) || outline(next) || border(next) || column(next))) return;
+    if (desk && (declarationHidesFor(next, hidden, profiles) || declarationUsesHidingAnim(next, anims) || pair(next) || decor(next) || paintPairDrops(next, hidden) || sliverDrops(next, hidden, scope) || flexPieceDrops(next, hidden, flexOn) || containSizeDrops(next, sizeClip) || outline(next) || border(next) || column(next) || extra(next))) return;
     if (flat && (isBoxClip(next) || isBoxZeroFor(next, hidden, profiles) || isPageSliver(next))) return;
     if (paintPieceDrops(next, hidden, profiles, paint)) return;
     if (maskZeroDrops(next, hidden, mask)) return;
@@ -6760,7 +6937,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     i += 1;
   }
   const tail = decl.trim();
-  if (tail && !(desk && (declarationHidesFor(tail, hidden, profiles) || declarationUsesHidingAnim(tail, anims) || pair(tail) || decor(tail) || paintPairDrops(tail, hidden) || sliverDrops(tail, hidden, scope) || flexPieceDrops(tail, hidden, flexOn) || containSizeDrops(tail, sizeClip) || outline(tail) || border(tail) || column(tail))) && !(flat && (isBoxClip(tail) || isBoxZeroFor(tail, hidden, profiles) || isPageSliver(tail))) && !paintPieceDrops(tail, hidden, profiles, paint) && !maskZeroDrops(tail, hidden, mask) && !parkedMaskDrops(tail, parked)) out += tail;
+  if (tail && !(desk && (declarationHidesFor(tail, hidden, profiles) || declarationUsesHidingAnim(tail, anims) || pair(tail) || decor(tail) || paintPairDrops(tail, hidden) || sliverDrops(tail, hidden, scope) || flexPieceDrops(tail, hidden, flexOn) || containSizeDrops(tail, sizeClip) || outline(tail) || border(tail) || column(tail) || extra(tail))) && !(flat && (isBoxClip(tail) || isBoxZeroFor(tail, hidden, profiles) || isPageSliver(tail))) && !paintPieceDrops(tail, hidden, profiles, paint) && !maskZeroDrops(tail, hidden, mask) && !parkedMaskDrops(tail, parked)) out += tail;
   return out.replace(/;\s*$/g, "").trim();
   } finally {
     activeInk = prevInk;
@@ -6771,6 +6948,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activePage = prevPage;
     activeStack = prevStack;
     activeDivs = prevDivs;
+    activeRoot = prevRoot;
   }
 }
 
