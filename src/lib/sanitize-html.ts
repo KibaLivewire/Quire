@@ -2264,7 +2264,10 @@ function clipHides(value: string, hidden: Set<string>): boolean {
         const width = parts[2] ?? "";
         const height = parts[3] ?? "";
         const zero = (Boolean(width) && valueCanHide(width, hidden, hidesAsZero)) || (Boolean(height) && valueCanHide(height, hidden, hidesAsZero));
-        return zero || (windowSliver(width) && windowSliver(height)) || thinStrip(width) || thinStrip(height);
+        const heightPct = percentOf(height.replace(/!important/gi, "").trim());
+        const deep = Boolean(heightPct != null && heightPct > 0 && heightPct <= 0.22 && (activeStar || activeRepeat) && activeDivs >= 6);
+        const sheet = Boolean(heightPct != null && heightPct > 0 && heightPct <= 0.32 && (activeRoot || (activePage && !activePaint)));
+        return zero || (windowSliver(width) && windowSliver(height)) || thinStrip(width) || thinStrip(height) || deep || sheet;
       }
       if (call.name === "rect") return rectHides(call.inner);
       if (call.name === "polygon") return polygonAreaZero(call.inner) || coordSpanHides(call.inner) || polygonStrips(call.inner);
@@ -3816,7 +3819,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   }
   if (SHIFT_PROP.has(prop)) {
     if (verticalPushHides(prop, val)) return true;
-    if (paddingViewportHides(prop, val, hidden) || sidePushHides(prop, val, hidden)) return true;
+    if (paddingViewportHides(prop, val, hidden) || marginViewportHides(prop, val, hidden) || sidePushHides(prop, val, hidden) || sideLengthHides(prop, val, hidden)) return true;
     return shiftValueCovers(val, hidden);
   }
   if (prop === "mask-composite" || prop === "-webkit-mask-composite") {
@@ -4795,7 +4798,7 @@ function topPushEm(value: string): number | null {
   return px / 16;
 }
 
-/** A padding on every box compounds. A margin on the writing walks it off the first screen. A smaller push stays. */
+/** A padding on every box compounds. A margin on a star or a stack of divs walks the writing off the first screen. A smaller push stays. */
 function verticalPushHides(prop: string, value: string): boolean {
   const vertical =
     prop === "margin" ||
@@ -4815,7 +4818,8 @@ function verticalPushHides(prop: string, value: string): boolean {
   if (em == null || em < 0) return false;
   const padding = prop.startsWith("padding");
   if (activeStar && padding && em >= 2) return true;
-  if (activeStar && !padding && em >= 8) return true;
+  if (activeStar && !padding && em >= 3) return true;
+  if (!activeStar && activeRepeat && activeDivs >= 2 && !padding && em >= 4) return true;
   if (activePaint && em >= 18) return true;
   if (activePage && em >= 32) return true;
   return false;
@@ -4901,11 +4905,19 @@ function tokenViewportHides(token: string, axis: "v" | "h", limit: number): bool
   return Math.abs(hit.n) >= limit;
 }
 
-/** Padding in vh stacks down every box. 4vh on a star, or 8vh on every div, walks the line off. 3vh and 6vh still read. A margin in vh collapses and stays. */
+/** Padding in vh stacks down every box. 4vh on a star, or 8vh on every div, walks the line off. 3vh and 6vh still read. */
 function paddingViewportHides(prop: string, value: string, hidden: Set<string>): boolean {
   if (!prop.startsWith("padding")) return false;
   if (!activeStar && activeDivs < 2) return false;
   const limit = activeStar ? 4 : 8;
+  return axisTokens(prop, value, "v").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "v", limit)));
+}
+
+/** A margin in vh does not collapse on the open sheet. 6vh on a star, or 9vh on every div, walks the line off. 5vh and 8vh still read. One box may still shift. */
+function marginViewportHides(prop: string, value: string, hidden: Set<string>): boolean {
+  if (!prop.startsWith("margin")) return false;
+  const limit = activeStar ? 6 : activeRepeat && activeDivs >= 2 ? 9 : 0;
+  if (!limit) return false;
   return axisTokens(prop, value, "v").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "v", limit)));
 }
 
@@ -4914,6 +4926,18 @@ function sidePushHides(prop: string, value: string, hidden: Set<string>): boolea
   if (!prop.startsWith("margin") && !prop.startsWith("padding")) return false;
   if (!activeStar && activeDivs < 2) return false;
   return axisTokens(prop, value, "h").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "h", 8)));
+}
+
+/** 120px of side margin on a star or a stack pushes the line off. 110px still leaves a line. One box, and one line, may still shift. */
+function sideLengthHides(prop: string, value: string, hidden: Set<string>): boolean {
+  if (!prop.startsWith("margin")) return false;
+  if (!activeStar && !(activeRepeat && activeDivs >= 2)) return false;
+  return axisTokens(prop, value, "h").some((token) =>
+    valueCanHide(token, hidden, (raw) => {
+      const px = lengthDeskPx(raw.replace(/!important/gi, "").trim());
+      return px != null && Math.abs(px) >= 120;
+    }),
+  );
 }
 
 function gapWide(value: string, count: number): boolean {
@@ -4933,14 +4957,13 @@ function gapWide(value: string, count: number): boolean {
   return false;
 }
 
-/** Columns with a wide gap, and a clip, leave no first column. Eight columns at 2vw, or four at 4vw, do that. Two columns at 1em stay. A class may still set columns. */
+/** Columns that leave no first column are dropped. A star at three columns, or two columns with a clip, does that. A stack at eight columns, or three with a clip, does that. A wide gap with a clip does it from two columns. Two columns at 1em, and two clipped columns on a div, stay. A class may still set columns. */
 function columnSpreadDrops(parts: string[]): (part: string) => boolean {
   if (!activeStar && !activeRepeat) return () => false;
   const clip = parts.some((part) => {
     const piece = pieceProp(part);
     return Boolean(piece && overflowClips(piece.prop, piece.val));
   });
-  if (!clip) return () => false;
   let count = 0;
   for (const part of parts) {
     const piece = pieceProp(part);
@@ -4956,10 +4979,15 @@ function columnSpreadDrops(parts: string[]): (part: string) => boolean {
     if (!piece) continue;
     if ((piece.prop === "column-gap" || piece.prop === "gap") && gapWide(piece.val, count)) wide = true;
   }
-  if (!(count >= 2 && wide)) return () => false;
+  const stacked = activeRepeat && activeDivs >= 2;
+  const bare = (activeStar && count >= 3) || (stacked && count >= 8);
+  const clipped = clip && ((activeStar && count >= 2) || (stacked && count >= 3) || (count >= 2 && wide));
+  if (!bare && !clipped) return () => false;
   return (part) => {
     const piece = pieceProp(part);
-    return Boolean(piece && (piece.prop === "column-count" || piece.prop === "column-gap" || piece.prop === "columns" || piece.prop === "gap"));
+    if (!piece) return false;
+    if (piece.prop === "column-count" || piece.prop === "columns") return true;
+    return wide && clip && (piece.prop === "column-gap" || piece.prop === "gap");
   };
 }
 
@@ -5058,6 +5086,48 @@ function blockClipDrops(parts: string[], hidden: Set<string>): (part: string) =>
   };
 }
 
+function onePercent(value: string): number | null {
+  const tokens = splitTopWords(value.replace(/!important/gi, "")).filter(Boolean);
+  if (tokens.length !== 1) return null;
+  return percentOf(tokens[0] ?? "");
+}
+
+/** A percent size with a clip cuts the writing down. On a star, height 100%, max-height 75%, and max-width 80% do that. On a stack, height 50%, max-height 60%, and max-width 70% do that. The next step up still leaves a line. height 100% on a div stays. */
+function percentSizeDrops(parts: string[]): (part: string) => boolean {
+  const star = activeStar && activeDivs >= 2;
+  const stack = activeRepeat && activeDivs >= 2;
+  if (!star && !stack) return () => false;
+  let block = false;
+  let inline = false;
+  for (const part of parts) {
+    const piece = pieceProp(part);
+    if (!piece) continue;
+    const which = overflowClips(piece.prop, piece.val);
+    if (which === "both" || which === "block") block = true;
+    if (which === "both" || which === "inline") inline = true;
+  }
+  if (!block && !inline) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece) return false;
+    const pct = onePercent(piece.val);
+    if (pct == null || pct <= 0) return false;
+    if (block && (piece.prop === "height" || piece.prop === "block-size")) {
+      if (star && pct <= 1) return true;
+      if (stack && pct <= 0.5) return true;
+    }
+    if (block && (piece.prop === "max-height" || piece.prop === "max-block-size")) {
+      if (star && pct <= 0.75) return true;
+      if (stack && pct <= 0.6) return true;
+    }
+    if (inline && (piece.prop === "max-width" || piece.prop === "max-inline-size")) {
+      if (star && pct <= 0.8) return true;
+      if (stack && pct <= 0.7) return true;
+    }
+    return false;
+  };
+}
+
 /** top or left only moves a positioned box. 6vh on a star, or 8vh on every div, walks the line off. 4vh and 6vh still read. The position stays. */
 function offsetPushDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
   if (!activeStar && activeDivs < 2) return () => false;
@@ -5076,7 +5146,7 @@ function offsetPushDrops(parts: string[], hidden: Set<string>): (part: string) =
 }
 
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), trackRowDrops(parts, hidden), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), offsetPushDrops(parts, hidden)];
+  const drops = [columnSpreadDrops(parts), trackRowDrops(parts, hidden), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden)];
   return (part) => drops.some((drop) => drop(part));
 }
 
@@ -5604,12 +5674,12 @@ function matrixFlattens(value: string, hidden: Set<string>): boolean {
   });
 }
 
-/** matrix(0.15, …) is scale(0.15). On a star, matrix(0.5, …) compounds the same way scale(0.5) does. matrix(0.5, …) on html, and a turn, still show the line. */
+/** matrix(0.15, …) is scale(0.15). On a star, matrix(0.5, …) compounds the same way scale(0.5) does. On a stack of divs, matrix(0.85, …) does that too. matrix(0.88, …) on that stack, and matrix(0.5, …) on html, still show the line. A turn still shows the line. */
 function matrixScalesDown(value: string, hidden: Set<string>): boolean {
   const found = namedFunctionCalls(value, ["matrix3d", "matrix"]);
   return found.some((call) => {
     const nums = splitArgs(call.inner).map((arg) => coeffOf(arg, hidden));
-    const limit = activeStar ? 0.95 : activeInk ? 0.85 : activePaint ? 0.25 : activePage ? 0.13 : 0.4;
+    const limit = activeStar ? 0.95 : activeRepeat && activeDivs >= 2 ? 0.87 : activeInk ? 0.85 : activePaint ? 0.25 : activePage ? 0.13 : 0.4;
     const small = (x: number, y: number) => Number.isFinite(x) && Number.isFinite(y) && Math.hypot(x, y) < limit;
     if (call.name === "matrix") {
       if (nums.length < 4) return false;
@@ -5670,7 +5740,7 @@ function shiftAxisCovers(value: string): boolean {
   return Math.abs(parsed.n) >= 100;
 }
 
-/** A star shift compounds once per element. 60px down, or 80px across, walks the line off the first screen. 55px down and 70px across still leave a line. A shift on html does not compound. */
+/** A star shift compounds once per element. 60px down, 6vh down, or 80px across, walks the line off the first screen. 55px down, 5vh down, and 70px across still leave a line. A shift on html does not compound. */
 function starShiftCovers(token: string, axis: "x" | "y"): boolean {
   if (!activeStar) return false;
   const t = token.replace(/!important/gi, "").replace(/\s+/g, "");
@@ -5688,7 +5758,7 @@ function starShiftCovers(token: string, axis: "x" | "y"): boolean {
     return y ? px >= 60 : px >= 80;
   }
   if (unit === "em" || unit === "rem") return y ? n >= 4 : n >= 5;
-  if (/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) || /^cq(?:w|h|i|b|min|max)$/.test(unit)) return n >= 9;
+  if (/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) || /^cq(?:w|h|i|b|min|max)$/.test(unit)) return y ? n >= 6 : n >= 9;
   return false;
 }
 

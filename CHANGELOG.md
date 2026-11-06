@@ -1,3 +1,21 @@
+# Quire 1.9.53 — The first screen still has the writing
+
+Released 6 November 2026.
+
+- **A margin on the open sheet can no longer walk the writing off.** The boxes do not collapse. `div { margin-top: 4em }` and `*{ margin-top: 3em }` push the line off. `div { margin-top: 9vh }` and `div { margin-top: 12vh }` do the same. `*{ margin-top: 6vh }` does it on a star. Those are dropped. `div { margin-top: 3em }` and `*{ margin-top: 2em }` still leave the line. `div { margin-top: 8vh }` and `*{ margin-top: 5vh }` still leave the line. `header + div { margin-top: 8em }` is one box and stays. `p { margin-top: 12em }` and `section { margin-top: 24em }` stay. Colour stays.
+- **A star shift of 6vh can no longer clear the desk.** `*{ transform: translateY(6vh) }` and `*{ translate: 0 6vh }` leave no writing. Those are dropped. `*{ transform: translateY(5vh) }` still leaves the line. `html { transform: translateY(70vh) }` and `html { transform: translateY(8vh) }` stay. `section div { transform: translateY(8vh) }` stays. Colour stays.
+- **A matrix on the stack can no longer shrink the writing away.** `div { transform: matrix(0.85, 0, 0, 0.85, 0, 0) }` leaves no line. It is dropped. `matrix(0.88, …)` still leaves a line. `header + div { matrix(0.85, …) }` is one box and stays. Colour stays.
+- **A percent size with a clip can no longer cut the page down to nothing.** `div { height: 50%; overflow: hidden }`, `div { max-height: 60%; overflow: hidden }`, and `div { max-width: 70%; overflow: hidden }` do that. On a star, `height: 100%`, `max-height: 75%`, and `max-width: 80%` with a clip do it too. Those sizes are dropped. The clip stays. `div { height: 60% }` still leaves a line. `div { max-height: 65% }` and `div { max-width: 75% }` stay. `div { height: 100% }` stays. `*{ max-height: 80% }` and `*{ max-width: 85% }` still read. `div { height: 50% }` with no clip stays. Colour stays.
+- **A short xywh window can no longer cover the writing.** `div { clip-path: xywh(0 0 100% 22%) }` and the same window at 20% on a star leave no line. `html` and `body` at 30%, and `section` at 30%, do the same. Those are dropped. `div { xywh(… 25%) }` still leaves the line. `html` and `section` at 40% stay. `p { xywh(… 20%) }` stays. Colour stays.
+- **Columns can no longer leave no first column when the gap is narrow.** `div { column-count: 8 }` piles the letters with no clip. `div { column-count: 3; overflow: hidden }` and `*{ column-count: 3 }` do the same. `*{ column-count: 2; overflow: hidden }` leaves nothing. The count is dropped. The clip stays. `div { column-count: 6 }` still reads. `div { column-count: 2; overflow: hidden }` still leaves the words. `*{ column-count: 2; column-gap: 1em }` stays. Colour stays.
+- **120px of side margin can no longer push the line off.** `div { margin-left: 120px }` and the same margin on a star leave no writing. Those are dropped. `div { margin-left: 110px }` still leaves a line. `*{ margin-left: 80px }` still reads. `header + div { margin-left: 120px }` is one box and stays. `p { margin-left: 120px }` stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.52 — The first screen still has the writing
 
 Released 6 November 2026.
