@@ -1,3 +1,20 @@
+# Quire 1.9.52 — The first screen still has the writing
+
+Released 6 November 2026.
+
+- **A viewport padding, a side shift, or a relative offset can no longer walk the writing off.** `*{ padding-top: 4vh }` and `div { padding-top: 8vh }` stack until the line is gone. `div { margin-left: 8vw }` and `*{ padding-left: 8vw }` leave a sliver. `div { position: relative; top: 8vh }` and `*{ position: relative; top: 6vh }` do the same. Those are dropped. `*{ padding-top: 3vh }` still reads. `div { padding-top: 6vh }` still leaves the line. `div { margin-left: 6vw }` still leaves the line. `div { margin-top: 12vh }` stays, because a margin collapses. `div { top: 8vh }` with no position stays. `header + div { margin-left: 40vw }` is one box and stays. Colour stays.
+- **A shallower turn on the stack can no longer leave only dashes.** `div { transform: rotateX(40deg) }` and `rotateX(60deg)` compound into dashes. `div { transform: rotateY(30deg) }` leaves a sliver. `*{ transform: rotateX(30deg) }` is a hairline. Those are dropped. `div { transform: rotateX(30deg) }` still reads. `div { transform: rotateY(25deg) }` still reads. `*{ transform: rotateX(20deg) }` still reads. One box at `rotateX(89deg)` still reads. `html { transform: rotateX(89deg) }` stays. `p { rotate: x 80deg }` stays. Colour stays.
+- **A hard skew on a star or a stack can no longer smear the line.** `*{ transform: skewX(10deg) }` and `div { transform: skewX(15deg) }` compound into strokes. Those are dropped. `*{ transform: skewX(8deg) }` still reads. `div { transform: skewX(10deg) }` still reads. `html { transform: skewX(45deg) }` and `skewX(60deg)` stay. Colour stays.
+- **Fewer columns with a narrower gap can no longer leave no first column.** `div { column-count: 4; column-gap: 4vw; overflow: hidden }` and `*{ column-count: 8; column-gap: 2vw; overflow: hidden }` clip the writing out. The count and the gap are dropped. The clip stays. `*{ column-count: 2; column-gap: 1em }` stays. Colour stays.
+- **A clipped slit or a short block can no longer remove the page.** `div { width: 24px; overflow: hidden }` is a one-letter strip. `div { max-height: 160px; overflow: hidden }` clips the line. `*{ height: 100vh; overflow: hidden }` and `*{ height: 64px; overflow: hidden }` fill the header and hide the writing. Those sizes are dropped. The clip stays. `div { width: 48px; overflow: hidden }` still leaves a word. `div { max-height: 200px; overflow: hidden }` still leaves the line. `*{ max-height: 100vh; overflow: hidden }` still reads. `p { width: 24px }` stays. `header + div { width: 6px; overflow: hidden }` is one box and stays. `body * { height: 24px; overflow: hidden }` stays. Colour stays.
+- **An origin a few hundred pixels off can no longer fling a star or a stack.** `div { transform-origin: -400px 40px; transform: rotate(18deg) }` and the same origin on a star swing the line off. The origin is dropped. The turn stays. `div { transform-origin: -200px }` with the same turn still reads. `p { transform-origin: -400px 40px; transform: rotate(18deg) }` stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.51 — The first screen still has the writing
 
 Released 5 November 2026.
