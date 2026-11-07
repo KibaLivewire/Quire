@@ -1,3 +1,15 @@
+# Quire 1.9.54 — The writing still shows on a dark sheet
+
+Released 7 November 2026.
+
+- **An ink the same colour as the sheet can no longer wipe the writing.** The check only looked at the light page. On the dark, navy, leather, and rain sheets, `p { color: #1c1917 }`, `#221e1a`, `#1a1714`, `#333`, `#4a453f`, `black`, and `rgb(28, 25, 23)` leave no letters. The same colour in `hsl`, `hwb`, `oklch`, `oklab`, `lab`, `lch`, `color()`, a `color-mix` of two sheet colours, `light-dark`, a relative `rgb(from …)`, and `-webkit-text-fill-color` does it too. A wash of that ink, `rgb(28 25 23 / 0.45)`, still sits on the page. Those are dropped. The face size stays. Gray, `#808080`, `#666`, `#5c564e`, and `#555` still read. `red` stays. `div { color: #1c1917 }` does not beat the writing class. `header + div`, `.note`, and `.quire-doc` stay. `[data-recipe]` stays. `html { color: #1c1917 }` stays unless it is `!important`. An inline style keeps `#112233`. A border in that ink stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.53 — The first screen still has the writing
 
 Released 6 November 2026.

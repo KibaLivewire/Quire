@@ -3451,18 +3451,149 @@ function colorAlpha(token: string): number | null {
 }
 
 function contrastVsPaper(r: number, g: number, b: number): number {
+  return contrastVs(r, g, b, [243, 238, 230]);
+}
+
+function contrastVs(r: number, g: number, b: number, paper: [number, number, number]): number {
   const lin = (c: number) => {
     const s = c / 255;
     return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
   };
   const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-  const paper = 0.2126 * lin(243) + 0.7152 * lin(238) + 0.0722 * lin(230);
-  const hi = Math.max(L, paper);
-  const lo = Math.min(L, paper);
+  const P = 0.2126 * lin(paper[0]) + 0.7152 * lin(paper[1]) + 0.0722 * lin(paper[2]);
+  const hi = Math.max(L, P);
+  const lo = Math.min(L, P);
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/** Ink this faint against the page colour cannot be read. A darker mix stays. */
+/** Built-in sheets. A colour under 1.95 against any of them disappears on that desk. */
+const DESK_SHEETS: [number, number, number][] = [
+  [243, 238, 230],
+  [34, 30, 26],
+  [26, 23, 20],
+  [18, 32, 56],
+  [35, 23, 16],
+  [28, 39, 48],
+];
+
+function functionToRgb(name: string, inner: string): [number, number, number] | null {
+  const { parts, alpha } = colorChannels(inner);
+  if (alpha && (alphaIsClear(alpha) || (percentOf(alpha) != null && (percentOf(alpha) ?? 1) < 0.95))) return null;
+  if (alpha && !alpha.endsWith("%")) {
+    const n = Number(alpha);
+    if (Number.isFinite(n) && n < 0.95) return null;
+  }
+  if (name === "hsl" || name === "hsla") {
+    if (parts.length < 3) return null;
+    const h = hueDegrees(parts[0] ?? "");
+    const s = percentOf(parts[1] ?? "");
+    const l = percentOf(parts[2] ?? "");
+    if (h == null || s == null || l == null) return null;
+    return hslToRgb(h, s, l);
+  }
+  if (name === "hwb") {
+    if (parts.length < 3) return null;
+    const h = hueDegrees(parts[0] ?? "");
+    const w = percentOf(parts[1] ?? "");
+    const bk = percentOf(parts[2] ?? "");
+    if (h == null || w == null || bk == null) return null;
+    return hwbToRgb(h, w, bk);
+  }
+  if (name === "oklch") {
+    if (parts.length < 3) return null;
+    const L = axisNumber(parts[0] ?? "", 1);
+    const C = axisNumber(parts[1] ?? "", 0.4);
+    const H = hueOrNone(parts[2] ?? "");
+    if (L == null || C == null || H == null) return null;
+    return oklchToRgb(L, C, H);
+  }
+  if (name === "oklab") {
+    if (parts.length < 3) return null;
+    const L = axisNumber(parts[0] ?? "", 1);
+    const a = axisNumber(parts[1] ?? "", 0.4);
+    const b = axisNumber(parts[2] ?? "", 0.4);
+    if (L == null || a == null || b == null) return null;
+    return oklabToRgb(L, a, b);
+  }
+  if (name === "lab" || name === "lch") {
+    if (parts.length < 3) return null;
+    const L = axisNumber(parts[0] ?? "", 100);
+    const second = axisNumber(parts[1] ?? "", name === "lch" ? 150 : 125);
+    const third = name === "lch" ? hueOrNone(parts[2] ?? "") : axisNumber(parts[2] ?? "", 125);
+    if (L == null || second == null || third == null) return null;
+    const a = name === "lch" ? second * Math.cos((third * Math.PI) / 180) : second;
+    const b = name === "lch" ? second * Math.sin((third * Math.PI) / 180) : third;
+    return labToRgb(L, a, b);
+  }
+  if (name === "color") {
+    if (parts.length < 4) return null;
+    const space = (parts[0] ?? "").toLowerCase();
+    if (/^xyz(?:-d(?:50|65))?$/.test(space)) {
+      const y = xyzChannel(parts[2] ?? "");
+      if (y == null) return null;
+      const g = Math.max(0, Math.min(255, Math.round(y * 255)));
+      return [g, g, g];
+    }
+    if (!/^(?:srgb|srgb-linear|display-p3|a98-rgb|prophoto-rgb|rec2020)$/.test(space)) return null;
+    const rgb = parts.slice(1, 4).map((part) => unitIntervalByte(part));
+    const r = rgb[0];
+    const g = rgb[1];
+    const b = rgb[2];
+    if (r == null || g == null || b == null) return null;
+    return [r, g, b];
+  }
+  if (name === "color-mix") {
+    const bits = splitArgs(inner).map((part) => part.trim()).filter(Boolean);
+    if (bits.length < 3 || !/^in\b/i.test(bits[0] ?? "")) return null;
+    const colors = bits.slice(1);
+    if (colors.length !== 2) return null;
+    const weighed = colors.map((part) => mixWeight(part));
+    const a = resolvedInk(weighed[0]?.color ?? "");
+    const b = resolvedInk(weighed[1]?.color ?? "");
+    if (!a || !b) return null;
+    let pa = weighed[0]?.pct ?? null;
+    let pb = weighed[1]?.pct ?? null;
+    if (pa == null && pb == null) {
+      pa = 0.5;
+      pb = 0.5;
+    } else if (pa == null) pa = Math.max(0, 1 - (pb ?? 0));
+    else if (pb == null) pb = Math.max(0, 1 - pa);
+    const sum = pa + pb;
+    if (sum <= 0) return null;
+    return [Math.round((a[0] * pa + b[0] * pb) / sum), Math.round((a[1] * pa + b[1] * pb) / sum), Math.round((a[2] * pa + b[2] * pb) / sum)];
+  }
+  return null;
+}
+
+function resolvedInk(token: string): [number, number, number] | null {
+  const direct = resolveRgb(token);
+  if (direct) return direct;
+  const t = token.replace(/!important/gi, "").trim().toLowerCase();
+  const calls = namedFunctionCalls(t, ["color-mix", "oklch", "oklab", "hsla", "rgba", "hwb", "lch", "lab", "hsl", "rgb", "color"]);
+  if (calls.length !== 1 || !calls[0]) return null;
+  const call = calls[0];
+  if (t.replace(/\s+/g, "") !== `${call.name}(${call.inner.replace(/\s+/g, "")})`) return null;
+  if (/^from\s+/i.test(call.inner.trim())) {
+    const split = relativeSplit(call.name, call.inner);
+    if (!split) return null;
+    return evaluateRelativeRgb(call.name, split.origin, split.channels);
+  }
+  return functionToRgb(call.name, call.inner);
+}
+
+/** The light sheet already rejects a pale ink. The dark, navy, leather, and rain sheets reject an ink that sits on the page. Gray still reads. A class that does not target the writing is unchanged. */
+function colorMissesDesk(token: string): boolean {
+  const raw = token.replace(/!important/gi, "").trim();
+  const t = raw.toLowerCase();
+  const calls = namedFunctionCalls(t, ["light-dark"]);
+  if (calls.length === 1 && calls[0] && t.replace(/\s+/g, "") === `light-dark(${calls[0].inner.replace(/\s+/g, "")})`) {
+    const bits = splitArgs(calls[0].inner).map((part) => part.trim()).filter(Boolean);
+    return bits.length > 0 && bits.some((bit) => colorMissesDesk(bit));
+  }
+  const rgb = resolvedInk(raw);
+  if (!rgb) return false;
+  return DESK_SHEETS.some((paper) => contrastVs(rgb[0], rgb[1], rgb[2], paper) < 1.95);
+}
 function inkTooFaint(token: string): boolean {
   const rgb = resolveRgb(token.replace(/!important/gi, "").trim());
   if (!rgb) return false;
@@ -3768,7 +3899,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     return functionCallsNamed(val, ["blur"]).some((inner) => blurHides(inner, hidden));
   }
   if (prop === "mix-blend-mode") return valueCanHide(val, hidden, blendWashes);
-  if (prop === "color" && (activeInk || activePaint || /!important/i.test(val))) return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw) || inkTooFaint(raw));
+  if (prop === "color" && (activeInk || activePaint || /!important/i.test(val))) return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw) || colorMissesDesk(raw) || inkTooFaint(raw));
   if (prop === "scale") {
     return splitScaleParts(val.replace(/!important/gi, "")).some((arg) => valueCanHide(arg, hidden, (raw) => hidesAsZero(raw) || scaleFactorHides(raw)));
   }
@@ -3790,7 +3921,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "letter-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 12, 0.5));
   if (prop === "word-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 96));
   if (prop === "-webkit-text-fill-color" || prop === "text-fill-color") {
-    return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw));
+    return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw) || colorMissesDesk(raw));
   }
   if ((prop === "background-clip" || prop === "-webkit-background-clip") && activePaint) {
     return valueCanHide(val, hidden, (raw) => /\btext\b/i.test(raw.replace(/!important/gi, "")));
