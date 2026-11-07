@@ -1,3 +1,22 @@
+# Quire 1.9.56 — The first screen still has the writing
+
+Released 7 November 2026.
+
+- **A star shift of 5vh or 40px can no longer clear the desk.** `*{ transform: translateY(5vh) }`, `*{ translate: 0 5vh }`, `*{ transform: translateY(40px) }`, and `*{ translate: 0 40px }` leave no writing. Those are dropped. `4.5vh` and `32px` still leave the line. `html { translateY(72vh) }` stays. Colour stays.
+- **A 7vh margin on every div, or 2.5em on a star, can no longer walk the line off.** `div { margin-top: 7vh }` and `div { margin-top: 8vh }` do that. `*{ margin-top: 2.6em }` does it on a star. Those are dropped. `div { margin-top: 6vh }` and `div { margin-top: 3em }` still leave the line. `*{ margin-top: 2.4em }` and `*{ margin-top: 5vh }` stay. `header + div { margin-top: 8em }` is one box and stays. Colour stays.
+- **A clipped percent size can no longer cut the line down.** `div { height: 60%; overflow: hidden }`, `div { max-height: 95%; overflow: hidden }`, `div { max-width: 75%; overflow: hidden }`, and `*{ max-width: 85%; overflow: hidden }` do that. Those sizes are dropped. The clip stays. `div { height: 70% }` and `div { height: 100% }` still leave a line. `div { max-height: 100% }` still leaves a line. `div { max-width: 90% }` and `*{ max-width: 95% }` stay. `*{ max-height: 80% }` stays. Colour stays.
+- **Two columns on a star, or four on every div, can no longer leave no first column.** `*{ column-count: 2 }` and `div { column-count: 4 }` do that. `*{ column-width: 40px }` does it at any width. `div { column-count: 2; column-gap: 2em; overflow: hidden }` does it with a wide gap. The count, or the width, is dropped. `div { column-count: 2 }` still reads. `*{ column-gap: 1em }` stays after the count is dropped. `.note { column-width: 40px }` stays. Colour stays.
+- **A clipped width under 280px can no longer slit the line.** `div { width: 48px; overflow: hidden }` leaves nothing. It is dropped. `div { width: 320px; overflow: hidden }` still leaves the line. `header + div { width: 6px; overflow: hidden }` is one box and stays. Colour stays.
+- **An 18deg turn, or an 8deg skew, can no longer smear the line.** `*{ transform: rotate(18deg) }` and `div { transform: rotate(18deg) }` leave no writing. `*{ transform: skewX(8deg) }` and `div { transform: skewX(8deg) }` do the same. An origin of `-200px` with that turn is dropped too. `*{ transform: rotate(2deg) }` and `*{ transform: skewX(2deg) }` still read. `div { transform: skewX(6deg) }` still reads. `p { transform-origin: -400px; transform: rotate(18deg) }` stays. `html { skewX(60deg) }` stays. Colour stays.
+- **Absolute position, a vertical writing mode, a numeric aspect ratio, or a small rect can no longer hide the writing.** `*{ position: absolute }` and the same on every div leave nothing. `*{ writing-mode: vertical-rl }` does too. `*{ aspect-ratio: 1/1 }` and `*{ clip-path: rect(0px 80px 40px 0px) }` do too. `*{ text-indent: -20em }` and `body * { height: 24px; overflow: hidden }` do too. `html { transform: perspective(20px) rotateX(25deg) }` flattens the page. Those are dropped. `*{ position: fixed }` stays. `html { position: absolute }` stays. `header + div { position: absolute }` is one box and stays. `p { writing-mode: vertical-rl }`, `p { aspect-ratio: 8/1 }`, and `p { clip-path: rect(0px 80px 40px 0px) }` stay. `*{ aspect-ratio: auto }` stays. `*{ text-indent: -8em }` and `html { text-indent: -100ch }` stay. `html { height: 24px; overflow: hidden }` stays. `html { perspective(400px) rotateX(20deg) }` stays. Colour stays.
+- **A 7vh shift on every div, an 8vh shift on a shorter stack, or 74vh on html can no longer walk the line off.** `div { transform: translateY(7vh) }`, `div { translate: 0 7vh }`, and `div { transform: translate3d(0, 7vh, 0) }` leave no writing. `section div { translateY(8vh) }` and `div div { translateY(8vh) }` do too. `html { transform: translateY(74vh) }` does too. Those are dropped. `div { translateY(6vh) }` still leaves the line. `section div { translateY(7vh) }` and `div div { translateY(7vh) }` stay. `html { translateY(72vh) }` and `html { translateY(70vh) }` stay. `header + div { translateY(10vh) }` is one box and stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.55 — The first screen still has the writing
 
 Released 7 November 2026.
