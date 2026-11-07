@@ -1,3 +1,21 @@
+# Quire 1.9.55 — The first screen still has the writing
+
+Released 7 November 2026.
+
+- **A full stack of divs can no longer shift the line by 8vh.** `div { transform: translateY(8vh) }`, `div { translate: 0 8vh }`, and `div { transform: translate3d(0, 8vh, 0) }` walk the writing off. Those are dropped. `7vh` still leaves the line. `section div { translateY(8vh) }` and `div div { translateY(8vh) }` are one short of that stack and stay. `html { translateY(70vh) }` stays. Colour stays.
+- **A window that does not start on the line can no longer cover it.** `div { clip-path: xywh(0 2% 100% 25%) }` starts under the writing. A star window only `45%` tall does too. A stack window only `22%` wide does too. `header + div { xywh(0 20% 100% 60%) }` misses the line on that one column. Those are dropped. `xywh(0 1% 100% 25%)` still leaves the line. `*{ xywh(… 50%) }` still leaves the line. `div { xywh(0 0 25% 100%) }` still leaves a line. `div { xywh(0 0 100% 25%) }` stays. `header + div { xywh(0 15% 100% 70%) }` stays. Colour stays.
+- **A 2% inset from the top can no longer crop the line.** `div { clip-path: inset(2% 0 0 0) }` and the same inset on a star leave no writing. Those are dropped. `div { inset(0 0 70% 0) }` still leaves the line. `p { inset(2% 0 0 0) }` stays. Colour stays.
+- **A polygon of only the top band can no longer hide the sheet.** `div { clip-path: polygon(0 0, 100% 0, 100% 20%, 0 20%) }` leaves no writing. On a star, `45%` does too. Those are dropped. The div shape at `22%` still leaves the line. The star shape at `50%` still leaves the line. Colour stays.
+- **A transparent block edge can no longer walk the line off.** `div { border-top: 8vh solid transparent }` and `border-block-start: 8vh` stack like padding. `*{ border-top: 6vh solid transparent }` does it on a star. Those are dropped. `div { border-top: 7vh }` still leaves the line. `*{ border-top: 4vh }` stays. Colour stays.
+- **A margin and a padding in one rule can no longer stack past the line.** `div { margin-top: 8vh; padding-top: 1vh }`, `div { margin-top: 6vh; padding-top: 3vh }`, and `*{ margin-top: 5vh; padding-top: 2vh }` do that. The padding is dropped. The margin stays. `div { margin-top: 4vh; padding-top: 4vh }` and `*{ margin-top: 4vh; padding-top: 2vh }` still leave the line. Colour stays.
+- **A grid row gap can no longer open a hole above the line.** `div { row-gap: 14vh; display: grid }` and `*{ row-gap: 4vh; display: grid }` do that. The gap is dropped. The grid stays. `div { row-gap: 12vh; display: grid }` still leaves the line. `*{ row-gap: 2vh; display: grid }` still leaves the line. `div { row-gap: 16vh }` with no grid stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.54 — The writing still shows on a dark sheet
 
 Released 7 November 2026.

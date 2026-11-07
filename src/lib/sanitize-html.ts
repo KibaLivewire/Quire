@@ -2249,6 +2249,37 @@ function windowSliver(token: string): boolean {
   return px != null && px >= 0 && px <= 80;
 }
 
+/** A polygon that keeps only the top of the stack covers the line. 20% on a stack of divs does. 22% still leaves it. On a star, 45% does. 50% still leaves it. */
+function polygonTopBand(inner: string): boolean {
+  const limit = activeStar ? 0.45 : activeRepeat && activeDivs >= 6 ? 0.2 : 0;
+  if (!limit) return false;
+  const pctOrZero = (token: string): number | null => {
+    const t = token.replace(/!important/gi, "").trim();
+    if (t === "0") return 0;
+    return percentOf(t);
+  };
+  const bits = splitArgs(inner.trim().replace(/^(?:evenodd|nonzero)\s*,?\s*/i, ""))
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const bit of bits) {
+    const pair = splitTopWords(bit);
+    if (pair.length < 2) continue;
+    const x = pctOrZero(pair[0] ?? "");
+    const y = pctOrZero(pair[1] ?? "");
+    if (x == null || y == null) return false;
+    xs.push(x);
+    ys.push(y);
+  }
+  if (ys.length < 3 || xs.length < 3) return false;
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const spanX = Math.max(...xs) - Math.min(...xs);
+  if (minY > 0.02 || spanX < 0.5) return false;
+  return maxY <= limit + 1e-6;
+}
+
 function clipHides(value: string, hidden: Set<string>): boolean {
   const found = namedFunctionCalls(value, ["ellipse", "circle", "polygon", "inset", "xywh", "rect", "path", "shape"]);
   if (
@@ -2261,16 +2292,25 @@ function clipHides(value: string, hidden: Set<string>): boolean {
         const parts = splitArgs(call.inner)
           .flatMap((part) => part.trim().split(/\s+/))
           .filter(Boolean);
+        const y = parts[1] ?? "";
         const width = parts[2] ?? "";
         const height = parts[3] ?? "";
         const zero = (Boolean(width) && valueCanHide(width, hidden, hidesAsZero)) || (Boolean(height) && valueCanHide(height, hidden, hidesAsZero));
         const heightPct = percentOf(height.replace(/!important/gi, "").trim());
-        const deep = Boolean(heightPct != null && heightPct > 0 && heightPct <= 0.22 && (activeStar || activeRepeat) && activeDivs >= 6);
+        const yPct = percentOf(y.replace(/!important/gi, "").trim());
+        const widthPct = percentOf(width.replace(/!important/gi, "").trim());
+        const stacked = activeRepeat && activeDivs >= 6;
+        const deep = Boolean(heightPct != null && heightPct > 0 && heightPct <= 0.22 && stacked);
+        const starWindow = Boolean(activeStar && heightPct != null && heightPct > 0 && heightPct <= 0.45);
+        const yOff = Boolean(
+          yPct != null && ((yPct >= 0.02 && (activeStar || stacked)) || (yPct >= 0.2 && activeRepeat && activeDivs >= 1 && activeDivs < 6)),
+        );
+        const narrow = Boolean(widthPct != null && widthPct > 0 && widthPct <= 0.22 && stacked);
         const sheet = Boolean(heightPct != null && heightPct > 0 && heightPct <= 0.32 && (activeRoot || (activePage && !activePaint)));
-        return zero || (windowSliver(width) && windowSliver(height)) || thinStrip(width) || thinStrip(height) || deep || sheet;
+        return zero || (windowSliver(width) && windowSliver(height)) || thinStrip(width) || thinStrip(height) || deep || starWindow || yOff || narrow || sheet;
       }
       if (call.name === "rect") return rectHides(call.inner);
-      if (call.name === "polygon") return polygonAreaZero(call.inner) || coordSpanHides(call.inner) || polygonStrips(call.inner);
+      if (call.name === "polygon") return polygonAreaZero(call.inner) || coordSpanHides(call.inner) || polygonStrips(call.inner) || polygonTopBand(call.inner);
       if (call.name === "path") return pathHides(call.inner);
       if (call.name === "shape") return shapeHides(call.inner) || coordSpanHides(call.inner) || shapeStrips(call.inner);
       if (call.name === "ellipse") return ellipseHides(call.inner, hidden);
@@ -2284,6 +2324,7 @@ function clipHides(value: string, hidden: Set<string>): boolean {
       const bottom = parsed[2];
       const left = parsed[3];
       if (!top || !right || !bottom || !left) return false;
+      if ((activeStar || (activeRepeat && activeDivs >= 6)) && top.kind === "pct" && top.n >= 2) return true;
       return insetPairCovers(top, bottom) || insetPairCovers(left, right);
     })
   ) {
@@ -3933,6 +3974,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "text-decoration") return valueCanHide(val, hidden, (raw) => decorationShorthandHides(raw, hidden));
   if (prop === "text-indent") return indentPxHides(val, hidden);
   if (prop === "clip-path" || prop === "-webkit-clip-path") return clipHides(val, hidden);
+  if (borderEdgeHides(prop, val)) return true;
   if (prop === "clip") return namedFunctionCalls(val, ["rect"]).some((call) => rectHides(call.inner));
   if (prop === "mask" || prop === "mask-image" || prop === "-webkit-mask" || prop === "-webkit-mask-image") return maskHides(val, hidden);
   if (prop === "translate") {
@@ -5036,6 +5078,23 @@ function tokenViewportHides(token: string, axis: "v" | "h", limit: number): bool
   return Math.abs(hit.n) >= limit;
 }
 
+/** A transparent edge on the block start stacks like padding. 6vh on a star, or 8vh on every div, walks the line off. 4vh and 7vh still read. */
+function borderEdgeHides(prop: string, value: string): boolean {
+  const vertical =
+    prop === "border" ||
+    prop === "border-top" ||
+    prop === "border-bottom" ||
+    prop === "border-block" ||
+    prop === "border-block-start" ||
+    prop === "border-block-end" ||
+    prop === "border-width" ||
+    prop === "border-block-width";
+  if (!vertical) return false;
+  const limit = activeStar ? 6 : activeRepeat && activeDivs >= 2 ? 8 : 0;
+  if (!limit) return false;
+  return splitTopWords(value.replace(/!important/gi, "")).some((token) => tokenViewportHides(token, "v", limit));
+}
+
 /** Padding in vh stacks down every box. 4vh on a star, or 8vh on every div, walks the line off. 3vh and 6vh still read. */
 function paddingViewportHides(prop: string, value: string, hidden: Set<string>): boolean {
   if (!prop.startsWith("padding")) return false;
@@ -5276,8 +5335,52 @@ function offsetPushDrops(parts: string[], hidden: Set<string>): (part: string) =
   };
 }
 
+/** A margin and a padding in the same rule stack. On a stack of divs, 6vh of margin with 3vh of padding walks the line off. 6vh with 2vh still leaves it. On a star, 5vh of margin with 2vh of padding, or 4vh with 3vh, does that. 4vh with 2vh still leaves it. The padding is dropped. The margin stays. */
+function pushPairDrops(parts: string[]): (part: string) => boolean {
+  let margin = 0;
+  let padding = 0;
+  for (const part of parts) {
+    const piece = pieceProp(part);
+    if (!piece) continue;
+    const kind = piece.prop.startsWith("margin") ? "m" : piece.prop.startsWith("padding") ? "p" : "";
+    if (!kind) continue;
+    for (const token of axisTokens(piece.prop, piece.val, "v")) {
+      const hit = viewportAmount(token.replace(/!important/gi, "").trim());
+      if (!hit || hit.kind === "h") continue;
+      const n = Math.abs(hit.n);
+      if (kind === "m") margin = Math.max(margin, n);
+      else padding = Math.max(padding, n);
+    }
+  }
+  const hard = activeStar
+    ? (margin >= 5 && padding >= 2) || (margin >= 4 && padding >= 3)
+    : activeRepeat && activeDivs >= 6 && ((margin >= 5 && padding >= 4) || (margin >= 7 && padding >= 1) || (margin >= 6 && padding >= 3));
+  if (!hard) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop.startsWith("padding"));
+  };
+}
+
+/** A grid row gap on the stack opens a hole above the line. 14vh on every div does. 12vh still leaves it. 4vh on a star does. 2vh on a star still leaves it. A gap with no grid stays. */
+function rowGapDrops(parts: string[]): (part: string) => boolean {
+  const grid = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop === "display" && /\bgrid\b/i.test(piece.val));
+  });
+  if (!grid) return () => false;
+  const limit = activeStar ? 4 : activeRepeat && activeDivs >= 2 ? 14 : 0;
+  if (!limit) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || (piece.prop !== "row-gap" && piece.prop !== "gap")) return false;
+    const token = (splitTopWords(piece.val.replace(/!important/gi, "")).find(Boolean) ?? "").trim();
+    return tokenViewportHides(token, "v", limit);
+  };
+}
+
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), trackRowDrops(parts, hidden), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden)];
+  const drops = [columnSpreadDrops(parts), trackRowDrops(parts, hidden), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), pushPairDrops(parts), rowGapDrops(parts)];
   return (part) => drops.some((drop) => drop(part));
 }
 
@@ -5893,7 +5996,7 @@ function starShiftCovers(token: string, axis: "x" | "y"): boolean {
   return false;
 }
 
-/** A chain of boxes compounds a viewport shift. 80vh on section div walks the writing off the first screen. 8vh still leaves the line. One box needs 70vh. html at 70vh still leaves the line. html at 80vh does not. */
+/** A chain of boxes compounds a viewport shift. 80vh on section div walks the writing off the first screen. 8vh still leaves the line there. A bare stack of every div walks off at 8vh. 7vh on that stack still leaves the line. One box needs 70vh. html at 70vh still leaves the line. html at 80vh does not. */
 function pageShiftCovers(token: string): boolean {
   const t = token.replace(/!important/gi, "").replace(/\s+/g, "");
   if (!t) return false;
@@ -5906,6 +6009,7 @@ function pageShiftCovers(token: string): boolean {
   const n = Math.abs(parsed.n);
   if (activeRoot && n >= 80) return true;
   if (activeDivs < 1 && !activePage && !activePaint) return false;
+  if (activeDivs >= 10) return n >= 8;
   if (activeDivs >= 2) return n >= 9;
   return n >= 70;
 }
