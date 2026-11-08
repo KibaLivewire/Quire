@@ -1,3 +1,17 @@
+# Quire 1.9.57 — The first screen still has the writing
+
+Released 8 November 2026.
+
+- **A dim brightness can no longer black out the writing.** `*{ filter: brightness(0.8) }` and the same at `0.55` leave no letters. `div { filter: brightness(0.55) }` and `0.4` do it on every box. Those are dropped. `*{ filter: brightness(0.85) }` still reads. `div { filter: brightness(0.7) }` still reads. `html { filter: brightness(0.2) }` stays. `*{ filter: brightness(1.15) }` stays. Colour stays.
+- **Contrast on every div can no longer flatten the letters.** `div { filter: contrast(0.6) }` and `contrast(0.5)` leave a gray sheet. Those are dropped. `div { filter: contrast(0.7) }` still reads. `html { filter: contrast(0.5) }` stays. `*{ filter: contrast(0.8) }` stays. Colour stays.
+- **A 2px blur on every div can no longer smear the line.** `div { filter: blur(2px) }` leaves no writing. It is dropped. `div { filter: blur(1.5px) }` and `blur(1px)` still read. `*{ filter: blur(2px) }` was already dropped. `*{ filter: blur(1px) }` stays. `html { filter: blur(5px) }` stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.56 — The first screen still has the writing
 
 Released 7 November 2026.

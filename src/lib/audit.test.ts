@@ -2145,6 +2145,8 @@ describe("page styles", () => {
     assert.match(sanitizePluginCss("html{filter:contrast(0.02);color:red}"), /red/);
     assert.match(sanitizePluginCss("html{filter:contrast(0.5)}"), /contrast\(0\.5\)/);
     assert.equal(/contrast\(\s*0\.5/i.test(sanitizePluginCss("*{filter:contrast(0.5)}")), false);
+    assert.equal(/contrast\(\s*0\.6/.test(sanitizePluginCss("div{filter:contrast(0.6)}")), false);
+    assert.match(sanitizePluginCss("div{filter:contrast(0.7)}"), /contrast\(0\.7\)/);
     assert.match(sanitizePluginCss("*{filter:contrast(0.8)}"), /contrast\(0\.8\)/);
     assert.equal(/opacity/i.test(sanitizePluginCss("*{opacity:0.8;color:red}")), false);
     assert.match(sanitizePluginCss("*{opacity:0.8;color:red}"), /red/);
@@ -2406,6 +2408,10 @@ describe("page styles", () => {
     assert.equal(/brightness/i.test(sanitizePluginCss("html{filter:brightness(0.08);color:red}")), false);
     assert.match(sanitizePluginCss("html{filter:brightness(0.08);color:red}"), /red/);
     assert.match(sanitizePluginCss("html{filter:brightness(0.2)}"), /0\.2/);
+    assert.equal(/brightness\(\s*0\.8\b/.test(sanitizePluginCss("*{filter:brightness(0.8)}")), false);
+    assert.equal(/brightness\(\s*0\.55/.test(sanitizePluginCss("div{filter:brightness(0.55)}")), false);
+    assert.match(sanitizePluginCss("*{filter:brightness(0.85)}"), /0\.85/);
+    assert.match(sanitizePluginCss("div{filter:brightness(0.7)}"), /0\.7/);
     assert.match(sanitizePluginCss("html{filter:brightness(4)}"), /brightness\(4\)/);
     assert.equal(/matrix/i.test(sanitizePluginCss("*{transform:matrix(0.15,0,0,0.15,0,0);color:red}")), false);
     assert.match(sanitizePluginCss("*{transform:matrix(0.15,0,0,0.15,0,0);color:red}"), /red/);
@@ -2539,6 +2545,8 @@ describe("page styles", () => {
     assert.match(sanitizePluginCss("html{filter:blur(0.35em)}"), /0\.35em/);
     assert.equal(/blur\(1px\)/.test(sanitizePluginCss("div div{filter:blur(1px)}")), false);
     assert.match(sanitizePluginCss("*{filter:blur(1px)}"), /blur\(1px\)/);
+    assert.equal(/blur\(2px\)/.test(sanitizePluginCss("div{filter:blur(2px)}")), false);
+    assert.match(sanitizePluginCss("div{filter:blur(1.5px)}"), /1\.5px/);
     assert.match(sanitizePluginCss("div div{filter:brightness(1.2)}"), /1\.2/);
     assert.equal(/0\.12/.test(sanitizePluginCss("section{transform:scale(0.12)}")), false);
     assert.match(sanitizePluginCss("section{transform:scale(0.15)}"), /0\.15/);

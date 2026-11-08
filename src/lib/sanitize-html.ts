@@ -2816,11 +2816,12 @@ function perspectiveTurnHides(value: string, hidden: Set<string>): boolean {
   return false;
 }
 
+/** A 2px blur on a star or on every div smears the line. 1.5px and 1px still read. A stacked pair smears at 1px. html at 5px stays. */
 function blurHides(inner: string, hidden: Set<string>, seen?: Set<string>): boolean {
   const arg = (splitArgs(inner)[0] ?? inner).trim();
   const px = lengthPx(arg);
   if (px != null) {
-    const limit = activeStack ? 1 : activeStar ? 2 : activePage ? 3 : lengthUnit(arg) === "q" ? 12 : 6;
+    const limit = activeStack ? 1 : activeStar || activeRepeat ? 2 : activePage ? 3 : lengthUnit(arg) === "q" ? 12 : 6;
     return Math.abs(px) >= limit;
   }
   const compact = arg.replace(/!important/gi, "").replace(/\s+/g, "");
@@ -2859,13 +2860,15 @@ function blendWashes(raw: string): boolean {
   return WASH_BLEND.test(raw.replace(/!important/gi, "").trim());
 }
 
-/** brightness(1.18) and brighter, on a star, wash the line out of the real desk. brightness(1.15) still leaves ink. A stack of divs washes at 1.25. A short chain that still includes html washes at 1.75. brightness(4) on html alone still leaves the letters. */
+/** brightness(1.18) and brighter, on a star, wash the line out of the real desk. brightness(1.15) still leaves ink. A stack of divs washes at 1.25. A short chain that still includes html washes at 1.75. brightness(4) on html alone still leaves the letters. A dim star compounds the other way: brightness(0.8) and below leave no writing. brightness(0.85) still reads. Every div at 0.55 does the same. 0.7 on a div still reads. html at 0.2 stays. */
 function brightnessHides(inner: string, hidden: Set<string>, seen?: Set<string>): boolean {
   const limit = activeStar ? 1.18 : activeRepeat ? 1.25 : activeChain ? 1.75 : activeInk ? 1.5 : 5;
   const arg = (splitArgs(inner)[0] ?? inner).trim();
   const plain = arg.replace(/!important/gi, "").trim();
   const amount = filterAmount(plain);
   if (amount != null && amount > 0 && amount < 0.1) return true;
+  if (amount != null && amount > 0 && activeStar && amount <= 0.8) return true;
+  if (amount != null && amount > 0 && !activeStar && activeRepeat && amount < 0.7) return true;
   const pct = percentOf(plain);
   if (pct != null) return pct >= limit;
   if (plain && Number.isFinite(Number(plain))) return Number(plain) >= limit;
@@ -2890,9 +2893,9 @@ function brightnessHides(inner: string, hidden: Set<string>, seen?: Set<string>)
   return false;
 }
 
-/** contrast under 0.5 flattens the page. A star compounds, so 0.8 is already gone. Zero and a negative are already dropped. */
+/** contrast under 0.5 flattens the page. A star compounds, so 0.5 is already gone and 0.8 still reads. Every div compounds too: contrast(0.6) leaves no writing. contrast(0.7) on a div still reads. html at 0.5 stays. Zero and a negative are already dropped. */
 function contrastHides(inner: string, hidden: Set<string>, seen?: Set<string>): boolean {
-  const limit = activeInk ? 0.8 : 0.5;
+  const limit = activeInk ? 0.8 : activeRepeat ? 0.7 : 0.5;
   const arg = (splitArgs(inner)[0] ?? inner).trim();
   const plain = arg.replace(/!important/gi, "").trim();
   const amount = filterAmount(plain);
