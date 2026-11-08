@@ -611,10 +611,14 @@ function hidesAsZero(value: string): boolean {
   return isZeroAmount(value) || calcEvaluatesZero(value) || mathEvaluatesZero(value);
 }
 
-/** A face of 4px or less leaves no word. 5px still reads. em and rem use the 16px root. */
+/** A face of 4px or less leaves no word. 5px still reads. On a star, 0.55em and under leaves no word. 0.65em still reads. em and rem use the 16px root. */
 function fontFaceTiny(value: string): boolean {
-  const px = lengthDeskPx(value.replace(/!important/gi, "").trim());
-  return px != null && px > 0 && px <= 4;
+  const raw = value.replace(/!important/gi, "").trim();
+  const px = lengthDeskPx(raw);
+  if (px != null && px > 0 && px <= 4) return true;
+  if (!activeStar || px == null || px <= 0) return false;
+  const unit = lengthUnit(raw);
+  return (unit === "em" || unit === "rem") && px <= 8.8 + 1e-6;
 }
 
 /** A negative opacity, brightness, or contrast is clamped to zero. A negative scale is a flip and is not. */
@@ -2249,10 +2253,7 @@ function windowSliver(token: string): boolean {
   return px != null && px >= 0 && px <= 80;
 }
 
-/** A polygon that keeps only the top of the stack covers the line. 20% on a stack of divs does. 22% still leaves it. On a star, 45% does. 50% still leaves it. */
-function polygonTopBand(inner: string): boolean {
-  const limit = activeStar ? 0.45 : activeRepeat && activeDivs >= 6 ? 0.2 : 0;
-  if (!limit) return false;
+function polygonPercents(inner: string): { minY: number; maxY: number; spanX: number } | null {
   const pctOrZero = (token: string): number | null => {
     const t = token.replace(/!important/gi, "").trim();
     if (t === "0") return 0;
@@ -2268,16 +2269,29 @@ function polygonTopBand(inner: string): boolean {
     if (pair.length < 2) continue;
     const x = pctOrZero(pair[0] ?? "");
     const y = pctOrZero(pair[1] ?? "");
-    if (x == null || y == null) return false;
+    if (x == null || y == null) return null;
     xs.push(x);
     ys.push(y);
   }
-  if (ys.length < 3 || xs.length < 3) return false;
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const spanX = Math.max(...xs) - Math.min(...xs);
-  if (minY > 0.02 || spanX < 0.5) return false;
-  return maxY <= limit + 1e-6;
+  if (ys.length < 3 || xs.length < 3) return null;
+  return { minY: Math.min(...ys), maxY: Math.max(...ys), spanX: Math.max(...xs) - Math.min(...xs) };
+}
+
+/** A polygon that keeps only the top of the stack covers the line. 20% on a stack of divs does. 22% still leaves it. On a star, 45% does. 50% still leaves it. */
+function polygonTopBand(inner: string): boolean {
+  const limit = activeStar ? 0.45 : activeRepeat && activeDivs >= 6 ? 0.2 : 0;
+  if (!limit) return false;
+  const box = polygonPercents(inner);
+  if (!box || box.minY > 0.02 || box.spanX < 0.5) return false;
+  return box.maxY <= limit + 1e-6;
+}
+
+/** A polygon that starts under the line and runs to the bottom covers the writing. 8% on a stack does that. 4% still leaves the line. A top band is a different cut. */
+function polygonCutsTop(inner: string): boolean {
+  if (!activeStar && !(activeRepeat && activeDivs >= 6)) return false;
+  const box = polygonPercents(inner);
+  if (!box || box.spanX < 0.5 || box.maxY < 0.9) return false;
+  return box.minY >= 0.08 - 1e-9;
 }
 
 function clipHides(value: string, hidden: Set<string>): boolean {
@@ -2310,7 +2324,7 @@ function clipHides(value: string, hidden: Set<string>): boolean {
         return zero || (windowSliver(width) && windowSliver(height)) || thinStrip(width) || thinStrip(height) || deep || starWindow || yOff || narrow || sheet;
       }
       if (call.name === "rect") return rectHides(call.inner);
-      if (call.name === "polygon") return polygonAreaZero(call.inner) || coordSpanHides(call.inner) || polygonStrips(call.inner) || polygonTopBand(call.inner);
+      if (call.name === "polygon") return polygonAreaZero(call.inner) || coordSpanHides(call.inner) || polygonStrips(call.inner) || polygonTopBand(call.inner) || polygonCutsTop(call.inner);
       if (call.name === "path") return pathHides(call.inner);
       if (call.name === "shape") return shapeHides(call.inner) || coordSpanHides(call.inner) || shapeStrips(call.inner);
       if (call.name === "ellipse") return ellipseHides(call.inner, hidden);
@@ -2594,14 +2608,14 @@ function tanOf(token: string, hidden: Set<string>): number | null {
   return Math.sin(rad) / c;
 }
 
-/** skewX(8deg) on a star or on every div smears the line. skewX(2deg) on a star, and skewX(6deg) on a div, still read. html skewX(60deg) stays. */
+/** skewX(6deg) on a star, or skewX(7deg) on every div, smears the line. skewX(5deg) on a star, and skewX(6deg) on a div, still read. html skewX(60deg) stays. */
 function stackSkewHides(token: string, hidden: Set<string>): boolean {
   const deg = angleDegrees(token, hidden);
   if (deg == null) return false;
   const m = ((deg % 180) + 180) % 180;
   const acute = Math.min(m, 180 - m);
-  if (activeStar) return acute >= 8;
-  if (activeDivs >= 6) return acute >= 8;
+  if (activeStar) return acute >= 6;
+  if (activeDivs >= 6) return acute >= 7;
   return false;
 }
 
@@ -2857,7 +2871,9 @@ function blurHides(inner: string, hidden: Set<string>, seen?: Set<string>): bool
 const WASH_BLEND = /^(?:screen|plus-lighter|lighten|overlay|soft-light|color|hue|color-dodge|color-burn|saturation)$/i;
 
 function blendWashes(raw: string): boolean {
-  return WASH_BLEND.test(raw.replace(/!important/gi, "").trim());
+  const token = raw.replace(/!important/gi, "").trim();
+  if (WASH_BLEND.test(token)) return true;
+  return /^multiply$/i.test(token) || /^darken$/i.test(token) ? activeStar || (activeRepeat && activeDivs >= 2) : false;
 }
 
 /** brightness(1.18) and brighter, on a star, wash the line out of the real desk. brightness(1.15) still leaves ink. A stack of divs washes at 1.25. A short chain that still includes html washes at 1.75. brightness(4) on html alone still leaves the letters. A dim star compounds the other way: brightness(0.8) and below leave no writing. brightness(0.85) still reads. Every div at 0.55 does the same. 0.7 on a div still reads. html at 0.2 stays. */
@@ -3031,7 +3047,7 @@ function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): 
     }
   }
   const px = lengthDeskPx(value);
-  const limit = activeStar || (activeRepeat && activeDivs >= 2) ? 192 : 880;
+  const limit = activeStar || (activeRepeat && activeDivs >= 2) ? 192 : activePaint || activeInk ? 352 : 880;
   if (px != null) return Math.abs(px) >= limit;
   const trail = seen ?? new Set<string>();
   const defined = (hidden as HideVars).defined;
@@ -3876,7 +3892,11 @@ function relativePageLight(value: string): boolean | null {
 function strokeShorthandHides(raw: string, hidden: Set<string>): boolean {
   const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
   if (tokens.length < 2) return false;
-  return tokens.some((token) => valueCanHide(token, hidden, wideStroke)) && tokens.some((token) => valueCanHide(token, hidden, (part) => colorIsPageLight(part)));
+  const wide = tokens.some((token) => valueCanHide(token, hidden, wideStroke));
+  if (!wide) return false;
+  if (tokens.some((token) => valueCanHide(token, hidden, (part) => colorIsPageLight(part)))) return true;
+  if (!activePaint) return false;
+  return tokens.some((token) => valueCanHide(token, hidden, (part) => colorMissesDesk(part)));
 }
 
 function decorationThick(token: string): boolean {
@@ -3903,6 +3923,7 @@ function lightStrokeDrops(parts: string[], hidden: Set<string>): (part: string) 
     }
     if (piece.prop === "-webkit-text-stroke-color" || piece.prop === "text-stroke-color") {
       if (valueCanHide(piece.val, hidden, (v) => colorIsPageLight(v.replace(/!important/gi, "").trim()))) light = true;
+      if (activePaint && valueCanHide(piece.val, hidden, (v) => colorMissesDesk(v.replace(/!important/gi, "").trim()))) light = true;
     }
   }
   const on = wide && light;
@@ -5143,21 +5164,23 @@ function marginViewportHides(prop: string, value: string, hidden: Set<string>): 
   return axisTokens(prop, value, "v").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "v", limit)));
 }
 
-/** A side margin or padding in vw stacks across. 8vw on a star or on every div leaves a sliver. 6vw still reads. One box may still shift. */
+/** A side margin or padding in vw stacks across. 7vw on a star, or 8vw on every div, leaves a sliver. 6vw still reads. One box may still shift. */
 function sidePushHides(prop: string, value: string, hidden: Set<string>): boolean {
   if (!prop.startsWith("margin") && !prop.startsWith("padding")) return false;
   if (!activeStar && activeDivs < 2) return false;
-  return axisTokens(prop, value, "h").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "h", 8)));
+  const limit = activeStar ? 7 : 8;
+  return axisTokens(prop, value, "h").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "h", limit)));
 }
 
-/** 120px of side margin on a star or a stack pushes the line off. 110px still leaves a line. One box, and one line, may still shift. */
+/** 100px of side margin on a star, or 120px on a stack, pushes the line off. 90px on a star, and 110px on a div, still leave a line. One box, and one line, may still shift. */
 function sideLengthHides(prop: string, value: string, hidden: Set<string>): boolean {
   if (!prop.startsWith("margin")) return false;
   if (!activeStar && !(activeRepeat && activeDivs >= 2)) return false;
+  const limit = activeStar ? 100 : 120;
   return axisTokens(prop, value, "h").some((token) =>
     valueCanHide(token, hidden, (raw) => {
       const px = lengthDeskPx(raw.replace(/!important/gi, "").trim());
-      return px != null && Math.abs(px) >= 120;
+      return px != null && Math.abs(px) >= limit;
     }),
   );
 }
@@ -5188,12 +5211,19 @@ function columnSpreadDrops(parts: string[]): (part: string) => boolean {
     return Boolean(piece && overflowClips(piece.prop, piece.val));
   });
   let count = 0;
+  let starWidth = false;
   for (const part of parts) {
     const piece = pieceProp(part);
     if (!piece) continue;
-    if (piece.prop === "column-count" || piece.prop === "columns") {
+    if (piece.prop === "column-count") {
       const n = Number(piece.val.replace(/!important/gi, "").trim());
       if (Number.isFinite(n)) count = Math.max(count, n);
+    }
+    if (piece.prop === "columns") {
+      for (const token of splitTopWords(piece.val.replace(/!important/gi, ""))) {
+        if (/^\d+$/.test(token)) count = Math.max(count, Number(token));
+        else if (!/^(?:auto|balance|normal)$/i.test(token)) starWidth = true;
+      }
     }
   }
   let wide = false;
@@ -5203,7 +5233,7 @@ function columnSpreadDrops(parts: string[]): (part: string) => boolean {
     if ((piece.prop === "column-gap" || piece.prop === "gap") && gapWide(piece.val, count)) wide = true;
   }
   const stacked = activeRepeat && activeDivs >= 2;
-  const bare = (activeStar && count >= 2) || (stacked && count >= 4);
+  const bare = (activeStar && count >= 2) || (stacked && count >= 4) || (activeStar && starWidth);
   const clipped = clip && ((activeStar && count >= 2) || (stacked && count >= 3) || (count >= 2 && wide));
   if (!bare && !clipped) return () => false;
   return (part) => {
@@ -5395,14 +5425,18 @@ function pushPairDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** A grid row gap on the stack opens a hole above the line. 14vh on every div does. 12vh still leaves it. 4vh on a star does. 2vh on a star still leaves it. A gap with no grid stays. */
+/** A grid row gap on the stack opens a hole above the line. 14vh on every div does. 12vh still leaves it. 4vh on a star does. 2vh on a star still leaves it. A flex gap of 30vh on a star does that too. 8vh of flex gap still leaves the line. A gap with no grid or flex stays. */
 function rowGapDrops(parts: string[]): (part: string) => boolean {
   const grid = parts.some((part) => {
     const piece = pieceProp(part);
     return Boolean(piece && piece.prop === "display" && /\bgrid\b/i.test(piece.val));
   });
-  if (!grid) return () => false;
-  const limit = activeStar ? 4 : activeRepeat && activeDivs >= 2 ? 14 : 0;
+  const flex = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop === "display" && /\bflex\b/i.test(piece.val));
+  });
+  if (!grid && !flex) return () => false;
+  const limit = grid ? (activeStar ? 4 : activeRepeat && activeDivs >= 2 ? 14 : 0) : activeStar ? 16 : 0;
   if (!limit) return () => false;
   return (part) => {
     const piece = pieceProp(part);
@@ -5423,8 +5457,43 @@ function aspectSliverDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
+function maxHeightStarDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  if (!activeStar) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || (piece.prop !== "max-height" && piece.prop !== "max-block-size")) return false;
+    return valueCanHide(piece.val, hidden, (raw) => {
+      const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
+      if (tokens.length !== 1) return false;
+      const token = tokens[0] ?? "";
+      if (hidesAsZero(token)) return true;
+      const px = lengthDeskPx(token);
+      return px != null && px >= 0 && px <= 24;
+    });
+  };
+}
+
+function webkitBoxDrops(parts: string[]): (part: string) => boolean {
+  if (!activeStar && activeDivs < 2) return () => false;
+  let clip = false;
+  let box = false;
+  let vertical = false;
+  for (const part of parts) {
+    const piece = pieceProp(part);
+    if (!piece) continue;
+    if (overflowClips(piece.prop, piece.val)) clip = true;
+    if (piece.prop === "display" && /-webkit-box\b/i.test(piece.val)) box = true;
+    if ((piece.prop === "-webkit-box-orient" || piece.prop === "box-orient") && /\bvertical\b/i.test(piece.val)) vertical = true;
+  }
+  if (!clip || !box || vertical) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop === "display" && /-webkit-box\b/i.test(piece.val));
+  };
+}
+
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), trackRowDrops(parts, hidden), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts)];
+  const drops = [columnSpreadDrops(parts), trackRowDrops(parts, hidden), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), webkitBoxDrops(parts)];
   return (part) => drops.some((drop) => drop(part));
 }
 
@@ -6018,7 +6087,7 @@ function shiftAxisCovers(value: string): boolean {
   return Math.abs(parsed.n) >= 100;
 }
 
-/** A star shift compounds once per element. 40px down, 5vh down, or 80px across, walks the line off the first screen. 32px down, 4.5vh down, and 70px across still leave a line. A shift on html does not compound. */
+/** A star shift compounds once per element. 40px down, 5vh down, or 76px across, walks the line off the first screen. 32px down, 4.5vh down, and 74px across still leave a line. A shift on html does not compound. */
 function starShiftCovers(token: string, axis: "x" | "y"): boolean {
   if (!activeStar) return false;
   const t = token.replace(/!important/gi, "").replace(/\s+/g, "");
@@ -6030,10 +6099,10 @@ function starShiftCovers(token: string, axis: "x" | "y"): boolean {
   const unit = units[0]?.[0] ?? "";
   const n = Math.abs(parsed.n);
   const y = axis === "y";
-  if (!unit || unit === "px") return y ? n >= 40 : n >= 80;
+  if (!unit || unit === "px") return y ? n >= 40 : n >= 76;
   if (unit === "pt") {
     const px = (n * 96) / 72;
-    return y ? px >= 40 : px >= 80;
+    return y ? px >= 40 : px >= 76;
   }
   if (unit === "em" || unit === "rem") return y ? n >= 4 : n >= 5;
   if (/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) || /^cq(?:w|h|i|b|min|max)$/.test(unit)) return y ? n >= 5 : n >= 9;
@@ -6754,6 +6823,12 @@ function withoutLinePseudo(selector: string): string | null {
   return next || "*";
 }
 
+function firstLineSelector(selector: string): string | null {
+  const trimmed = selector.trim();
+  if (!/::first-line\s*$/i.test(trimmed) && !/(?<!:):first-line\s*$/i.test(trimmed)) return null;
+  return withoutLinePseudo(trimmed);
+}
+
 type LiveNode = DeskEl & {
   parent: LiveNode | null;
   children: LiveNode[];
@@ -6942,7 +7017,8 @@ type LiveHit = { desk: boolean; writing: boolean; div: boolean; page: boolean };
 function liveHit(selector: string, scopeSel: string | null): LiveHit {
   const hit: LiveHit = { desk: false, writing: false, div: false, page: false };
   for (const part of splitSelectorList(selector)) {
-    const text = part.trim();
+    const raw = part.trim();
+    const text = firstLineSelector(raw) ?? raw;
     if (!text || text.includes("::")) continue;
     const steps = splitCombinators(text.replace(/\s+/g, " "));
     if (!steps.length) continue;
@@ -6963,6 +7039,13 @@ function branchHidesDesk(selector: string, scopeSel: string | null = null): bool
   if (!sel) return false;
   const line = withoutLinePseudo(sel);
   if (line != null) {
+    const firstLine = firstLineSelector(sel) != null;
+    if (firstLine) {
+      if (WRITING_TAGS.has(line.trim().toLowerCase())) return true;
+      const hit = liveHit(line, scopeSel);
+      if (hit.writing && !hit.div && !hit.page) return true;
+      return branchHidesDesk(line, scopeSel);
+    }
     if (WRITING_TAGS.has(line.trim().toLowerCase())) return false;
     const hit = liveHit(line, scopeSel);
     if (hit.writing && !hit.div && !hit.page) return false;

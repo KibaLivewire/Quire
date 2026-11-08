@@ -1,3 +1,28 @@
+# Quire 1.9.58 — The first screen still has the writing
+
+Released 8 November 2026.
+
+- **The first line of the writing can no longer be cleared.** `p::first-line { font-size: 0 }` and `section p::first-line { font-size: 0 }` leave no letters. `p::first-line { color: #221e1a }` does it in the sheet colour. Those are dropped. `p::first-line { color: red }` and `font-size: 1.4em` still read. `p::first-letter` stays. `.note::first-line` stays. Colour stays.
+- **A 22em indent on the line can no longer walk the words off.** `p { text-indent: -22em }` leaves no writing. It is dropped. `-18em` still leaves the line. `*{ text-indent: -8em }` stays. Colour stays.
+- **A star max-height of 24px or less can no longer cap the page.** `*{ max-height: 0 }`, `8px`, and `24px` leave no writing, even with no clip of their own. Those are dropped. `*{ height: 24px }` still leaves the line. `html { max-height: 0 }` stays. Colour stays.
+- **A star face of 0.55em can no longer shrink the word away.** `*{ font-size: 0.55em }` and `0.5em` leave no writing. Those are dropped. `0.65em` still reads. `5px` still reads. Colour stays.
+- **A 6deg skew on a star, or 7deg on every div, can no longer smear the line.** `*{ transform: skewX(6deg) }` and `div { transform: skewX(7deg) }` do that. Those are dropped. `*{ transform: skewX(5deg) }` and `div { transform: skewX(6deg) }` still read. Colour stays.
+- **76px across on a star can no longer walk the line off.** `*{ transform: translateX(76px) }` leaves no writing. It is dropped. `74px` and `70px` still leave the line. Colour stays.
+- **100px of side margin on a star can no longer push the line off.** `*{ margin-left: 100px }` leaves no writing. It is dropped. `90px` and `80px` still read. `div { margin-left: 110px }` still leaves a line. Colour stays.
+- **7vw of side padding on a star can no longer leave a sliver.** `*{ padding-left: 7vw }` does that. It is dropped. `6vw` still reads. Colour stays.
+- **The columns shorthand can no longer hide the first column.** `*{ columns: 40px 2 }` and `*{ columns: 12em }` leave no writing. Those are dropped. `div { column-count: 2 }` still reads. Colour stays.
+- **A 30vh flex gap on a star can no longer open a hole above the line.** `*{ gap: 30vh; display: flex }` does that. The gap is dropped. The flex stays. `8vh` still leaves the line. `div { gap: 12vh; display: flex }` stays. A 2vh grid row gap stays. Colour stays.
+- **A polygon that starts 8% down the stack can no longer cover the writing.** `div { clip-path: polygon(0 8%, 100% 8%, 100% 100%, 0 100%) }` leaves no writing. It is dropped. The same shape at `4%` still leaves the line. The top band at `22%` stays. Colour stays.
+- **An old box clamp can no longer hide the line.** `*{ line-clamp: 1; overflow: hidden; display: -webkit-box }` leaves no writing when the box is not vertical. The display is dropped. The same rule with `-webkit-box-orient: vertical` still leaves the line. Colour stays.
+- **Multiply or darken on a star, or on every div, can no longer black out the page.** `*{ mix-blend-mode: multiply }`, `*{ mix-blend-mode: darken }`, and `div { mix-blend-mode: multiply }` leave no writing. Those are dropped. `body { mix-blend-mode: multiply }` stays. `p { mix-blend-mode: multiply }` still leaves the words. Colour stays.
+- **A sheet-coloured stroke of 2px on the writing can no longer cover the letters.** `p { -webkit-text-stroke: 2px #221e1a }` leaves no writing. It is dropped. `1px` still reads. `html { -webkit-text-stroke: 24px #222 }` stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.57 — The first screen still has the writing
 
 Released 8 November 2026.
