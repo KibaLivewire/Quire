@@ -1,3 +1,20 @@
+# Quire 1.9.59 — The first screen still has the writing
+
+Released 9 November 2026.
+
+- **A dim star can no longer black out the writing.** `*{ filter: brightness(0.92) }` and `0.9` leave no letters. Those are dropped. `*{ filter: brightness(0.95) }` still reads. `html { filter: brightness(0.2) }` stays. Colour stays.
+- **A dim stack of divs can no longer black out the writing.** `div { filter: brightness(0.85) }` and `0.8` leave no letters. Those are dropped. `div { filter: brightness(0.9) }` still reads. Colour stays.
+- **A 4deg skew on a star, or 6deg on every div, can no longer smear the line.** `*{ transform: skewX(4deg) }` and `skewX(5deg)` leave no writing. `div { transform: skewX(6deg) }` does too. Those are dropped. `*{ transform: skewX(3deg) }` and `div { transform: skewX(5deg) }` still read. Colour stays.
+- **110px of side margin on every div can no longer push the line off.** `div { margin-left: 110px }` and `div { margin-inline-start: 110px }` leave no writing. Those are dropped. `div { margin-left: 100px }` still leaves a line. `header + div { margin-left: 120px }` is one box and stays. Colour stays.
+- **Multiply or darken on the writing, the page, or the body can no longer black out the sheet.** `p { mix-blend-mode: multiply }`, `p { mix-blend-mode: darken }`, `section { mix-blend-mode: multiply }`, and `body { mix-blend-mode: multiply }` leave no writing. Those are dropped. `html { mix-blend-mode: multiply }` stays. `body { mix-blend-mode: hard-light }` still reads. Colour stays.
+- **A half-width indent on the line can no longer walk the words off.** `p { text-indent: -50% }` and `-60%` leave no writing. Those are dropped. `-40%` still leaves the line. `-18em` still leaves the line. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.58 — The first screen still has the writing
 
 Released 8 November 2026.

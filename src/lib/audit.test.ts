@@ -2018,8 +2018,8 @@ describe("page styles", () => {
     assert.equal(/mix-blend/i.test(sanitizePluginCss("body{mix-blend-mode:color}")), false);
     assert.equal(/mix-blend/i.test(sanitizePluginCss("html{mix-blend-mode:hue}")), false);
     assert.equal(/mix-blend/i.test(sanitizePluginCss("body{mix-blend-mode:color-dodge}")), false);
-    assert.match(sanitizePluginCss("body{mix-blend-mode:multiply}"), /multiply/);
-    assert.match(sanitizePluginCss("body{mix-blend-mode:darken}"), /darken/);
+    assert.equal(/multiply/.test(sanitizePluginCss("body{mix-blend-mode:multiply}")), false);
+    assert.equal(/darken/.test(sanitizePluginCss("body{mix-blend-mode:darken}")), false);
     assert.match(sanitizePluginCss("body{mix-blend-mode:hard-light}"), /hard-light/);
     assert.match(sanitizePluginCss("html{mix-blend-mode:normal}"), /normal/);
     assert.match(sanitizePluginCss(".note{mix-blend-mode:screen}"), /screen/);
@@ -2410,8 +2410,10 @@ describe("page styles", () => {
     assert.match(sanitizePluginCss("html{filter:brightness(0.2)}"), /0\.2/);
     assert.equal(/brightness\(\s*0\.8\b/.test(sanitizePluginCss("*{filter:brightness(0.8)}")), false);
     assert.equal(/brightness\(\s*0\.55/.test(sanitizePluginCss("div{filter:brightness(0.55)}")), false);
-    assert.match(sanitizePluginCss("*{filter:brightness(0.85)}"), /0\.85/);
-    assert.match(sanitizePluginCss("div{filter:brightness(0.7)}"), /0\.7/);
+    assert.equal(/brightness\(\s*0\.92/.test(sanitizePluginCss("*{filter:brightness(0.92)}")), false);
+    assert.match(sanitizePluginCss("*{filter:brightness(0.95)}"), /0\.95/);
+    assert.equal(/brightness\(\s*0\.85/.test(sanitizePluginCss("div{filter:brightness(0.85)}")), false);
+    assert.match(sanitizePluginCss("div{filter:brightness(0.9)}"), /0\.9/);
     assert.match(sanitizePluginCss("html{filter:brightness(4)}"), /brightness\(4\)/);
     assert.equal(/matrix/i.test(sanitizePluginCss("*{transform:matrix(0.15,0,0,0.15,0,0);color:red}")), false);
     assert.match(sanitizePluginCss("*{transform:matrix(0.15,0,0,0.15,0,0);color:red}"), /red/);
@@ -2664,7 +2666,8 @@ describe("page styles", () => {
     assert.equal(/skewX\(10deg\)/.test(sanitizePluginCss("*{transform:skewX(10deg)}")), false);
     assert.equal(/skewX\(10deg\)/.test(sanitizePluginCss("div{transform:skewX(10deg)}")), false);
     assert.equal(/skewX\(8deg\)/.test(sanitizePluginCss("div{transform:skewX(8deg)}")), false);
-    assert.match(sanitizePluginCss("div{transform:skewX(6deg)}"), /6deg/);
+    assert.equal(/skewX\(6deg\)/.test(sanitizePluginCss("div{transform:skewX(6deg)}")), false);
+    assert.match(sanitizePluginCss("div{transform:skewX(5deg)}"), /5deg/);
     assert.equal(/skewX\(15deg\)/.test(sanitizePluginCss("div{transform:skewX(15deg)}")), false);
     assert.match(sanitizePluginCss("*{padding-top:3vh}"), /3vh/);
     assert.equal(/padding-top/.test(sanitizePluginCss("*{padding-top:4vh}")), false);
@@ -2720,7 +2723,8 @@ describe("page styles", () => {
     assert.equal(/column-count/.test(sanitizePluginCss("*{column-count:3}")), false);
     assert.equal(/column-count/.test(sanitizePluginCss("*{column-count:2;overflow:hidden}")), false);
     assert.equal(/margin-left/.test(sanitizePluginCss("div{margin-left:120px}")), false);
-    assert.match(sanitizePluginCss("div{margin-left:110px}"), /110px/);
+    assert.equal(/margin-left/.test(sanitizePluginCss("div{margin-left:110px}")), false);
+    assert.match(sanitizePluginCss("div{margin-left:100px}"), /100px/);
     assert.equal(/margin-left/.test(sanitizePluginCss("*{margin-left:120px}")), false);
     assert.match(sanitizePluginCss("*{margin-left:80px}"), /80px/);
     assert.match(sanitizePluginCss("header + div{margin-left:120px}"), /120px/);
@@ -2878,6 +2882,8 @@ describe("page styles", () => {
     assert.match(sanitizePluginCss(".note::first-line{font-size:0}"), /font-size/);
     assert.equal(/text-indent/.test(sanitizePluginCss("p{text-indent:-22em}")), false);
     assert.match(sanitizePluginCss("p{text-indent:-18em}"), /-18em/);
+    assert.equal(/text-indent/.test(sanitizePluginCss("p{text-indent:-50%}")), false);
+    assert.match(sanitizePluginCss("p{text-indent:-40%}"), /-40%/);
     assert.equal(/max-height/.test(sanitizePluginCss("*{max-height:0}")), false);
     assert.equal(/max-height/.test(sanitizePluginCss("*{max-height:24px}")), false);
     assert.match(sanitizePluginCss("*{height:24px}"), /24px/);
@@ -2886,7 +2892,9 @@ describe("page styles", () => {
     assert.match(sanitizePluginCss("*{font-size:0.65em}"), /0\.65em/);
     assert.match(sanitizePluginCss("*{font-size:5px}"), /5px/);
     assert.equal(/skewX\(6deg\)/.test(sanitizePluginCss("*{transform:skewX(6deg)}")), false);
-    assert.match(sanitizePluginCss("*{transform:skewX(5deg)}"), /5deg/);
+    assert.equal(/skewX\(5deg\)/.test(sanitizePluginCss("*{transform:skewX(5deg)}")), false);
+    assert.equal(/skewX\(4deg\)/.test(sanitizePluginCss("*{transform:skewX(4deg)}")), false);
+    assert.match(sanitizePluginCss("*{transform:skewX(3deg)}"), /3deg/);
     assert.equal(/skewX\(7deg\)/.test(sanitizePluginCss("div{transform:skewX(7deg)}")), false);
     assert.equal(/translateX\(76px\)/.test(sanitizePluginCss("*{transform:translateX(76px)}")), false);
     assert.match(sanitizePluginCss("*{transform:translateX(74px)}"), /74px/);
@@ -2911,7 +2919,13 @@ describe("page styles", () => {
     assert.equal(/multiply/.test(sanitizePluginCss("*{mix-blend-mode:multiply}")), false);
     assert.equal(/darken/.test(sanitizePluginCss("*{mix-blend-mode:darken}")), false);
     assert.equal(/multiply/.test(sanitizePluginCss("div{mix-blend-mode:multiply}")), false);
-    assert.match(sanitizePluginCss("p{mix-blend-mode:multiply}"), /multiply/);
+    assert.equal(/multiply/.test(sanitizePluginCss("p{mix-blend-mode:multiply}")), false);
+    assert.equal(/darken/.test(sanitizePluginCss("p{mix-blend-mode:darken}")), false);
+    assert.equal(/multiply/.test(sanitizePluginCss("body{mix-blend-mode:multiply}")), false);
+    assert.equal(/darken/.test(sanitizePluginCss("body{mix-blend-mode:darken}")), false);
+    assert.equal(/multiply/.test(sanitizePluginCss("section{mix-blend-mode:multiply}")), false);
+    assert.match(sanitizePluginCss("html{mix-blend-mode:multiply}"), /multiply/);
+    assert.match(sanitizePluginCss("body{mix-blend-mode:hard-light}"), /hard-light/);
     assert.equal(/text-stroke/i.test(sanitizePluginCss("p{-webkit-text-stroke:2px #221e1a}")), false);
     assert.match(sanitizePluginCss("p{-webkit-text-stroke:1px #221e1a}"), /1px/);
     assert.match(sanitizePluginCss("html{-webkit-text-stroke:24px #222}"), /222/);

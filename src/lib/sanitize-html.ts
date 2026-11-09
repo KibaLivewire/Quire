@@ -2608,14 +2608,14 @@ function tanOf(token: string, hidden: Set<string>): number | null {
   return Math.sin(rad) / c;
 }
 
-/** skewX(6deg) on a star, or skewX(7deg) on every div, smears the line. skewX(5deg) on a star, and skewX(6deg) on a div, still read. html skewX(60deg) stays. */
+/** skewX(4deg) on a star, or skewX(6deg) on every div, smears the line. skewX(3deg) on a star, and skewX(5deg) on a div, still read. html skewX(60deg) stays. */
 function stackSkewHides(token: string, hidden: Set<string>): boolean {
   const deg = angleDegrees(token, hidden);
   if (deg == null) return false;
   const m = ((deg % 180) + 180) % 180;
   const acute = Math.min(m, 180 - m);
-  if (activeStar) return acute >= 6;
-  if (activeDivs >= 6) return acute >= 7;
+  if (activeStar) return acute >= 4;
+  if (activeDivs >= 6) return acute >= 6;
   return false;
 }
 
@@ -2873,18 +2873,21 @@ const WASH_BLEND = /^(?:screen|plus-lighter|lighten|overlay|soft-light|color|hue
 function blendWashes(raw: string): boolean {
   const token = raw.replace(/!important/gi, "").trim();
   if (WASH_BLEND.test(token)) return true;
-  return /^multiply$/i.test(token) || /^darken$/i.test(token) ? activeStar || (activeRepeat && activeDivs >= 2) : false;
+  if (!/^multiply$/i.test(token) && !/^darken$/i.test(token)) return false;
+  if (activeStar || activePaint || activePage) return true;
+  if (activeRepeat && activeDivs >= 2) return true;
+  return activeSib === BODY_SIB;
 }
 
-/** brightness(1.18) and brighter, on a star, wash the line out of the real desk. brightness(1.15) still leaves ink. A stack of divs washes at 1.25. A short chain that still includes html washes at 1.75. brightness(4) on html alone still leaves the letters. A dim star compounds the other way: brightness(0.8) and below leave no writing. brightness(0.85) still reads. Every div at 0.55 does the same. 0.7 on a div still reads. html at 0.2 stays. */
+/** brightness(1.18) and brighter, on a star, wash the line out of the real desk. brightness(1.15) still leaves ink. A stack of divs washes at 1.25. A short chain that still includes html washes at 1.75. brightness(4) on html alone still leaves the letters. A dim star compounds the other way: brightness(0.92) and below leave no writing. brightness(0.95) still reads. Every div at 0.85 does the same. 0.9 on a div still reads. html at 0.2 stays. */
 function brightnessHides(inner: string, hidden: Set<string>, seen?: Set<string>): boolean {
   const limit = activeStar ? 1.18 : activeRepeat ? 1.25 : activeChain ? 1.75 : activeInk ? 1.5 : 5;
   const arg = (splitArgs(inner)[0] ?? inner).trim();
   const plain = arg.replace(/!important/gi, "").trim();
   const amount = filterAmount(plain);
   if (amount != null && amount > 0 && amount < 0.1) return true;
-  if (amount != null && amount > 0 && activeStar && amount <= 0.8) return true;
-  if (amount != null && amount > 0 && !activeStar && activeRepeat && amount < 0.7) return true;
+  if (amount != null && amount > 0 && activeStar && amount <= 0.92) return true;
+  if (amount != null && amount > 0 && !activeStar && activeRepeat && amount < 0.9) return true;
   const pct = percentOf(plain);
   if (pct != null) return pct >= limit;
   if (plain && Number.isFinite(Number(plain))) return Number(plain) >= limit;
@@ -3044,6 +3047,7 @@ function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): 
     if (units.length === 1 && units[0]?.[1] === 1) {
       const unit = units[0]?.[0] ?? "";
       if (/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) || /^cq(?:w|h|i|b|min|max)$/.test(unit)) return Math.abs(parsed.n) >= 80;
+      if (unit === "%" && (activeStar || activePaint || activeInk) && parsed.n <= -50) return true;
     }
   }
   const px = lengthDeskPx(value);
@@ -5172,11 +5176,11 @@ function sidePushHides(prop: string, value: string, hidden: Set<string>): boolea
   return axisTokens(prop, value, "h").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "h", limit)));
 }
 
-/** 100px of side margin on a star, or 120px on a stack, pushes the line off. 90px on a star, and 110px on a div, still leave a line. One box, and one line, may still shift. */
+/** 100px of side margin on a star, or 110px on a stack, pushes the line off. 90px on a star, and 100px on a div, still leave a line. One box, and one line, may still shift. */
 function sideLengthHides(prop: string, value: string, hidden: Set<string>): boolean {
   if (!prop.startsWith("margin")) return false;
   if (!activeStar && !(activeRepeat && activeDivs >= 2)) return false;
-  const limit = activeStar ? 100 : 120;
+  const limit = activeStar ? 100 : 110;
   return axisTokens(prop, value, "h").some((token) =>
     valueCanHide(token, hidden, (raw) => {
       const px = lengthDeskPx(raw.replace(/!important/gi, "").trim());
