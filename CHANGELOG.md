@@ -1,3 +1,18 @@
+# Quire 1.9.60 — The first screen still has the writing
+
+Released 10 November 2026.
+
+- **Hard light on a star, or on every div, can no longer black out the sheet.** `*{ mix-blend-mode: hard-light }` and `div { mix-blend-mode: hard-light }` leave no writing. Those are dropped. `p`, `section`, `body`, and `html` hard light still read. `header + div` is one box and stays. Colour stays.
+- **A star matrix can no longer shear the line off.** `*{ transform: matrix(1, 0.4, -0.2, 1, 0, 0) }` leaves no writing. A vertical shear of `0.1` and a sideways shear of `0.2` or `0.3` do too. Those are dropped. `matrix(1, 0.08, 0, 1)` still leaves a line. `matrix(1, 0, -0.15, 1)` still reads. The same shear on html stays. Colour stays.
+- **A pseudo sheet can no longer paint out the line.** `p::before { inset: -4px; background: #221e1a }` and `inset: -2px` leave no writing. `inset: 4px` and `inset: 8px` do too. The background is dropped. `inset: 0` was already dropped. `inset: 12px` still leaves the line. `.note::before` stays. Colour stays.
+- **An inward outline of 16px on the letters can no longer cover them.** `p { outline: 30px solid #221e1a; outline-offset: -28px }` and `16px` with `-14px` leave no writing. The outline is dropped. `14px` with `-12px` still reads. An outward `8px` gold outline stays. `html { outline: 80px; outline-offset: -80px }` stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.59 — The first screen still has the writing
 
 Released 9 November 2026.
