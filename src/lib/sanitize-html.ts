@@ -2870,11 +2870,10 @@ function blurHides(inner: string, hidden: Set<string>, seen?: Set<string>): bool
 
 const WASH_BLEND = /^(?:screen|plus-lighter|lighten|overlay|soft-light|color|hue|color-dodge|color-burn|saturation)$/i;
 
-/** hard-light on a star, or on every div, blacks the sheet. The same blend on the writing, the page, the body, or html still reads. */
 function blendWashes(raw: string): boolean {
   const token = raw.replace(/!important/gi, "").trim();
   if (WASH_BLEND.test(token)) return true;
-  if (/^hard-light$/i.test(token)) return activeStar || (activeRepeat && activeDivs >= 2);
+  if (/^hard-light$/i.test(token)) return activeStar;
   if (!/^multiply$/i.test(token) && !/^darken$/i.test(token)) return false;
   if (activeStar || activePaint || activePage) return true;
   if (activeRepeat && activeDivs >= 2) return true;
@@ -3995,7 +3994,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     ) {
       return true;
     }
-    return matrixFlattens(val, hidden) || matrixScalesDown(val, hidden) || matrixShifts(val, hidden) || translateHides(val, hidden) || transformAxisHides(val, hidden) || translateZHides(val, hidden) || perspectiveTranslateHides(val, hidden) || perspectiveTurnHides(val, hidden);
+    return matrixFlattens(val, hidden) || matrixScalesDown(val, hidden) || matrixShifts(val, hidden) || matrixShears(val, hidden) || translateHides(val, hidden) || transformAxisHides(val, hidden) || translateZHides(val, hidden) || perspectiveTranslateHides(val, hidden) || perspectiveTurnHides(val, hidden);
   }
   if (prop === "rotate") return rotatePropertyHides(val, hidden);
   if (prop === "zoom") return valueCanHide(val, hidden, (raw) => hidesAsZero(raw) || scaleFactorHides(raw));
@@ -4983,32 +4982,40 @@ function declaresViewport(value: string): boolean {
   return splitTopWords(value.replace(/!important/gi, "")).some((token) => coversViewport(token));
 }
 
-/** A viewport outline pulled inward covers the writing. An 80px frame on html does not. A 16px outline pulled onto the letters does. A 14px outline on the letters still reads. */
+/** A viewport outline pulled inward covers the writing. An 80px frame does not. A 14px outline pulled 12px onto the letters covers the line. 12px pulled 10px still reads. The offset does not paint on its own. */
 function outlineDrops(parts: string[]): (part: string) => boolean {
   let wide = false;
   let inset = false;
-  let thick = 0;
-  let pull = 0;
+  let widthPx = 0;
+  let offsetPx = 0;
+  let sawWidth = false;
+  let sawOffset = false;
   for (const part of parts) {
     const piece = pieceProp(part);
     if (!piece) continue;
     if ((piece.prop === "outline" || piece.prop === "outline-width") && declaresViewport(piece.val)) wide = true;
     if (piece.prop === "outline-offset" && negativeViewport(piece.val)) inset = true;
     if (piece.prop === "outline" || piece.prop === "outline-width") {
-      const width = borderWidthPx(piece.val);
-      if (width != null) thick = Math.max(thick, width);
+      const px = firstLengthPx(piece.val);
+      if (px != null) {
+        widthPx = Math.max(widthPx, Math.abs(px));
+        sawWidth = true;
+      }
     }
     if (piece.prop === "outline-offset") {
-      const tokens = splitTopWords(piece.val.replace(/!important/gi, "")).filter(Boolean);
-      const off = tokens.length === 1 ? lengthDeskPx(tokens[0] ?? "") : null;
-      if (off != null) pull = Math.min(pull, off);
+      const px = firstLengthPx(piece.val);
+      if (px != null) {
+        offsetPx = px;
+        sawOffset = true;
+      }
     }
   }
-  const inkFrame = (activePaint || activeInk) && thick >= 16 && pull <= -(thick - 8);
+  const inward = sawWidth && sawOffset && offsetPx < 0 && (activePaint || activeStar) && Math.min(widthPx, -offsetPx) >= 12;
   return (part) => {
     const piece = pieceProp(part);
     if (!piece || (piece.prop !== "outline" && piece.prop !== "outline-width")) return false;
-    return (wide && inset) || inkFrame;
+    if (wide && inset) return true;
+    return inward;
   };
 }
 
@@ -6039,7 +6046,7 @@ function matrixFlattens(value: string, hidden: Set<string>): boolean {
   });
 }
 
-/** matrix(0.15, …) is scale(0.15). On a star, matrix(0.5, …) compounds the same way scale(0.5) does. On a stack of divs, matrix(0.85, …) does that too. matrix(0.88, …) on that stack, and matrix(0.5, …) on html, still show the line. A vertical shear of 0.1 on a star walks the line off. A sideways shear of 0.2 does too. matrix(1, 0.08, 0, 1) and matrix(1, 0, -0.15, 1) still read. A turn still shows the line. */
+/** matrix(0.15, …) is scale(0.15). On a star, matrix(0.5, …) compounds the same way scale(0.5) does. On a stack of divs, matrix(0.85, …) does that too. matrix(0.88, …) on that stack, and matrix(0.5, …) on html, still show the line. A turn still shows the line. */
 function matrixScalesDown(value: string, hidden: Set<string>): boolean {
   const found = namedFunctionCalls(value, ["matrix3d", "matrix"]);
   return found.some((call) => {
@@ -6050,7 +6057,7 @@ function matrixScalesDown(value: string, hidden: Set<string>): boolean {
       if (nums.length < 4) return false;
       const [a, b, c, d] = nums;
       if (a == null || b == null || c == null || d == null) return false;
-      if (activeStar && (Math.abs(b) >= 0.1 || Math.abs(c) >= 0.2)) return true;
+      if (activeStar && (Math.abs(b) >= 0.9 || Math.abs(c) >= 0.9)) return true;
       return small(a, b) || small(c, d);
     }
     if (nums.length < 16) return false;
@@ -6067,6 +6074,41 @@ function matrixParts(inner: string): string[] {
   const comma = splitArgs(inner).map((part) => part.trim()).filter(Boolean);
   if (comma.length > 1) return comma;
   return splitTopWords(inner);
+}
+
+/** A matrix translation of a full page is the same hide as translate(). A few pixels stay. */
+/** matrix(1, 0.4, -0.2, 1) on a star shears the line off the first screen. 0.09 does too. 0.08 still leaves a line. Every div shears off at 0.10. 0.08 on that stack still reads. One box, and the same shear on html, stays. */
+function matrixShears(value: string, hidden: Set<string>): boolean {
+  const limit = activeStar ? 0.09 : activeRepeat && activeDivs >= 6 ? 0.1 : 0;
+  if (limit <= 0) return false;
+  const found = namedFunctionCalls(value, ["matrix"]);
+  return found.some((call) => {
+    const nums = splitArgs(call.inner).map((arg) => coeffOf(arg, hidden));
+    if (nums.length < 4) return false;
+    const a = nums[0];
+    const b = nums[1];
+    const c = nums[2];
+    const d = nums[3];
+    if (a == null || b == null || c == null || d == null) return false;
+    if (Math.hypot(a, b) < 0.85 || Math.hypot(c, d) < 0.85) return false;
+    return Math.max(Math.abs(b), Math.abs(c)) >= limit;
+  });
+}
+
+function firstLengthPx(value: string): number | null {
+  for (const token of splitTopWords(value.replace(/!important/gi, ""))) {
+    const px = lengthDeskPx(token);
+    if (px != null) return px;
+    const compact = token.replace(/\s+/g, "");
+    const parsed = parseMathSum(compact, 0);
+    if (!parsed || parsed.i !== compact.length || !Number.isFinite(parsed.n)) continue;
+    const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+    if (units.length !== 1 || units[0]?.[1] !== 1) continue;
+    const unit = units[0]?.[0] ?? "";
+    if (/^(?:[dls])?vh$/.test(unit) || unit === "vb" || unit === "vmin") return parsed.n * 8;
+    if (/^(?:[dls])?vw$/.test(unit) || unit === "vi") return parsed.n * 8;
+  }
+  return null;
 }
 
 /** A matrix translation of a full page is the same hide as translate(). A few pixels stay. */
@@ -7522,6 +7564,10 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
           next = scrubPseudoCover(next);
           touched = true;
         }
+        if (pseudoInsetCovers(next, hidden)) {
+          next = scrubPseudoCover(next);
+          touched = true;
+        }
         if (pseudoBorderCovers(next)) {
           next = scrubPseudoBorder(next);
           touched = true;
@@ -7636,23 +7682,6 @@ function everyZero(value: string): boolean {
   return tokens.length > 0 && tokens.every((token) => hidesAsZero(token));
 }
 
-/** inset: 0 covers the line. A negative inset still covers it. A positive inset of 8px or less still covers the letters. 12px still leaves the line. inset: auto does not. */
-function insetSpreads(value: string): boolean {
-  if (everyZero(value)) return true;
-  const tokens = splitTopWords(value.replace(/!important/gi, "")).filter(Boolean);
-  if (!tokens.length || tokens.length > 4) return false;
-  return tokens.every((token) => {
-    if (hidesAsZero(token)) return true;
-    const px = lengthDeskPx(token);
-    if (px != null) return px <= 8;
-    const compact = token.replace(/\s+/g, "");
-    const parsed = parseMathSum(compact, 0);
-    if (!parsed || parsed.i !== compact.length || !Number.isFinite(parsed.n) || parsed.n > 0) return false;
-    const units = Object.entries(parsed.u).filter(([, exp]) => exp);
-    return units.length === 1 && units[0]?.[1] === 1;
-  });
-}
-
 function isFullLength(value: string, axis: "x" | "y"): boolean {
   const tokens = splitTopWords(value.replace(/!important/gi, "")).filter(Boolean);
   if (tokens.length !== 1) return false;
@@ -7665,9 +7694,9 @@ function isFullLength(value: string, axis: "x" | "y"): boolean {
 function boxCovers(parts: string[]): boolean {
   const get = (name: string) => parts.map((part) => pieceProp(part)).find((piece) => piece?.prop === name);
   const inset = get("inset");
-  if (inset && insetSpreads(inset.val)) return true;
+  if (inset && everyZero(inset.val)) return true;
   const sides = ["top", "right", "bottom", "left"].map((name) => get(name));
-  if (sides.every((side) => side && insetSpreads(side.val))) return true;
+  if (sides.every((side) => side && everyZero(side.val))) return true;
   const width = get("width") ?? get("inline-size");
   const height = get("height") ?? get("block-size");
   return Boolean(width && height && isFullLength(width.val, "x") && isFullLength(height.val, "y"));
@@ -7714,6 +7743,48 @@ function pseudoCovers(body: string, hidden: Set<string>): boolean {
   const paint = background.val.replace(/!important/gi, "").trim();
   if (!paint || /^(?:none|transparent)$/i.test(paint) || pieceIsClearColor(paint)) return false;
   return boxCovers(parts);
+}
+
+/** An absolute sheet over the line paints the words out when its top sits under 64px. 40px, 12px, and a negative inset do that. 64px and 4em still leave the first line. A class pseudo, a faint wash, and an 8px marker stay. */
+function pseudoInsetCovers(body: string, hidden: Set<string>): boolean {
+  const parts = splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const get = (name: string) => parts.map((part) => pieceProp(part)).find((piece) => piece?.prop === name);
+  const position = get("position");
+  if (!position || !/\b(?:fixed|absolute|sticky)\b/i.test(position.val)) return false;
+  const content = get("content");
+  if (!content || /^\s*(?:none|normal)\b/i.test(content.val)) return false;
+  const opacity = get("opacity");
+  if (opacity) {
+    const raw = opacity.val.replace(/!important/gi, "").trim();
+    if (hidesAsZero(raw) || valueCanHide(raw, hidden, hidesAsZero)) return false;
+    const pct = /^([+-]?(?:\d*\.?\d+)?)%$/.exec(raw);
+    const n = pct ? Number(pct[1]) / 100 : Number(raw);
+    if (Number.isFinite(n) && n > 0 && n < 0.95) return false;
+  }
+  const background = parts.map((part) => pieceProp(part)).find((piece) => piece && (piece.prop === "background" || piece.prop === "background-color" || piece.prop === "background-image"));
+  if (!background) return false;
+  const paint = background.val.replace(/!important/gi, "").trim();
+  if (!paint || /^(?:none|transparent)$/i.test(paint) || pieceIsClearColor(paint)) return false;
+  const width = get("width") ?? get("inline-size");
+  const height = get("height") ?? get("block-size");
+  if (width && height) {
+    const w = firstLengthPx(width.val);
+    const h = firstLengthPx(height.val);
+    if (w != null && h != null && w >= 0 && h >= 0 && w <= 24 && h <= 24) return false;
+  }
+  let top: number | null = null;
+  const inset = get("inset");
+  if (inset) top = firstLengthPx(inset.val);
+  else {
+    const topSide = get("top");
+    const left = get("left");
+    const right = get("right");
+    if (topSide && left && right) top = firstLengthPx(topSide.val);
+  }
+  if (top == null) return false;
+  return top < 64;
 }
 
 function scrubPseudoCover(body: string): string {
@@ -8077,6 +8148,10 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
       let next = rawBody;
       let touched = false;
       if (pseudoCovers(next, hidden)) {
+        next = scrubPseudoCover(next);
+        touched = true;
+      }
+      if (pseudoInsetCovers(next, hidden)) {
         next = scrubPseudoCover(next);
         touched = true;
       }

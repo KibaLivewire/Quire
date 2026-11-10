@@ -1,3 +1,20 @@
+# Quire 1.9.61 — The first screen still has the writing
+
+Released 10 November 2026.
+
+1.9.60 scored three of these boundaries on the wrong side of the desk. This pass re-scored them and keeps only the rules that still read.
+
+- **Hard light on every div still reads.** 1.9.60 dropped `div { mix-blend-mode: hard-light }`. On this desk it is gold and the line is still there. It stays. `*{ mix-blend-mode: hard-light }` is still a ghost and stays dropped. `p`, `section`, `body`, and `html` hard light stay. `header + div` is one box and stays. Difference, exclusion, and luminosity stay. Colour stays.
+- **A shear of 0.09 on a star, or 0.10 on every div, can no longer walk the line off.** 1.9.60 kept `*{ transform: matrix(1, 0, -0.15, 1) }` and a shear of `0.10` on every div. Both leave no sentence. Those are dropped. `matrix(1, 0.09, 0, 1)` on a star is dropped too. `matrix(1, 0.08, 0, 1)` and `matrix(1, 0, -0.08, 1)` still leave a line. `div { transform: matrix(1, 0.08, 0, 1) }` still reads. `html { transform: matrix(1, 0.4, -0.2, 1) }` stays. `header + div` with that matrix is one box and stays. Colour stays.
+- **A sheet within 64px of the top can no longer cover the first line.** 1.9.60 kept `p::before { inset: 12px }`. That wipes the line, and so do `40px` and `3em`. The background is dropped. The content stays. `inset: 64px`, `80px`, and `4em` still leave the first line. `top: 12px; left: 0; right: 0` is dropped. `top: 64px` stays. `.note::before` stays. An `8px` marker stays. A wash at `opacity: 0.15` stays. Colour stays.
+- **An inward outline of 12px can no longer ghost the letters.** 1.9.60 kept `p { outline: 14px solid #221e1a; outline-offset: -12px }`. That is a ghost. The outline is dropped. The offset stays, and it does not paint. `12px` with `-10px`, and `10px` with `-8px`, still read. A gilt `8px` outline with a positive offset stays. `html { outline: 80px; outline-offset: -80px }` stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.60 — The first screen still has the writing
 
 Released 10 November 2026.
