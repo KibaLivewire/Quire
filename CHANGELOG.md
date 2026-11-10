@@ -1,3 +1,30 @@
+# Quire 1.9.62 — The first screen still has the writing
+
+Released 10 November 2026.
+
+1.9.61 dropped three rules that still read on this desk. Those stay. The wipes below were still open.
+
+- **Hard light on a star still reads.** `*{ mix-blend-mode: hard-light }` keeps the sentence. It stays. `div`, `p`, `section`, `body`, and `html` hard light stay. Colour stays.
+- **An inward outline of 30px still reads.** `p { outline: 30px solid #221e1a; outline-offset: -28px }` and `14px` with `-12px` keep the letters. Those stay. A viewport outline pulled inward is still dropped. Colour stays.
+- **A 0.10 shear on every div still leaves the sentence.** `div { transform: matrix(1, 0.10, 0, 1) }` and `0.12` stay. `0.15` and `div:nth-child(n)` at `0.2` leave no sentence. Those are dropped. `header + div` with `0.15` is one box and stays. Colour stays.
+- **Difference or exclusion on a star, or on html, can no longer white out the sheet.** `*{ mix-blend-mode: difference }` and `html { mix-blend-mode: exclusion }` leave no writing. Those are dropped. `body` difference still reads. Colour stays.
+- **A bare element parked over the page can no longer cover the writing.** `footer` and `button` with `position: fixed; inset: 0` and a solid background do that. The background is dropped. `.note` stays. `button { background: #c4a574 }` stays. Colour stays.
+- **A star invert of 0.15 can no longer black out the sheet.** `*{ filter: invert(0.15) }` is dropped. `invert(0.12)` and `invert(1)` still read. Colour stays.
+- **A deep clip or a clear mask can no longer cut the first line.** `section { clip-path: inset(80% 0 0 0) }` and `div { -webkit-mask-image: linear-gradient(transparent 0 70%, #000 70%) }` are dropped. `inset(20%)` and a solid mask stay. Colour stays.
+- **A small path can no longer leave a white sheet.** `*{ clip-path: path('M0 0 L80 0 L80 40 Z') }` is dropped. A path on `p` stays. Colour stays.
+- **Paint containment on a short box can no longer clip the line away.** `*{ contain: paint; height: 24px }` drops the contain. The size stays. `*{ contain: paint }` alone stays. Colour stays.
+- **A full invert behind every div can no longer wash the sheet.** `div { backdrop-filter: invert(1) }` is dropped. `div { filter: invert(1) }` still reads. Colour stays.
+- **A statement at-rule can no longer hide the next rule.** `@charset "utf-8"; * { opacity: 0 }` drops the opacity. A custom property that holds a steep matrix can no longer be used as `transform: var(--s)` on a star. Colour stays.
+- **A generated sheet on a bare element can no longer cover the page.** `footer::after`, `button::before`, and `span::before` with `position: fixed` and a solid background do that, and so does `top: 200px`. The background is dropped. `top: 240px` still leaves the line. `.note::after` stays. Colour stays.
+- **A mask can no longer close before the first line.** `div { -webkit-mask-image: linear-gradient(transparent, #000) }` and a window that ends at `8%` or `30%` are dropped. A window at `40%` on a div stays. `15%` on a section is dropped. `20%` stays. `40%` on a star is dropped. `50%` stays. A fade on `p` stays. `html { mask-image: linear-gradient(black, transparent) }` stays. Colour stays.
+- **A wash behind a fixed sheet can no longer blank the page.** `footer { backdrop-filter: brightness(0) }`, `contrast(0)`, `invert(0.5)`, and `blur(30px)` on a fixed inset are dropped. `invert(1)`, `blur(8px)`, and a fixed footer with no filter still read. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.61 — The first screen still has the writing
 
 Released 10 November 2026.

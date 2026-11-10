@@ -1128,9 +1128,54 @@ function maskIsClear(value: string): boolean {
   return grads.every((grad) => gradientIsClear(grad.inner));
 }
 
-/** A custom property set to a clear mask follows that mask. A gradient that still has black stays. */
+/** A custom property set to a clear mask follows that mask. A gradient that still has black stays. A transparent band across the top of the stack does not. A fade from clear to solid, or a window that closes before the line, does not either. */
+function maskCutsTop(value: string): boolean {
+  const stack = activeRepeat && activeDivs >= 2;
+  const page = (activePage && !activePaint) || activeRoot;
+  if (!activeStar && !page && !stack) return false;
+  const grads = namedFunctionCalls(value, ["linear-gradient", "-webkit-linear-gradient"]);
+  return grads.some((grad) => {
+    const inner = stripGradientDirection(grad.inner);
+    const hit = /^transparent(?:\s+0%?)?\s+([0-9.]+)%/i.exec(inner);
+    if (hit) {
+      const n = Number(hit[1]);
+      if (Number.isFinite(n) && n >= 40) return true;
+    }
+    if (maskFadesClear(inner)) return true;
+    const windowN = maskWindowCloses(inner);
+    if (windowN == null) return false;
+    if (activeStar) return windowN < 50;
+    if (stack) return windowN < 40;
+    return windowN < 20;
+  });
+}
+
+function stripGradientDirection(inner: string): string {
+  return inner.trim().replace(/^(?:to\s+(?:top|bottom|left|right)(?:\s+(?:top|bottom|left|right))?|-?\d+(?:\.\d+)?(?:deg|turn|grad|rad))\s*,\s*/i, "");
+}
+
+/** transparent, #000 fades the first line off a tall box. A clear band that ends before 40% can still leave the line. */
+function maskFadesClear(inner: string): boolean {
+  if (!/^transparent\b/i.test(inner)) return false;
+  const early = /^transparent(?:\s+0%?)?\s+([0-9.]+)%/i.exec(inner);
+  if (early) {
+    const n = Number(early[1]);
+    if (Number.isFinite(n) && n < 40) return false;
+  }
+  return /#[0-9a-f]{3,8}\b|black|white/i.test(inner.replace(/^transparent\b/i, ""));
+}
+
+/** #000 0 8%, transparent closes the window before the line. #000, transparent is a fade the other way and still reads. */
+function maskWindowCloses(inner: string): number | null {
+  const hit = /^(?:#[0-9a-f]{3,8}|black)\s+(?:0%?\s+)?([0-9.]+)%\s*,\s*transparent\b/i.exec(inner);
+  if (!hit) return null;
+  const n = Number(hit[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** A custom property set to a clear mask follows that mask. A gradient that still has black stays. A transparent band across the top of the stack does not. */
 function maskHides(value: string, hidden: Set<string>): boolean {
-  if (maskIsClear(value)) return true;
+  if (maskIsClear(value) || maskCutsTop(value)) return true;
   const masks = (hidden as HideVars).masks;
   if (!masks) return false;
   return varCalls(value).some((call) => masks.has(call.name) || (Boolean(call.fallback) && maskHides(call.fallback, hidden)));
@@ -2339,6 +2384,7 @@ function clipHides(value: string, hidden: Set<string>): boolean {
       const left = parsed[3];
       if (!top || !right || !bottom || !left) return false;
       if ((activeStar || (activeRepeat && activeDivs >= 6)) && top.kind === "pct" && top.n >= 2) return true;
+      if (((activePage && !activePaint) || activeRoot) && top.kind === "pct" && top.n >= 60) return true;
       return insetPairCovers(top, bottom) || insetPairCovers(left, right);
     })
   ) {
@@ -2461,6 +2507,7 @@ function pathHides(inner: string): boolean {
   }
   const xSpan = maxX - minX;
   const ySpan = maxY - minY;
+  if ((activeStar || activeRoot || (activePage && !activePaint) || (activeRepeat && activeDivs >= 2)) && Math.max(xSpan, ySpan) <= 96) return true;
   return (xSpan <= 72 && ySpan >= 400) || (ySpan <= 72 && xSpan >= 400);
 }
 
@@ -2869,11 +2916,12 @@ function blurHides(inner: string, hidden: Set<string>, seen?: Set<string>): bool
 }
 
 const WASH_BLEND = /^(?:screen|plus-lighter|lighten|overlay|soft-light|color|hue|color-dodge|color-burn|saturation)$/i;
+const SHEET_BLEND = /^(?:difference|exclusion)$/i;
 
 function blendWashes(raw: string): boolean {
   const token = raw.replace(/!important/gi, "").trim();
   if (WASH_BLEND.test(token)) return true;
-  if (/^hard-light$/i.test(token)) return activeStar;
+  if (SHEET_BLEND.test(token) && (activeStar || activeHtml)) return true;
   if (!/^multiply$/i.test(token) && !/^darken$/i.test(token)) return false;
   if (activeStar || activePaint || activePage) return true;
   if (activeRepeat && activeDivs >= 2) return true;
@@ -2934,11 +2982,21 @@ function contrastHides(inner: string, hidden: Set<string>, seen?: Set<string>): 
   return false;
 }
 
-/** invert(0) and invert(1) still read. invert(0.5) paints the page gray. */
+/** invert(0) and invert(1) still read. invert(0.5) paints the page gray. On a star, invert(0.15) compounds to a black sheet. invert(0.12) still reads. */
 function invertHides(inner: string): boolean {
   const arg = (splitArgs(inner)[0] ?? inner).trim();
   const amount = filterAmount(arg.replace(/!important/gi, "").trim());
-  return amount != null && amount > 0.35 && amount < 0.65;
+  if (amount == null) return false;
+  if (amount > 0.35 && amount < 0.65) return true;
+  return activeStar && amount >= 0.14 && amount < 0.35;
+}
+
+/** backdrop-filter: invert(1) on every div washes the sheet out. The filter property at invert(1) still reads. One box stays. */
+function backdropInvertHides(inner: string): boolean {
+  if (!(activeRepeat && activeDivs >= 2)) return false;
+  const arg = (splitArgs(inner)[0] ?? inner).trim();
+  const amount = filterAmount(arg.replace(/!important/gi, "").trim());
+  return amount != null && amount >= 0.85;
 }
 
 /** sepia(0.8) and sepia(1) on a star turn the ink into the page. sepia(0.6) still reads. html sepia(1) stays. */
@@ -3977,6 +4035,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     if (functionCallsNamed(val, ["brightness"]).some((inner) => brightnessHides(inner, hidden))) return true;
     if (functionCallsNamed(val, ["contrast"]).some((inner) => contrastHides(inner, hidden))) return true;
     if (functionCallsNamed(val, ["invert"]).some((inner) => invertHides(inner))) return true;
+    if ((prop === "backdrop-filter" || prop === "-webkit-backdrop-filter") && functionCallsNamed(val, ["invert"]).some((inner) => backdropInvertHides(inner))) return true;
     if (functionCallsNamed(val, ["sepia"]).some((inner) => sepiaHides(inner))) return true;
     if (functionCallsNamed(val, ["opacity"]).some((inner) => opacityAmountHides(inner) || filterOpacityWashes(inner))) return true;
     return functionCallsNamed(val, ["blur"]).some((inner) => blurHides(inner, hidden));
@@ -4170,6 +4229,7 @@ let activePage = false;
 let activeStack = false;
 let activeDivs = 0;
 let activeRoot = false;
+let activeHtml = false;
 
 function withSib<T>(sib: Sib, fn: () => T): T {
   const prev = activeSib;
@@ -4232,7 +4292,18 @@ function isBoxZeroFor(part: string, hidden: Set<string>, profiles: Sib[]): boole
 
 function paintCollapsesFor(parts: string[], hidden: Set<string>, profiles: Sib[]): boolean {
   if (!parts.some((part) => isPaintContain(part))) return false;
-  return parts.some((part) => isBoxZeroFor(part, hidden, profiles));
+  return parts.some((part) => isBoxZeroFor(part, hidden, profiles) || containPaintSliver(part));
+}
+
+/** contain:paint clips to the box. height:24px on a star, or height:8px on every div, then leaves nothing. The size on its own still spills. */
+function containPaintSliver(part: string): boolean {
+  if (!activeStar && !activeRoot && !(activePage && !activePaint) && !(activeRepeat && activeDivs >= 2)) return false;
+  const piece = pieceProp(part);
+  if (!piece || !BOX_SIZE.has(piece.prop)) return false;
+  const px = lengthDeskPx(piece.val.replace(/!important/gi, "").trim());
+  if (px == null || px < 0) return false;
+  if (/height|block-size/.test(piece.prop)) return px <= 24;
+  return px <= 8;
 }
 
 function elementPaintPair(profiles: Sib[], hidden: Set<string>): boolean {
@@ -4982,40 +5053,20 @@ function declaresViewport(value: string): boolean {
   return splitTopWords(value.replace(/!important/gi, "")).some((token) => coversViewport(token));
 }
 
-/** A viewport outline pulled inward covers the writing. An 80px frame does not. A 14px outline pulled 12px onto the letters covers the line. 12px pulled 10px still reads. The offset does not paint on its own. */
+/** A viewport outline pulled inward covers the writing. An 80px frame does not. A 30px outline pulled onto the letters still reads on this desk. */
 function outlineDrops(parts: string[]): (part: string) => boolean {
   let wide = false;
   let inset = false;
-  let widthPx = 0;
-  let offsetPx = 0;
-  let sawWidth = false;
-  let sawOffset = false;
   for (const part of parts) {
     const piece = pieceProp(part);
     if (!piece) continue;
     if ((piece.prop === "outline" || piece.prop === "outline-width") && declaresViewport(piece.val)) wide = true;
     if (piece.prop === "outline-offset" && negativeViewport(piece.val)) inset = true;
-    if (piece.prop === "outline" || piece.prop === "outline-width") {
-      const px = firstLengthPx(piece.val);
-      if (px != null) {
-        widthPx = Math.max(widthPx, Math.abs(px));
-        sawWidth = true;
-      }
-    }
-    if (piece.prop === "outline-offset") {
-      const px = firstLengthPx(piece.val);
-      if (px != null) {
-        offsetPx = px;
-        sawOffset = true;
-      }
-    }
   }
-  const inward = sawWidth && sawOffset && offsetPx < 0 && (activePaint || activeStar) && Math.min(widthPx, -offsetPx) >= 12;
   return (part) => {
+    if (!wide || !inset) return false;
     const piece = pieceProp(part);
-    if (!piece || (piece.prop !== "outline" && piece.prop !== "outline-width")) return false;
-    if (wide && inset) return true;
-    return inward;
+    return Boolean(piece && (piece.prop === "outline" || piece.prop === "outline-width"));
   };
 }
 
@@ -6077,9 +6128,25 @@ function matrixParts(inner: string): string[] {
 }
 
 /** A matrix translation of a full page is the same hide as translate(). A few pixels stay. */
-/** matrix(1, 0.4, -0.2, 1) on a star shears the line off the first screen. 0.09 does too. 0.08 still leaves a line. Every div shears off at 0.10. 0.08 on that stack still reads. One box, and the same shear on html, stays. */
-function matrixShears(value: string, hidden: Set<string>): boolean {
-  const limit = activeStar ? 0.09 : activeRepeat && activeDivs >= 6 ? 0.1 : 0;
+/** matrix(1, 0.4, -0.2, 1) on a star shears the line off the first screen. 0.09 does too. 0.08 still leaves a line. Every div shears off at 0.15. 0.10 on that stack still leaves the sentence. One box, and the same shear on html, stays. */
+function matrixShears(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
+  if (matrixShearAmount(value, hidden)) return true;
+  const trail = seen ?? new Set<string>();
+  const defined = (hidden as HideVars).defined;
+  for (const call of varCalls(value)) {
+    const raw = defined?.get(call.name);
+    if (raw && !trail.has(call.name)) {
+      const next = new Set(trail);
+      next.add(call.name);
+      if (matrixShears(raw, hidden, next)) return true;
+    }
+    if (call.fallback && matrixShears(call.fallback, hidden, trail)) return true;
+  }
+  return false;
+}
+
+function matrixShearAmount(value: string, hidden: Set<string>): boolean {
+  const limit = activeStar ? 0.09 : activeRepeat && activeDivs >= 6 ? 0.15 : 0;
   if (limit <= 0) return false;
   const found = namedFunctionCalls(value, ["matrix"]);
   return found.some((call) => {
@@ -7422,6 +7489,14 @@ function coversRoot(selector: string, scopeSel: string | null): boolean {
   });
 }
 
+function coversHtml(selector: string, scopeSel: string | null): boolean {
+  return splitSelectorList(selector).some((part) => {
+    const text = part.trim();
+    if (!text || text.includes("::") || compoundIsUniversal(text)) return false;
+    return selectorMatchesEl(text, HTML_EL, scopeSel);
+  });
+}
+
 function countLiveDivs(selector: string, scopeSel: string | null): number {
   let n = 0;
   for (const part of splitSelectorList(selector)) {
@@ -7447,9 +7522,11 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const prevStack = activeStack;
   const prevDivs = activeDivs;
   const prevRoot = activeRoot;
+  const prevHtml = activeHtml;
   activeStack = false;
   activeDivs = 0;
   activeRoot = false;
+  activeHtml = false;
   if (desk) {
     const sel = nestingSel ?? "";
     const ink = coversInk(sel, scopeSel);
@@ -7465,10 +7542,14 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activeStack = !activeStar && stackedBoxes(sel, scopeSel);
     activeDivs = countLiveDivs(sel, scopeSel);
     activeRoot = !activeStar && coversRoot(sel, scopeSel);
+    activeHtml = !activeStar && coversHtml(sel, scopeSel);
   }
   try {
   const scope = deskClipScope(nestingSel ?? "");
-  if (!body.includes("{")) return desk ? scrubHideBody(body, hidden, anims, profiles, scope) : body.trim();
+  if (!body.includes("{")) {
+    const next = desk && looseSheetSelector(nestingSel ?? "") && elementCovers(body) ? scrubPseudoCover(body) : body;
+    return desk ? scrubHideBody(next, hidden, anims, profiles, scope) : next.trim();
+  }
   const decls = topLevelDeclarations(body);
   const flat = desk && boxCollapsesFor(decls, hidden, profiles);
   const paint = desk && (paintCollapsesFor(decls, hidden, profiles) || elementPaintPair(profiles, hidden));
@@ -7611,6 +7692,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activeStack = prevStack;
     activeDivs = prevDivs;
     activeRoot = prevRoot;
+    activeHtml = prevHtml;
   }
 }
 
@@ -7719,6 +7801,149 @@ function deskPseudoSelector(selector: string, kind: "any" | "before" = "any"): b
     const left = steps.slice(0, -1);
     return matchSteps(left, left.length - 1, HTML_EL) || matchSteps(left, left.length - 1, BODY_EL);
   });
+}
+
+/** A bare element can paint a sheet over the page. A class, an id, or an attribute hook cannot be judged here. :not(.missing) is still that element. */
+function looseSheetSelector(selector: string): boolean {
+  const parts = splitSelectorList(selector).map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return false;
+  return parts.every((part) => {
+    if (/::/.test(part)) return false;
+    const bare = part.replace(/:not\((?:[^()]|\([^()]*\))*\)/gi, "");
+    if (/[.#\[]/.test(bare)) return false;
+    return true;
+  });
+}
+
+/** A real element needs no content to paint a sheet. A pseudo still does. */
+function elementCovers(body: string): boolean {
+  const parts = splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const get = (name: string) => parts.map((part) => pieceProp(part)).find((piece) => piece?.prop === name);
+  const position = get("position");
+  if (!position || !/\b(?:fixed|absolute|sticky)\b/i.test(position.val)) return false;
+  const background = parts.map((part) => pieceProp(part)).find((piece) => piece && (piece.prop === "background" || piece.prop === "background-color" || piece.prop === "background-image"));
+  if (!background) return false;
+  const paint = background.val.replace(/!important/gi, "").trim();
+  if (!paint || /^(?:none|transparent)$/i.test(paint) || pieceIsClearColor(paint)) return false;
+  if (boxCovers(parts)) return true;
+  const inset = get("inset");
+  if (inset) {
+    const top = firstLengthPx(inset.val);
+    return top != null && top < 64;
+  }
+  const topSide = get("top");
+  const left = get("left");
+  const right = get("right");
+  if (!topSide || !left || !right) return false;
+  const top = firstLengthPx(topSide.val);
+  return top != null && top < 64;
+}
+
+/** ::before and ::after on a bare element. A class, an id, or an attribute hook is not this. */
+function loosePseudoHead(selector: string): boolean {
+  const pseudoRe = /(?:::?before|::?after)\s*$/i;
+  return splitSelectorList(selector).some((part) => {
+    const trimmed = part.trim();
+    const pseudo = pseudoRe.exec(trimmed);
+    if (!pseudo || pseudo.index == null) return false;
+    const head = trimmed.slice(0, pseudo.index).trim();
+    return Boolean(head) && looseSheetSelector(head);
+  });
+}
+
+function tokenPx(token: string): number | null {
+  if (hidesAsZero(token)) return 0;
+  return firstLengthPx(token);
+}
+
+/** A sheet parked over the viewport. Top under 240px still covers the first line. 240px leaves it. */
+function looseCoverGeometry(parts: string[]): boolean {
+  if (boxCovers(parts)) return true;
+  const get = (name: string) => parts.map((part) => pieceProp(part)).find((piece) => piece?.prop === name);
+  const inset = get("inset");
+  if (inset && insetTopCovers(inset.val)) return true;
+  const topSide = get("top");
+  const left = get("left");
+  const right = get("right");
+  if (!topSide || !left || !right) return false;
+  const top = tokenPx(topSide.val);
+  const l = tokenPx(left.val);
+  const r = tokenPx(right.val);
+  return top != null && top < 240 && l != null && l < 64 && r != null && r < 64;
+}
+
+function insetTopCovers(value: string): boolean {
+  const tokens = splitTopWords(value.replace(/!important/gi, "")).filter(Boolean);
+  const nums = tokens.map((token) => tokenPx(token));
+  if (nums.some((n) => n == null)) return false;
+  const top = nums[0] ?? null;
+  if (top == null || top >= 240) return false;
+  if (tokens.length === 1) return true;
+  if (tokens.length === 2) return (nums[1] ?? 240) < 240;
+  const right = nums[1] ?? null;
+  const left = tokens.length >= 4 ? (nums[3] ?? null) : right;
+  return right != null && right < 160 && left != null && left < 160;
+}
+
+/** A generated sheet on footer, button, or span can cover the page. The same sheet inside the writing is judged elsewhere. A class stays. */
+function loosePseudoCovers(body: string): boolean {
+  const parts = splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const get = (name: string) => parts.map((part) => pieceProp(part)).find((piece) => piece?.prop === name);
+  const position = get("position");
+  if (!position || !/\b(?:fixed|absolute|sticky)\b/i.test(position.val)) return false;
+  const content = get("content");
+  if (!content || /^\s*(?:none|normal)\b/i.test(content.val)) return false;
+  const background = parts.map((part) => pieceProp(part)).find((piece) => piece && (piece.prop === "background" || piece.prop === "background-color" || piece.prop === "background-image"));
+  if (!background) return false;
+  const paint = background.val.replace(/!important/gi, "").trim();
+  if (!paint || /^(?:none|transparent)$/i.test(paint) || pieceIsClearColor(paint)) return false;
+  return looseCoverGeometry(parts);
+}
+
+/** brightness(0), contrast(0), invert(0.5), or a 12px blur on a fixed sheet wash the page. invert(1), brightness(0.5), and an 8px blur still read. */
+function backdropValueWashes(val: string): boolean {
+  const plain = val.replace(/!important/gi, "");
+  const amounts = (name: string) =>
+    functionCallsNamed(plain, [name])
+      .map((inner) => filterAmount(inner.replace(/!important/gi, "").trim()))
+      .filter((n): n is number => n != null);
+  if (amounts("brightness").some((n) => n <= 0.2)) return true;
+  if (amounts("contrast").some((n) => n <= 0.25)) return true;
+  if (amounts("invert").some((n) => n > 0.35 && n < 0.65)) return true;
+  return functionCallsNamed(plain, ["blur"]).some((inner) => {
+    const px = firstLengthPx(inner);
+    return px != null && px >= 12;
+  });
+}
+
+function elementBackdropWashes(body: string): boolean {
+  const parts = splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const get = (name: string) => parts.map((part) => pieceProp(part)).find((piece) => piece?.prop === name);
+  const position = get("position");
+  if (!position || !/\b(?:fixed|absolute|sticky)\b/i.test(position.val)) return false;
+  if (!looseCoverGeometry(parts)) return false;
+  return parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && (piece.prop === "backdrop-filter" || piece.prop === "-webkit-backdrop-filter") && backdropValueWashes(piece.val));
+  });
+}
+
+function scrubElementBackdrop(body: string): string {
+  return splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter((part) => {
+      const piece = pieceProp(part);
+      if (!piece) return true;
+      if (piece.prop !== "backdrop-filter" && piece.prop !== "-webkit-backdrop-filter") return true;
+      return !backdropValueWashes(piece.val);
+    })
+    .join("; ");
 }
 
 function pseudoCovers(body: string, hidden: Set<string>): boolean {
@@ -8129,6 +8354,23 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
         i = close + 1;
         continue;
       }
+      const stmtOpen = css.indexOf("{", j);
+      const stmtSemi = css.indexOf(";", j);
+      if (stmtSemi >= 0 && (stmtOpen < 0 || stmtSemi < stmtOpen)) {
+        out += css.slice(i, stmtSemi + 1);
+        i = stmtSemi + 1;
+        continue;
+      }
+      if (stmtOpen >= 0) {
+        const stmtClose = matchingBrace(css, stmtOpen);
+        if (stmtClose < 0) {
+          out += css.slice(i);
+          break;
+        }
+        out += css.slice(i, stmtClose + 1);
+        i = stmtClose + 1;
+        continue;
+      }
     }
     const open = css.indexOf("{", i);
     if (open < 0) {
@@ -8144,15 +8386,16 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
     const opened = rewriteAmp(selector, scopeSel);
     const rawBody = css.slice(open + 1, close);
     if (selectorMatchesDesk(opened, scopeSel)) out += `${selector}{${scrubNestedBody(rawBody, hidden, anims, true, scopeSel, opened, hideProfiles(opened, scopeSel), stackBefore)}}`;
-    else if (!rawBody.includes("{") && deskPseudoSelector(opened)) {
+    else if (!rawBody.includes("{") && (deskPseudoSelector(opened) || looseSheetSelector(opened) || loosePseudoHead(opened))) {
       let next = rawBody;
       let touched = false;
-      if (pseudoCovers(next, hidden)) {
+      const looseOnly = loosePseudoHead(opened) && !deskPseudoSelector(opened);
+      if (pseudoCovers(next, hidden) || pseudoInsetCovers(next, hidden) || (looseSheetSelector(opened) && elementCovers(next)) || (looseOnly && loosePseudoCovers(next))) {
         next = scrubPseudoCover(next);
         touched = true;
       }
-      if (pseudoInsetCovers(next, hidden)) {
-        next = scrubPseudoCover(next);
+      if (looseSheetSelector(opened) && elementBackdropWashes(next)) {
+        next = scrubElementBackdrop(next);
         touched = true;
       }
       if (pseudoBorderCovers(next)) {
