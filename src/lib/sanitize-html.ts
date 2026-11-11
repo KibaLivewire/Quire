@@ -911,7 +911,10 @@ function coordSpanHides(inner: string): boolean {
   }
   const x = axisIsSliver(xs);
   const y = axisIsSliver(ys);
-  return (x.sliver && y.wide) || (y.sliver && x.wide) || (activePaint && x.px <= 12 && y.px <= 12);
+  const chip = activeRoot
+    ? x.px <= 8 && y.px <= 8
+    : (activePaint && x.px <= 12 && y.px <= 12) || ((activeStar || activeRepeat || activePage) && x.px <= 16 && y.px <= 16);
+  return (x.sliver && y.wide) || (y.sliver && x.wide) || chip;
 }
 
 function axisIsSliver(coords: { n: number; u: string }[]): { sliver: boolean; wide: boolean; px: number } {
@@ -2157,7 +2160,7 @@ function clipRadiusFlat(token: string, hidden: Set<string>): boolean {
     if (!next) return false;
     if (hidesAsZero(next)) return true;
     const pct = percentOf(next);
-    if (pct != null) return pct >= 0 && pct <= 0.04;
+    if (pct != null) return pct >= 0 && pct <= 0.08;
     const px = lengthDeskPx(next);
     return px != null && px >= 0 && px <= 32;
   });
@@ -2384,7 +2387,16 @@ function clipHides(value: string, hidden: Set<string>): boolean {
       const left = parsed[3];
       if (!top || !right || !bottom || !left) return false;
       if ((activeStar || (activeRepeat && activeDivs >= 6)) && top.kind === "pct" && top.n >= 2) return true;
-      if (((activePage && !activePaint) || activeRoot) && top.kind === "pct" && top.n >= 60) return true;
+      if (activePage && !activeRoot && top.kind === "pct" && top.n >= 35) return true;
+      const asPct = (side: InsetSide) => (side.kind === "pct" ? side.n : side.kind === "zero" ? 0 : null);
+      const leftN = asPct(left);
+      const rightN = asPct(right);
+      const topN = asPct(top);
+      const bottomN = asPct(bottom);
+      const across = leftN != null && rightN != null ? 100 - leftN - rightN : null;
+      const down = topN != null && bottomN != null ? 100 - topN - bottomN : null;
+      const slit = (activeStar || activePage || activeRoot || (activeRepeat && activeDivs >= 1)) && across != null && across >= 0 && across <= 30 && (down == null || down >= 50);
+      if (slit) return true;
       return insetPairCovers(top, bottom) || insetPairCovers(left, right);
     })
   ) {
@@ -2508,6 +2520,7 @@ function pathHides(inner: string): boolean {
   const xSpan = maxX - minX;
   const ySpan = maxY - minY;
   if ((activeStar || activeRoot || (activePage && !activePaint) || (activeRepeat && activeDivs >= 2)) && Math.max(xSpan, ySpan) <= 96) return true;
+  if ((activeStar || activeRoot || (activePage && !activePaint) || (activeRepeat && activeDivs >= 2)) && Math.min(xSpan, ySpan) <= 16 && Math.max(xSpan, ySpan) >= 80) return true;
   return (xSpan <= 72 && ySpan >= 400) || (ySpan <= 72 && xSpan >= 400);
 }
 
@@ -2761,6 +2774,7 @@ function rotatePropertyHides(value: string, hidden: Set<string>, seen?: Set<stri
   const parts = rotatePropertyParts(value);
   if (parts.length === 2) {
     const axis = (parts[0] ?? "").toLowerCase();
+    if (axis === "z" && planeSpinHides(parts[1] ?? "", hidden)) return true;
     if ((axis === "x" || axis === "y") && (angleIsEdge(parts[1] ?? "", hidden) || starRotateFlattens(parts[1] ?? "", hidden) || paintRotateFlattens(parts[1] ?? "", hidden) || repeatRotateFlattens(parts[1] ?? "", hidden, axis === "y" ? "y" : "x"))) return true;
   }
   if (parts.length === 4 && axisTurnHides(parts, hidden)) return true;
@@ -2872,6 +2886,7 @@ function perspectiveTurnHides(value: string, hidden: Set<string>): boolean {
       if (activeRoot && dist <= 40 && fromFlat >= 15) return true;
       if (activeStar && dist <= 8 && fromFlat >= 10) return true;
       if ((activeStar || activeRepeat) && dist <= 80 && fromFlat >= 12) return true;
+      if ((activeStar || activeRepeat || activePage || activeRoot) && dist <= 220 && fromFlat >= 30) return true;
     }
   }
   return false;
@@ -2921,10 +2936,11 @@ const SHEET_BLEND = /^(?:difference|exclusion)$/i;
 function blendWashes(raw: string): boolean {
   const token = raw.replace(/!important/gi, "").trim();
   if (WASH_BLEND.test(token)) return true;
+  if (/^hard-light$/i.test(token) && activeStar) return true;
   if (SHEET_BLEND.test(token) && (activeStar || activeHtml)) return true;
   if (!/^multiply$/i.test(token) && !/^darken$/i.test(token)) return false;
-  if (activeStar || activePaint || activePage) return true;
-  if (activeRepeat && activeDivs >= 2) return true;
+  if (activeStar || activePaint || activePage || activeHtml) return true;
+  if (activeRepeat) return true;
   return activeSib === BODY_SIB;
 }
 
@@ -2982,13 +2998,14 @@ function contrastHides(inner: string, hidden: Set<string>, seen?: Set<string>): 
   return false;
 }
 
-/** invert(0) and invert(1) still read. invert(0.5) paints the page gray. On a star, invert(0.15) compounds to a black sheet. invert(0.12) still reads. */
+/** invert(0) and invert(1) still read. invert(0.5) paints the page gray. On a star, invert(0.13) compounds to a black sheet. invert(0.12) still reads. Every div does the same from 0.17. */
 function invertHides(inner: string): boolean {
   const arg = (splitArgs(inner)[0] ?? inner).trim();
   const amount = filterAmount(arg.replace(/!important/gi, "").trim());
   if (amount == null) return false;
   if (amount > 0.35 && amount < 0.65) return true;
-  return activeStar && amount >= 0.14 && amount < 0.35;
+  if (activeStar && amount >= 0.13 && amount < 0.35) return true;
+  return activeRepeat && activeDivs >= 2 && amount >= 0.17 && amount < 0.35;
 }
 
 /** backdrop-filter: invert(1) on every div washes the sheet out. The filter property at invert(1) still reads. One box stays. */
@@ -3958,8 +3975,13 @@ function strokeShorthandHides(raw: string, hidden: Set<string>): boolean {
   const wide = tokens.some((token) => valueCanHide(token, hidden, wideStroke));
   if (!wide) return false;
   if (tokens.some((token) => valueCanHide(token, hidden, (part) => colorIsPageLight(part)))) return true;
-  if (!activePaint) return false;
-  return tokens.some((token) => valueCanHide(token, hidden, (part) => colorMissesDesk(part)));
+  const px = tokens.reduce((best, token) => {
+    const n = lengthDeskPx(token.replace(/!important/gi, "").trim());
+    return n != null && n > best ? n : best;
+  }, 0);
+  if (activePaint || activeStar || activeRepeat || activePage) return tokens.some((token) => valueCanHide(token, hidden, (part) => colorMissesDesk(part)));
+  if ((activeRoot || activeHtml) && px >= 20) return tokens.some((token) => valueCanHide(token, hidden, (part) => colorMissesDesk(part)));
+  return false;
 }
 
 function decorationThick(token: string): boolean {
@@ -5053,18 +5075,34 @@ function declaresViewport(value: string): boolean {
   return splitTopWords(value.replace(/!important/gi, "")).some((token) => coversViewport(token));
 }
 
-/** A viewport outline pulled inward covers the writing. An 80px frame does not. A 30px outline pulled onto the letters still reads on this desk. */
+/** A viewport outline pulled inward covers the writing. An 80px frame does not. A 30px outline on the letters still reads. On a star, 24px pulled in covers the line. 16px still leaves it. */
 function outlineDrops(parts: string[]): (part: string) => boolean {
   let wide = false;
   let inset = false;
+  let px = 0;
+  let pull = 0;
   for (const part of parts) {
     const piece = pieceProp(part);
     if (!piece) continue;
     if ((piece.prop === "outline" || piece.prop === "outline-width") && declaresViewport(piece.val)) wide = true;
     if (piece.prop === "outline-offset" && negativeViewport(piece.val)) inset = true;
+    if (piece.prop === "outline" || piece.prop === "outline-width") {
+      for (const token of splitTopWords(piece.val.replace(/!important/gi, ""))) {
+        const n = lengthDeskPx(token);
+        if (n != null) px = Math.max(px, n);
+      }
+    }
+    if (piece.prop === "outline-offset") {
+      for (const token of splitTopWords(piece.val.replace(/!important/gi, ""))) {
+        const n = lengthDeskPx(token);
+        if (n != null && n < 0) pull = Math.max(pull, Math.abs(n));
+      }
+    }
   }
+  const starCover = activeStar && px >= 20 && pull >= px - 4;
   return (part) => {
-    if (!wide || !inset) return false;
+    if (!wide && !starCover) return false;
+    if (wide && !inset && !starCover) return false;
     const piece = pieceProp(part);
     return Boolean(piece && (piece.prop === "outline" || piece.prop === "outline-width"));
   };
@@ -5245,7 +5283,14 @@ function sidePushHides(prop: string, value: string, hidden: Set<string>): boolea
   if (!prop.startsWith("margin") && !prop.startsWith("padding")) return false;
   if (!activeStar && activeDivs < 2) return false;
   const limit = activeStar ? 7 : 8;
-  return axisTokens(prop, value, "h").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "h", limit)));
+  if (axisTokens(prop, value, "h").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "h", limit)))) return true;
+  const pctLimit = activeStar ? 0.65 : 0.65;
+  return axisTokens(prop, value, "h").some((token) =>
+    valueCanHide(token, hidden, (raw) => {
+      const pct = percentOf(raw.replace(/!important/gi, "").trim());
+      return pct != null && pct >= pctLimit;
+    }),
+  );
 }
 
 /** 100px of side margin on a star, or 110px on a stack, pushes the line off. 90px on a star, and 100px on a div, still leave a line. One box, and one line, may still shift. */
@@ -5342,7 +5387,7 @@ function narrowClipDrops(parts: string[], hidden: Set<string>): (part: string) =
     return Boolean(piece && overflowClips(piece.prop, piece.val));
   });
   if (!clip) return () => false;
-  const limit = activeStar || activeDivs >= 2 ? 280 : 4;
+  const limit = activeStar || activeDivs >= 2 || activePage ? 280 : 4;
   return (part) => {
     const piece = pieceProp(part);
     return Boolean(piece && INLINE_SLIVER.has(piece.prop) && sliverLength(piece.val, hidden, limit));
@@ -5478,21 +5523,28 @@ function offsetPushDrops(parts: string[], hidden: Set<string>): (part: string) =
 function pushPairDrops(parts: string[]): (part: string) => boolean {
   let margin = 0;
   let padding = 0;
+  let marginEm = 0;
+  let paddingVh = 0;
   for (const part of parts) {
     const piece = pieceProp(part);
     if (!piece) continue;
     const kind = piece.prop.startsWith("margin") ? "m" : piece.prop.startsWith("padding") ? "p" : "";
     if (!kind) continue;
     for (const token of axisTokens(piece.prop, piece.val, "v")) {
-      const hit = viewportAmount(token.replace(/!important/gi, "").trim());
-      if (!hit || hit.kind === "h") continue;
-      const n = Math.abs(hit.n);
-      if (kind === "m") margin = Math.max(margin, n);
-      else padding = Math.max(padding, n);
+      const plain = token.replace(/!important/gi, "").trim();
+      const hit = viewportAmount(plain);
+      if (hit && hit.kind !== "h") {
+        const n = Math.abs(hit.n);
+        if (kind === "m") margin = Math.max(margin, n);
+        else padding = Math.max(padding, n);
+        if (kind === "p") paddingVh = Math.max(paddingVh, n);
+      }
+      const em = topPushEm(plain);
+      if (em != null && kind === "m") marginEm = Math.max(marginEm, em);
     }
   }
   const hard = activeStar
-    ? (margin >= 5 && padding >= 2) || (margin >= 4 && padding >= 3)
+    ? (margin >= 5 && padding >= 2) || (margin >= 4 && padding >= 3) || (marginEm >= 2 && paddingVh >= 3)
     : activeRepeat && activeDivs >= 6 && ((margin >= 5 && padding >= 4) || (margin >= 7 && padding >= 1) || (margin >= 6 && padding >= 3));
   if (!hard) return () => false;
   return (part) => {
@@ -5501,7 +5553,7 @@ function pushPairDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** A grid row gap on the stack opens a hole above the line. 14vh on every div does. 12vh still leaves it. 4vh on a star does. 2vh on a star still leaves it. A flex gap of 30vh on a star does that too. 8vh of flex gap still leaves the line. A gap with no grid or flex stays. */
+/** A grid row gap on the stack opens a hole above the line. 14vh on every div does. 12vh still leaves it. 3vh on a star does. 2vh on a star still leaves it. A flex gap of 30vh on a star does that too. 8vh of flex gap still leaves the line. A gap with no grid or flex stays. */
 function rowGapDrops(parts: string[]): (part: string) => boolean {
   const grid = parts.some((part) => {
     const piece = pieceProp(part);
@@ -5512,7 +5564,7 @@ function rowGapDrops(parts: string[]): (part: string) => boolean {
     return Boolean(piece && piece.prop === "display" && /\bflex\b/i.test(piece.val));
   });
   if (!grid && !flex) return () => false;
-  const limit = grid ? (activeStar ? 4 : activeRepeat && activeDivs >= 2 ? 14 : 0) : activeStar ? 16 : 0;
+  const limit = grid ? (activeStar ? 3 : activeRepeat && activeDivs >= 2 ? 14 : 0) : activeStar ? 16 : 0;
   if (!limit) return () => false;
   return (part) => {
     const piece = pieceProp(part);
@@ -5544,8 +5596,102 @@ function maxHeightStarDrops(parts: string[], hidden: Set<string>): (part: string
       const token = tokens[0] ?? "";
       if (hidesAsZero(token)) return true;
       const px = lengthDeskPx(token);
-      return px != null && px >= 0 && px <= 24;
+      return px != null && px >= 0 && px <= 36;
     });
+  };
+}
+
+function maxHeightStackDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  if (!(activeRepeat && activeDivs >= 1) && !activePage) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || (piece.prop !== "max-height" && piece.prop !== "max-block-size")) return false;
+    return valueCanHide(piece.val, hidden, (raw) => {
+      const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
+      if (tokens.length !== 1) return false;
+      const token = tokens[0] ?? "";
+      if (hidesAsZero(token)) return true;
+      const px = lengthDeskPx(token);
+      return px != null && px >= 0 && px <= 36;
+    });
+  };
+}
+
+function shortBoxDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  if (!activeStar && !activeRoot) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || (piece.prop !== "height" && piece.prop !== "block-size")) return false;
+    return valueCanHide(piece.val, hidden, (raw) => {
+      const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
+      if (tokens.length !== 1) return false;
+      const token = tokens[0] ?? "";
+      if (hidesAsZero(token)) return true;
+      const px = lengthDeskPx(token);
+      return px != null && px >= 0 && px <= 12;
+    });
+  };
+}
+
+/** A floated line shrunk to a pixel has nothing left to read. 2px does that. 40px still leaves the line. A float with no size stays. */
+function floatShrinkDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  if (!activePaint && !activeInk) return () => false;
+  const floated = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop === "float" && /\b(?:left|right|inline-start|inline-end)\b/i.test(piece.val));
+  });
+  if (!floated) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || (!INLINE_SLIVER.has(piece.prop) && !BLOCK_SLIVER.has(piece.prop))) return false;
+    return valueCanHide(piece.val, hidden, (raw) => {
+      const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
+      if (tokens.length !== 1) return false;
+      const token = tokens[0] ?? "";
+      if (hidesAsZero(token)) return true;
+      const px = lengthDeskPx(token);
+      return px != null && px >= 0 && px <= 2;
+    });
+  };
+}
+
+/** A background the same colour as the ink paints the line out. Cream and white do that on the dark desk. A gilt face stays. A rule that also sets an ink which still reads on that face stays. */
+function inkBackgroundDrops(parts: string[]): (part: string) => boolean {
+  if (!activeStar && !activePaint && !(activeRepeat && activeDivs >= 2)) return () => false;
+  const ink: [number, number, number] = [236, 230, 220];
+  const washed = (token: string): [number, number, number] | null => {
+    const rgb = resolvedInk(token.replace(/!important/gi, "").trim());
+    if (!rgb) return null;
+    return contrastVs(rgb[0], rgb[1], rgb[2], ink) < 1.5 ? rgb : null;
+  };
+  let face: [number, number, number] | null = null;
+  for (const part of parts) {
+    const piece = pieceProp(part);
+    if (!piece || (piece.prop !== "background" && piece.prop !== "background-color")) continue;
+    const plain = piece.val.replace(/!important/gi, "");
+    if (/url\(|gradient\(/i.test(plain)) continue;
+    for (const token of splitTopWords(plain)) {
+      const rgb = washed(token);
+      if (rgb) face = rgb;
+    }
+  }
+  if (!face) return () => false;
+  for (const part of parts) {
+    const piece = pieceProp(part);
+    if (!piece || piece.prop !== "color") continue;
+    for (const token of splitTopWords(piece.val.replace(/!important/gi, ""))) {
+      const raw = token.trim();
+      if (!raw || pieceIsClearColor(raw) || colorMissesDesk(raw) || colorIsPageLight(raw) || inkTooFaint(raw)) continue;
+      const rgb = resolvedInk(raw);
+      if (rgb && contrastVs(rgb[0], rgb[1], rgb[2], face) >= 3) return () => false;
+    }
+  }
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || (piece.prop !== "background" && piece.prop !== "background-color")) return false;
+    const plain = piece.val.replace(/!important/gi, "");
+    if (/url\(|gradient\(/i.test(plain)) return false;
+    return splitTopWords(plain).some((token) => washed(token));
   };
 }
 
@@ -5569,7 +5715,7 @@ function webkitBoxDrops(parts: string[]): (part: string) => boolean {
 }
 
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), trackRowDrops(parts, hidden), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), webkitBoxDrops(parts)];
+  const drops = [columnSpreadDrops(parts), trackRowDrops(parts, hidden), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), webkitBoxDrops(parts)];
   return (part) => drops.some((drop) => drop(part));
 }
 
@@ -6245,6 +6391,7 @@ function pageShiftCovers(token: string): boolean {
   const units = Object.entries(parsed.u).filter(([, exp]) => exp);
   if (units.length !== 1 || units[0]?.[1] !== 1) return false;
   const unit = units[0]?.[0] ?? "";
+  if (unit === "px") return activeDivs >= 2 && Math.abs(parsed.n) >= 130;
   if (!/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) && !/^cq(?:w|h|i|b|min|max)$/.test(unit)) return false;
   const n = Math.abs(parsed.n);
   if (activeRoot && n >= 74) return true;
@@ -7634,7 +7781,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
         i = close + 1;
         continue;
       }
-      const looking = desk ? selector.replace(/&/g, ":is(html, body)") : selector;
+      const looking = desk ? rewriteAmp(selector, nestingSel ?? "html, body") : selector;
       const bareAmp = selector.replace(/\s+/g, "") === "&";
       const childDesk = selectorMatchesDesk(looking, scopeSel) || (desk && bareAmp);
       const childProfiles = !childDesk ? [] : bareAmp && desk ? profiles : hideProfiles(looking, scopeSel);
@@ -7885,6 +8032,38 @@ function insetTopCovers(value: string): boolean {
   const right = nums[1] ?? null;
   const left = tokens.length >= 4 ? (nums[3] ?? null) : right;
   return right != null && right < 160 && left != null && left < 160;
+}
+
+/** A bare button, input, or select parked over the page still paints its own face after the background is gone. The position and the size are dropped. A footer stays. A gilt button with no cover stays. A class stays. */
+function controlFaceSelector(selector: string): boolean {
+  const parts = splitSelectorList(selector).map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return false;
+  return parts.every((part) => {
+    if (/::/.test(part)) return false;
+    const bare = part.replace(/:not\((?:[^()]|\([^()]*\))*\)/gi, "").trim();
+    if (/[.#\[]/.test(bare)) return false;
+    return /^(?:button|input|select)$/i.test(bare);
+  });
+}
+
+function controlFaceCovers(body: string): boolean {
+  const parts = splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const position = parts.map((part) => pieceProp(part)).find((piece) => piece?.prop === "position");
+  if (!position || !/\b(?:fixed|absolute|sticky)\b/i.test(position.val)) return false;
+  return boxCovers(parts) || looseCoverGeometry(parts);
+}
+
+function scrubControlFace(body: string): string {
+  const drop = new Set(["position", "inset", "top", "right", "bottom", "left", "width", "height", "inline-size", "block-size", "min-width", "min-height", "max-width", "max-height"]);
+  return splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter((part) => {
+      const piece = pieceProp(part);
+      return !piece || !drop.has(piece.prop);
+    })
+    .join("; ");
 }
 
 /** A generated sheet on footer, button, or span can cover the page. The same sheet inside the writing is judged elsewhere. A class stays. */
@@ -8396,6 +8575,10 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
       }
       if (looseSheetSelector(opened) && elementBackdropWashes(next)) {
         next = scrubElementBackdrop(next);
+        touched = true;
+      }
+      if (controlFaceSelector(opened) && controlFaceCovers(next)) {
+        next = scrubControlFace(next);
         touched = true;
       }
       if (pseudoBorderCovers(next)) {

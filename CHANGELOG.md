@@ -1,3 +1,34 @@
+# Quire 1.9.63 — The first screen still has the writing
+
+Released 11 November 2026.
+
+1.9.62 still let a short box, a nested rule, and a few blends paint out the first line. Those are dropped. A rule that still shows the writing stays.
+
+- **A short height on a star, or on html and body, can no longer clip the line.** `*{ height: 10px }`, `*{ height: 0 }`, `*{ block-size: 8px }`, `html { height: 8px }`, and `body { height: 8px }` leave no writing. Those are dropped. `*{ height: 24px }` and `56px` still leave the line. Colour stays.
+- **A short max-height on the stack, or on the page, can no longer clip the line.** The sheet already hides the overflow. `div { max-height: 8px }` and `section { max-height: 4px }` are dropped, and so is `*{ max-height: 30px }` and `*{ max-block-size: 32px }`. `*{ max-height: 40px }` and `div { max-height: 64px }` still read. `*{ height: 24px }` stays. A class stays. Colour stays.
+- **A floated line shrunk to a pixel can no longer disappear.** `p { float: left; width: 1px; height: 1px }` and `width: 2px` drop the size. The float stays. `width: 40px` still reads. A float with no size stays. Colour stays.
+- **A nested `&` is judged as the box it sits in.** `div { & { filter: brightness(0.2) } }` was read as html, so the dim filter stayed and the page went black. It is dropped. `html { filter: brightness(0.2) }` still reads. Colour stays.
+- **Hard light on a star can no longer black out the sheet.** 1.9.62 kept `*{ mix-blend-mode: hard-light }`. On this desk the line is black. It is dropped. `div`, `p`, `section`, `body`, `html`, and `header + div` hard light still read. Colour stays.
+- **Multiply or darken on html, or on one box after the header, can no longer black out the sheet.** `html { mix-blend-mode: multiply }` and `header + div { mix-blend-mode: darken }` are dropped. Colour stays.
+- **A star invert of 0.13, or 0.17 on every div, can no longer gray the sheet.** `*{ filter: invert(0.13) }` and `div { filter: invert(0.18) }` are dropped. `invert(0.12)`, `div { filter: invert(0.13) }`, and `invert(1)` still read. Colour stays.
+- **An inward outline of 24px on a star can no longer cover the line.** `*{ outline: 24px solid #221e1a; outline-offset: -22px }` drops the outline. `p` at `30px` with `-28px`, and `14px` with `-12px`, still read. Colour stays.
+- **A flat ellipse, a side slit, a deep top cut, or a thin path can no longer hide the line.** `ellipse(30% 6%)`, `inset(0 82% 0 0)`, and `section { clip-path: inset(40% 0 0 0) }` are dropped. `section { clip-path: inset(20% 0 0 0) }` and `html { clip-path: inset(40%) }` still read. A 10px shape on html stays. Colour stays.
+- **A wide sheet-coloured stroke can no longer paint out the letters.** `html { -webkit-text-stroke: 24px #222 }` is dropped. A 6px dark stroke on html still reads. `p` at `1px` stays. Colour stays.
+- **70% of side padding on a star can no longer push the line off.** `*{ padding-left: 70% }` is dropped. `6vw` still reads. Colour stays.
+- **140px across on every div can no longer walk the line off.** `div { transform: translateX(140px) }` is dropped. `header + div` is one box and stays. `*{ transform: translateX(74px) }` stays. Colour stays.
+- **A clipped section under 280px wide can no longer cut the line.** `section { width: 28px; overflow: hidden }` is dropped. `header + div { width: 6px; overflow: hidden }` is one box and stays. Colour stays.
+- **A short perspective in front of a steep turn can no longer flatten the stack.** `div { transform: perspective(180px) rotateX(35deg) }` is dropped. `html { transform: perspective(400px) rotateX(20deg) }` stays. Colour stays.
+- **A background the same colour as the ink can no longer paint the line out.** `*{ background: #ece6dc }` and `div { background: #fff }` are dropped. `div { background: #c4a574 }` and `button { background: #c4a574 }` stay. Colour stays.
+- **A bare button parked over the page can no longer cover the writing with its own face.** `button { position: fixed; inset: 0 }` drops the position and the inset. The same cover with `width: 100vw; height: 100vh` does too. A fixed footer stays. Colour stays.
+- **A 12deg turn on the z axis of a star can no longer spin the line off.** `*{ rotate: z 12deg }` is dropped. `*{ rotate: z 2deg }` and `html { rotate: z 90deg }` still read. Colour stays.
+- **2.2em of margin with 3.2vh of padding on a star can no longer walk the line off.** The padding is dropped. The margin stays. A grid `row-gap` of `3vh` on a star is dropped. `2vh` still reads. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.62 — The first screen still has the writing
 
 Released 10 November 2026.
