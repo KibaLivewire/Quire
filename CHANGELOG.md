@@ -1,3 +1,28 @@
+# Quire 1.9.64 — The first screen still has the writing
+
+Released 12 November 2026.
+
+1.9.63 still let a turn, an indent, a side push, a root margin, a top clip, a sheet stroke, a thick strike, an inward outline, a page speck, a fixed pile, a sticky jump, and an inline inset paint out the first line. Those are dropped. A rule that still shows the writing stays.
+
+- **A bare angle on a star can no longer spin the line off.** `*{ rotate: 18deg }` is the same z turn as `rotate: z 12deg`. It is dropped. `*{ rotate: 2deg }`, `*{ rotate: z 2deg }`, and `html { rotate: z 90deg }` still read. Colour stays.
+- **A negative percent indent on the root, the page, or a div can no longer inherit the line off the sheet.** `html { text-indent: -80% }` and `-100%` leave no writing. Those are dropped, and so are `:root`, `body`, `section`, and `div`. The earlier accept of a bare `-100%` on html is withdrawn. `html { text-indent: -40% }`, `p { text-indent: -40% }`, and `p { text-indent: -18em }` still read. Colour stays.
+- **80% of side padding on the root or the page can no longer leave a sliver.** `html { padding-left: 80% }` and `section { padding-inline-start: 75% }` are dropped. `*{ padding-left: 6vw }` and `html { padding-left: 6vw }` still read. One box may still shift in vw. Colour stays.
+- **A 900px top margin on the root can no longer walk the page off.** `html { margin-top: 900px }` is dropped. `html { margin-top: 2em }` and `header + div { margin-top: 8em }` stay. `html { padding-top: 100em }` stays. Colour stays.
+- **A deep top clip on html can no longer blank the sheet.** `html { clip-path: inset(70% 0 0 0) }` is dropped. `html { clip-path: inset(40%) }` still reads. Colour stays.
+- **An 8px sheet-coloured stroke on html can no longer ghost the letters.** `html { -webkit-text-stroke: 8px #221e1a }` is dropped. A 6px dark stroke, `html { -webkit-text-stroke: 6px #1c1917 }`, still reads. Colour stays.
+- **A thick line-through in the sheet colour can no longer paint out the letters.** `*{ text-decoration: line-through 18px #221e1a }` leaves dots. It is dropped. Underline stays. A dark strike on html, `line-through 1em #1c1917`, still reads. Colour stays.
+- **An inward outline of 80px on a star can no longer cover the page.** `*{ outline: 80px solid #1a1714; outline-offset: -70px }` drops the outline. `24px` with `-22px` still drops. `p` at `14px` and `30px` still reads. An 80px frame on html stays. Colour stays.
+- **zoom or scale of 0.15 on the page can no longer shrink the writing to a speck.** `section { zoom: 0.15 }` and `section { transform: scale(0.15) }` are dropped. The earlier accept of `scale(0.15)` on a section is withdrawn. `0.2` still reads. `html { zoom: 0.5 }` stays. Colour stays.
+- **position:fixed with top and left at 0 on a star can no longer pile every box.** `*{ position: fixed; top: 0; left: 0 }` drops the position. `*{ position: fixed }` alone stays. A fixed footer stays. Colour stays.
+- **A sticky top of -800px on a star can no longer blank the page.** The offset is dropped. The position stays. `top: -40px` still reads. Colour stays.
+- **inset-inline-start of 80% can no longer shift the sheet off.** `*{ inset-inline-start: 80% }` is dropped. `6vw` still reads. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.63 — The first screen still has the writing
 
 Released 11 November 2026.
