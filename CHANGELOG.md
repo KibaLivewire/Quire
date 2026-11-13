@@ -1,3 +1,30 @@
+# Quire 1.9.65 — The first screen still has the writing
+
+Released 13 November 2026.
+
+1.9.64 still let a tall header, a root pad, a side push, a shift, a fixed line, an inward outline, a page cut, a narrow stack, a clipped root, a floated star, a short contain, a clear mask, a top band, and a root indent paint out the first line. Those are dropped. A rule that still shows the writing stays.
+
+- **A header or a title box of 80vh can no longer push the writing off the first screen.** `header { height: 80vh }` and `textarea { height: 80vh }` leave no line, and so does `min-height: 80vh`. Those sizes are dropped. `70vh` still reads. A class, and `header + div`, stay. Colour stays.
+- **80vh of block padding on the root can no longer walk the page off.** `html { padding-block-start: 80vh }` is dropped. `html { padding-top: 70vh }` and `padding-block-start: 75vh` still read. Colour stays.
+- **A percent side push on a star, or on every div, can no longer leave a sliver.** `*{ padding-inline-start: 20% }`, `div { padding-inline-start: 24% }`, and `div { margin-inline-start: 30% }` are dropped. `15%` on a star, `20%` on a div, and `*{ padding-left: 6vw }` still read. One box may still shift. Colour stays.
+- **A positioned shift can no longer walk the line off.** `*{ position: relative; left: 20% }`, `inset-block-start: 20%`, and `*{ position: sticky; top: -80px }` drop the offset. The position stays. `top: -40px` still reads. `div { left: 160px }` drops the offset. `120px` still reads. Colour stays.
+- **A fixed offset on the writing can no longer park the line off the page.** `p { position: fixed; top: -40px }` drops the offset. The position stays. A fixed footer stays. Colour stays.
+- **An inward outline of 18px on a star, or 24px on every div, can no longer cover the line.** `*{ outline: 18px solid #1a1714; outline-offset: -16px }` and `div { outline: 24px solid #1a1714; outline-offset: -20px }` drop the outline. `16px` with `-14px` still reads. `80px` with `-70px` still drops. `p` at `30px` still reads. One box may still frame the page. Colour stays.
+- **A top clip of 25% on the page, or a path under 120px tall, can no longer cut the first line.** `section { clip-path: inset(25% 0 0 0) }` and a section path 80px tall are dropped. `inset(20% 0 0 0)` and a path 200px tall still read. `html { clip-path: inset(40%) }` still reads. A path 80px tall on html stays. Colour stays.
+- **A max-inline-size of 40px on every div can no longer cut the line.** `div { max-inline-size: 40px }` is dropped. `80px` still reads. `header + div` at `24px` is one box and stays. Colour stays.
+- **A root squeezed under 48px, and clipped, can no longer leave a sliver.** `html { width: 40px; overflow: hidden }` drops the width. The clip stays. `80px` still reads. Colour stays.
+- **A floated star shrunk to 40px can no longer stack the line into a slit.** `*{ float: left; width: 40px }` drops the width. The float stays. `p` at `40px` and at `8px` still reads. Colour stays.
+- **contain:paint on an 8px line can no longer clip the glyphs.** `p { contain: paint; height: 8px }` drops the contain. The size stays. `height: 24px` still reads. Colour stays.
+- **A mask that stays clear through 80% of the line can no longer hide the letters.** `p { mask-image: linear-gradient(transparent 0 80%, #000 80%) }` is dropped. A window that ends at `40%` still reads. A fade stays. Colour stays.
+- **A 4em band on every div can no longer cover the first line.** `div::after` with `top: 0` and `height: 4em` drops the background. `2em` still reads. A band that starts at `240px` stays. Colour stays.
+- **A root indent of -40vw, or -70ch, can no longer walk the line off.** `html { text-indent: -40vw }` and `-70ch` are dropped, and so is `-100ch`. The earlier accept of `-100ch` on html is withdrawn. `-40ch` and `-40%` still read. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.64 — The first screen still has the writing
 
 Released 12 November 2026.

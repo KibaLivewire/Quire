@@ -1135,15 +1135,18 @@ function maskIsClear(value: string): boolean {
 function maskCutsTop(value: string): boolean {
   const stack = activeRepeat && activeDivs >= 2;
   const page = (activePage && !activePaint) || activeRoot;
-  if (!activeStar && !page && !stack) return false;
+  const writing = (activePaint || activeInk) && !activeStar && !page && !stack;
+  if (!activeStar && !page && !stack && !writing) return false;
   const grads = namedFunctionCalls(value, ["linear-gradient", "-webkit-linear-gradient"]);
   return grads.some((grad) => {
     const inner = stripGradientDirection(grad.inner);
     const hit = /^transparent(?:\s+0%?)?\s+([0-9.]+)%/i.exec(inner);
     if (hit) {
       const n = Number(hit[1]);
-      if (Number.isFinite(n) && n >= 40) return true;
+      const limit = writing ? 70 : 40;
+      if (Number.isFinite(n) && n >= limit) return true;
     }
+    if (writing) return false;
     if (maskFadesClear(inner)) return true;
     const windowN = maskWindowCloses(inner);
     if (windowN == null) return false;
@@ -2387,7 +2390,7 @@ function clipHides(value: string, hidden: Set<string>): boolean {
       const left = parsed[3];
       if (!top || !right || !bottom || !left) return false;
       if ((activeStar || (activeRepeat && activeDivs >= 6)) && top.kind === "pct" && top.n >= 2) return true;
-      if (activePage && !activeRoot && top.kind === "pct" && top.n >= 35) return true;
+      if (activePage && !activeRoot && top.kind === "pct" && top.n >= 25) return true;
       if (activeRoot && top.kind === "pct" && top.n >= 60 && (bottom.kind === "zero" || (bottom.kind === "pct" && bottom.n <= 5))) return true;
       const asPct = (side: InsetSide) => (side.kind === "pct" ? side.n : side.kind === "zero" ? 0 : null);
       const leftN = asPct(left);
@@ -2522,6 +2525,7 @@ function pathHides(inner: string): boolean {
   const ySpan = maxY - minY;
   if ((activeStar || activeRoot || (activePage && !activePaint) || (activeRepeat && activeDivs >= 2)) && Math.max(xSpan, ySpan) <= 96) return true;
   if ((activeStar || activeRoot || (activePage && !activePaint) || (activeRepeat && activeDivs >= 2)) && Math.min(xSpan, ySpan) <= 16 && Math.max(xSpan, ySpan) >= 80) return true;
+  if (activePage && !activePaint && ySpan <= 120 && xSpan >= 80) return true;
   return (xSpan <= 72 && ySpan >= 400) || (ySpan <= 72 && xSpan >= 400);
 }
 
@@ -3124,13 +3128,16 @@ function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): 
     const units = Object.entries(parsed.u).filter(([, exp]) => exp);
     if (units.length === 1 && units[0]?.[1] === 1) {
       const unit = units[0]?.[0] ?? "";
-      if (/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) || /^cq(?:w|h|i|b|min|max)$/.test(unit)) return Math.abs(parsed.n) >= 80;
+      if (/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) || /^cq(?:w|h|i|b|min|max)$/.test(unit)) {
+        const vwLimit = (activeRoot || activeHtml || activePage) && !activeStar ? 40 : 80;
+        return Math.abs(parsed.n) >= vwLimit;
+      }
       const inherits = activeStar || activePaint || activeInk || activeRoot || activeHtml || activePage || activeRepeat || activeDivs >= 1;
       if (unit === "%" && inherits && parsed.n <= -50) return true;
     }
   }
   const px = lengthDeskPx(value);
-  const limit = activeStar || (activeRepeat && activeDivs >= 2) ? 192 : activePaint || activeInk ? 352 : 880;
+  const limit = activeStar || (activeRepeat && activeDivs >= 2) ? 192 : activePaint || activeInk ? 352 : activeRoot || activeHtml ? 480 : 880;
   if (px != null) return Math.abs(px) >= limit;
   const trail = seen ?? new Set<string>();
   const defined = (hidden as HideVars).defined;
@@ -4268,6 +4275,7 @@ let activeStack = false;
 let activeDivs = 0;
 let activeRoot = false;
 let activeHtml = false;
+let activeLead = false;
 
 function withSib<T>(sib: Sib, fn: () => T): T {
   const prev = activeSib;
@@ -5115,10 +5123,11 @@ function outlineDrops(parts: string[]): (part: string) => boolean {
       }
     }
   }
-  const starCover = activeStar && px >= 20 && pull >= 18 && pull >= px - 12;
+  const starCover = activeStar && px >= 18 && pull >= 16 && pull >= px - 12;
+  const stackCover = !activeStar && activeRepeat && activeDivs >= 2 && px >= 24 && pull >= 20 && pull + 8 >= px;
   return (part) => {
-    if (!wide && !starCover) return false;
-    if (wide && !inset && !starCover) return false;
+    if (!wide && !starCover && !stackCover) return false;
+    if (wide && !inset && !starCover && !stackCover) return false;
     const piece = pieceProp(part);
     return Boolean(piece && (piece.prop === "outline" || piece.prop === "outline-width"));
   };
@@ -5280,11 +5289,12 @@ function borderEdgeHides(prop: string, value: string): boolean {
   return splitTopWords(value.replace(/!important/gi, "")).some((token) => tokenViewportHides(token, "v", limit));
 }
 
-/** Padding in vh stacks down every box. 4vh on a star, or 8vh on every div, walks the line off. 3vh and 6vh still read. */
+/** Padding in vh stacks down every box. 4vh on a star, or 8vh on every div, walks the line off. 3vh and 6vh still read. 80vh on the root does that too. 75vh and 70vh still leave the line. */
 function paddingViewportHides(prop: string, value: string, hidden: Set<string>): boolean {
   if (!prop.startsWith("padding")) return false;
-  if (!activeStar && activeDivs < 2) return false;
-  const limit = activeStar ? 4 : 8;
+  const root = (activeRoot || activeHtml) && !activeStar;
+  if (!activeStar && activeDivs < 2 && !root) return false;
+  const limit = activeStar ? 4 : root ? 80 : 8;
   return axisTokens(prop, value, "v").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "v", limit)));
 }
 
@@ -5304,7 +5314,7 @@ function sidePushHides(prop: string, value: string, hidden: Set<string>): boolea
   if (!activeStar && !activeRoot && !activePage && !stack && !single) return false;
   const limit = activeStar ? 7 : stack ? 8 : 0;
   if (limit && axisTokens(prop, value, "h").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "h", limit)))) return true;
-  const pctLimit = single ? 0.7 : 0.65;
+  const pctLimit = activeStar ? 0.18 : stack ? 0.22 : single ? 0.7 : 0.65;
   return axisTokens(prop, value, "h").some((token) =>
     valueCanHide(token, hidden, (raw) => {
       const pct = percentOf(raw.replace(/!important/gi, "").trim());
@@ -5536,7 +5546,7 @@ function percentSizeDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** top or left only moves a positioned box. 6vh on a star, or 8vh on every div, walks the line off. 4vh and 6vh still read. A sticky top of -800px blanks the page. -40px still reads. The position stays. */
+/** top or left only moves a positioned box. 6vh on a star, or 8vh on every div, walks the line off. 4vh and 6vh still read. A sticky top of -80px blanks the page. -40px still reads. A 20% shift on a star does that too. 120px on a stack still leaves the line. 160px does not. The position stays. */
 function offsetPushDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
   if (!activeStar && activeDivs < 2) return () => false;
   const positioned = parts.some((part) => {
@@ -5545,16 +5555,21 @@ function offsetPushDrops(parts: string[], hidden: Set<string>): (part: string) =
   });
   if (!positioned) return () => false;
   const vLimit = activeStar ? 6 : 8;
-  const farUp = (raw: string) => {
-    const px = lengthDeskPx(raw.replace(/!important/gi, "").trim());
-    return px != null && px <= -480;
+  const pctLimit = activeStar ? 0.15 : 0.22;
+  const sidePx = activeStar ? 80 : 140;
+  const shifted = (raw: string, axis: "v" | "h") => {
+    const plain = raw.replace(/!important/gi, "").trim();
+    const pct = percentOf(plain);
+    if (pct != null && Math.abs(pct) >= pctLimit) return true;
+    const px = lengthDeskPx(plain);
+    if (px == null) return false;
+    return axis === "v" ? px <= -80 : Math.abs(px) >= sidePx;
   };
   return (part) => {
     const piece = pieceProp(part);
     if (!piece) return false;
-    if (axisTokens(piece.prop, piece.val, "v").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "v", vLimit)))) return true;
-    if (axisTokens(piece.prop, piece.val, "v").some((token) => valueCanHide(token, hidden, farUp))) return true;
-    return axisTokens(piece.prop, piece.val, "h").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "h", 8)));
+    if (axisTokens(piece.prop, piece.val, "v").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "v", vLimit) || shifted(raw, "v")))) return true;
+    return axisTokens(piece.prop, piece.val, "h").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "h", 8) || shifted(raw, "h")));
   };
 }
 
@@ -5695,14 +5710,15 @@ function shortBoxDrops(parts: string[], hidden: Set<string>): (part: string) => 
   };
 }
 
-/** A floated line shrunk to a pixel has nothing left to read. 2px does that. 40px still leaves the line. A float with no size stays. */
+/** A floated line shrunk to a pixel has nothing left to read. 2px does that. 40px on the line still leaves it. On a star, 40px still stacks every box into a slit.  A float with no size stays. */
 function floatShrinkDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  if (!activePaint && !activeInk) return () => false;
+  if (!activePaint && !activeInk && !activeStar) return () => false;
   const floated = parts.some((part) => {
     const piece = pieceProp(part);
     return Boolean(piece && piece.prop === "float" && /\b(?:left|right|inline-start|inline-end)\b/i.test(piece.val));
   });
   if (!floated) return () => false;
+  const limit = activeStar ? 48 : 2;
   return (part) => {
     const piece = pieceProp(part);
     if (!piece || (!INLINE_SLIVER.has(piece.prop) && !BLOCK_SLIVER.has(piece.prop))) return false;
@@ -5712,7 +5728,7 @@ function floatShrinkDrops(parts: string[], hidden: Set<string>): (part: string) 
       const token = tokens[0] ?? "";
       if (hidesAsZero(token)) return true;
       const px = lengthDeskPx(token);
-      return px != null && px >= 0 && px <= 2;
+      return px != null && px >= 0 && px <= limit;
     });
   };
 }
@@ -5776,8 +5792,114 @@ function webkitBoxDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
+/** The writing itself, parked off the first screen. A fixed footer stays. top: -40px on the line is enough. The position stays. */
+function paintShiftDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  if (!activePaint && !activeInk) return () => false;
+  const positioned = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop === "position" && /\b(?:fixed|absolute)\b/i.test(piece.val));
+  });
+  if (!positioned) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece) return false;
+    return axisTokens(piece.prop, piece.val, "v").some((token) =>
+      valueCanHide(token, hidden, (raw) => {
+        const px = lengthDeskPx(raw.replace(/!important/gi, "").trim());
+        return px != null && px <= -40;
+      }),
+    );
+  };
+}
+
+/** max-inline-size of 40px on every div cuts the line. 80px still leaves it. One box may still be narrow. */
+function inlineSliverStackDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  if (!(activeRepeat && activeDivs >= 2)) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || (piece.prop !== "max-inline-size" && piece.prop !== "max-width")) return false;
+    return valueCanHide(piece.val, hidden, (raw) => {
+      const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
+      if (tokens.length !== 1) return false;
+      const px = lengthDeskPx(tokens[0] ?? "");
+      return px != null && px >= 0 && px <= 64;
+    });
+  };
+}
+
+/** A root or a body squeezed under 48px, and clipped, leaves a sliver. 80px still leaves the line. */
+function rootInlineClipDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  if (!activeRoot && !activeHtml) return () => false;
+  if (activeStar) return () => false;
+  const clip = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && overflowClips(piece.prop, piece.val));
+  });
+  if (!clip) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || !INLINE_SLIVER.has(piece.prop)) return false;
+    return valueCanHide(piece.val, hidden, (raw) => {
+      const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
+      if (tokens.length !== 1) return false;
+      const px = lengthDeskPx(tokens[0] ?? "");
+      return px != null && px >= 0 && px <= 48;
+    });
+  };
+}
+
+/** A header or a title box of 80vh pushes the writing off the first screen. 70vh still leaves it. */
+function leadBlockDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  if (!activeLead) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || !PUSH_SIZE.has(piece.prop)) return false;
+    return valueCanHide(piece.val, hidden, (raw) => {
+      const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
+      if (tokens.length !== 1) return false;
+      return tokenViewportHides(tokens[0] ?? "", "v", 80);
+    });
+  };
+}
+
+/** The page header is not a guardsPage box, so a bare header rule never enters the desk scrub. Drop the tall size here. A class stays. */
+function scrubLeadPush(body: string, hidden: Set<string>): string {
+  const parts = splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const prev = activeLead;
+  activeLead = true;
+  try {
+    const drop = leadBlockDrops(parts, hidden);
+    return parts.filter((part) => !drop(part)).join("; ");
+  } finally {
+    activeLead = prev;
+  }
+}
+
+/** contain:paint on a 8px line clips the glyphs. 24px still reads. The size stays. The contain does not. */
+function paintContainDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  if (!activePaint && !activeInk) return () => false;
+  const short = parts.some((part) => {
+    const piece = pieceProp(part);
+    if (!piece || (piece.prop !== "height" && piece.prop !== "max-height" && piece.prop !== "block-size")) return false;
+    return valueCanHide(piece.val, hidden, (raw) => {
+      const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
+      if (tokens.length !== 1) return false;
+      const px = lengthDeskPx(tokens[0] ?? "");
+      return px != null && px >= 0 && px <= 16;
+    });
+  });
+  if (!short) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || piece.prop !== "contain") return false;
+    return /\b(?:paint|strict|content)\b/i.test(piece.val);
+  };
+}
+
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), trackRowDrops(parts, hidden), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), webkitBoxDrops(parts)];
+  const drops = [columnSpreadDrops(parts), trackRowDrops(parts, hidden), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden)];
   return (part) => drops.some((drop) => drop(part));
 }
 
@@ -7732,10 +7854,12 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const prevDivs = activeDivs;
   const prevRoot = activeRoot;
   const prevHtml = activeHtml;
+  const prevLead = activeLead;
   activeStack = false;
   activeDivs = 0;
   activeRoot = false;
   activeHtml = false;
+  activeLead = false;
   if (desk) {
     const sel = nestingSel ?? "";
     const ink = coversInk(sel, scopeSel);
@@ -7752,6 +7876,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activeDivs = countLiveDivs(sel, scopeSel);
     activeRoot = !activeStar && coversRoot(sel, scopeSel);
     activeHtml = !activeStar && coversHtml(sel, scopeSel);
+    activeLead = leadSelector(sel);
   }
   try {
   const scope = deskClipScope(nestingSel ?? "");
@@ -7854,7 +7979,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
           next = scrubPseudoCover(next);
           touched = true;
         }
-        if (pseudoInsetCovers(next, hidden)) {
+        if (pseudoInsetCovers(next, hidden) || pseudoBandCovers(next)) {
           next = scrubPseudoCover(next);
           touched = true;
         }
@@ -7902,6 +8027,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activeDivs = prevDivs;
     activeRoot = prevRoot;
     activeHtml = prevHtml;
+    activeLead = prevLead;
   }
 }
 
@@ -7991,6 +8117,11 @@ function boxCovers(parts: string[]): boolean {
   const width = get("width") ?? get("inline-size");
   const height = get("height") ?? get("block-size");
   return Boolean(width && height && isFullLength(width.val, "x") && isFullLength(height.val, "y"));
+}
+
+function leadSelector(selector: string): boolean {
+  const parts = splitSelectorList(selector).map((part) => part.trim()).filter(Boolean);
+  return parts.length > 0 && parts.every((part) => /^(?:header|textarea)$/i.test(part));
 }
 
 /** A pseudo on the desk, or on every child, can paint over the page. A class pseudo cannot. */
@@ -8261,6 +8392,37 @@ function scrubPseudoCover(body: string): string {
       return !piece || (piece.prop !== "background" && piece.prop !== "background-color" && piece.prop !== "background-image");
     })
     .join("; ");
+}
+
+/** A full-width band at the top of every div, 4em or taller, covers the first line. 2em still leaves it. A band that starts at 240px stays. */
+function pseudoBandCovers(body: string): boolean {
+  const parts = splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const get = (name: string) => parts.map((part) => pieceProp(part)).find((piece) => piece?.prop === name);
+  const position = get("position");
+  if (!position || !/\b(?:fixed|absolute|sticky)\b/i.test(position.val)) return false;
+  const content = get("content");
+  if (!content || /^\s*(?:none|normal)\b/i.test(content.val)) return false;
+  const background = parts.map((part) => pieceProp(part)).find((piece) => piece && (piece.prop === "background" || piece.prop === "background-color" || piece.prop === "background-image"));
+  if (!background) return false;
+  const paint = background.val.replace(/!important/gi, "").trim();
+  if (!paint || /^(?:none|transparent)$/i.test(paint) || pieceIsClearColor(paint)) return false;
+  const top = get("top");
+  const left = get("left");
+  const right = get("right");
+  const height = get("height") ?? get("block-size");
+  if (!top || !left || !right || !height) return false;
+  const edge = (value: string) => {
+    const token = (splitTopWords(value.replace(/!important/gi, "")).find(Boolean) ?? "").replace(/\s+/g, "");
+    if (/^[+-]?0+(?:\.0+)?(?:px)?$/i.test(token)) return true;
+    const px = lengthDeskPx(token);
+    return px != null && Math.abs(px) <= 1;
+  };
+  if (!edge(top.val) || !edge(left.val) || !edge(right.val)) return false;
+  const token = (splitTopWords(height.val.replace(/!important/gi, "")).find(Boolean) ?? "").replace(/\s+/g, "");
+  const px = lengthDeskPx(token);
+  return px != null && px >= 64;
 }
 
 /** A fixed sheet with a viewport border paints over the desk. An 8px frame stays. */
@@ -8631,7 +8793,7 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
       let next = rawBody;
       let touched = false;
       const looseOnly = loosePseudoHead(opened) && !deskPseudoSelector(opened);
-      if (pseudoCovers(next, hidden) || pseudoInsetCovers(next, hidden) || (looseSheetSelector(opened) && elementCovers(next)) || (looseOnly && loosePseudoCovers(next))) {
+      if (pseudoCovers(next, hidden) || pseudoInsetCovers(next, hidden) || pseudoBandCovers(next) || (looseSheetSelector(opened) && elementCovers(next)) || (looseOnly && loosePseudoCovers(next))) {
         next = scrubPseudoCover(next);
         touched = true;
       }
@@ -8650,6 +8812,13 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
       if (pseudoFilterWashes(next, hidden)) {
         next = scrubPseudoFilter(next, hidden);
         touched = true;
+      }
+      if (leadSelector(opened)) {
+        const scrubbed = scrubLeadPush(next, hidden);
+        if (scrubbed.replace(/\s+/g, "") !== next.replace(/\s+/g, "")) {
+          next = scrubbed;
+          touched = true;
+        }
       }
       if (deskPseudoSelector(opened, "before")) {
         const stacked = stackBefore && beforePushPx(next, hidden) > 0 && !pseudoPushes(next, hidden);
