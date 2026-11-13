@@ -1,3 +1,26 @@
+# Quire 1.9.66 — The first screen still has the writing
+
+Released 13 November 2026.
+
+1.9.65 still let a counted paragraph, a sheet colour on a box, a cream face on the recipe, an inward cream frame, an inset cream shadow, a flat turn of the page, a slit, and a long push paint out the first line. Those are dropped. A rule that still shows the writing stays. `p { rotate: x 80deg }` stays. `div { color: #1c1917 }` stays.
+
+- **`nth-child` of a paragraph can no longer hide the first line.** `p:nth-child(1 of p) { display: none }` and `:nth-child(1 of p) { font-size: 0 }` match the live paragraph. Those are dropped. A red colour on that same selector stays.
+- **A sheet colour on every div, or on the recipe box, can no longer inherit onto the writing.** `div { color: #221e1a }`, `div { color: transparent }`, and `[data-recipe] { color: #221e1a }` are dropped. `div { color: #1c1917 }`, `div { color: #4a433c }`, `div { color: red }`, and cream on the recipe stay. Colour stays.
+- **A cream or white face on the recipe box can no longer paint out the ink.** `[data-recipe] { background: #fff }` and `#ece6dc` are dropped. `[data-recipe] { background: #c4a574 }` stays. Colour stays.
+- **An inward cream outline of 80px on the writing can no longer cover the letters.** `p { outline: 80px solid #faf7f2; outline-offset: -70px }` drops the outline. `40px` with `-36px` still reads. Colour stays.
+- **An inset cream shadow of 40px can no longer cover the letters.** `p { box-shadow: inset 0 0 0 40px #faf7f2 }` is dropped. `12px` still reads. A dark inset stays. Colour stays.
+- **rotateX(85deg) on the page can no longer flatten the sheet.** `section { transform: rotateX(85deg) }` is dropped. `section { transform: rotateX(20deg) }` still reads. `html { transform: rotateX(85deg) }` stays. `p { rotate: x 80deg }` and `rotate: x 40deg` stay. `p { rotate: x 89deg }` is still dropped. Colour stays.
+- **A clip slit on the writing can no longer hide the letters.** `p { clip-path: rect(0px 8px 4px 0px) }` is dropped. `rect(0px 80px 18px 0px)` still reads. Colour stays.
+- **A 400px downward shift on the writing can no longer walk the line off.** `p { transform: translateY(400px) }` is dropped. `200px` still reads. `html { transform: translateY(700px) }` stays. Colour stays.
+- **A long relative push can no longer blank the sheet.** `p { position: relative; top: 480px }`, `* { position: relative; top: 900px }`, and `p { inset-block-start: 800px; position: relative }` drop the offset. `top: 200px` and `inset-block-start: 80px` still read. Colour stays.
+- **20in of top padding on every div can no longer walk the line off.** `div { padding-top: 20in }` is dropped. `8in` still reads. `html { padding-top: 20in }` stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.65 — The first screen still has the writing
 
 Released 13 November 2026.
@@ -18,6 +41,7 @@ Released 13 November 2026.
 - **A mask that stays clear through 80% of the line can no longer hide the letters.** `p { mask-image: linear-gradient(transparent 0 80%, #000 80%) }` is dropped. A window that ends at `40%` still reads. A fade stays. Colour stays.
 - **A 4em band on every div can no longer cover the first line.** `div::after` with `top: 0` and `height: 4em` drops the background. `2em` still reads. A band that starts at `240px` stays. Colour stays.
 - **A root indent of -40vw, or -70ch, can no longer walk the line off.** `html { text-indent: -40vw }` and `-70ch` are dropped, and so is `-100ch`. The earlier accept of `-100ch` on html is withdrawn. `-40ch` and `-40%` still read. Colour stays.
+
 
 Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
 
