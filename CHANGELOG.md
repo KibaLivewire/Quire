@@ -1,3 +1,22 @@
+# Quire 1.9.69 — The first screen still has the writing
+
+Released 14 November 2026.
+
+1.9.68 still let thirty columns, a half-page park, a font shorthand on an open size container, a short clipped page, and a mask window paint out the first line. A column of 120px on every div still reads, and 1.9.67 had been dropping it. That stays. A rule that still shows the writing stays. `p { column-count: 20 }` stays. `div { columns: 120px }` stays. `p { position: absolute; left: -280px }` stays.
+
+- **Thirty columns on the writing can no longer shred the letters.** `p { column-count: 30 }` leaves single letters. It is dropped. `p { column-count: 20 }` still reads. Colour stays.
+- **A column of 120px on every div still reads.** `div { columns: 120px }` is no longer dropped. `80px` and `40px` still are. `160px` still reads. Colour stays.
+- **An absolute line at -50% can no longer leave a sliver.** `p { position: absolute; left: -50% }` drops the offset. The position stays. `left: -280px` still reads. Colour stays.
+- **font: 1cqh serif on an open size container can no longer blank the line.** `section { container-type: size }` together with `p { font: 1cqh serif }` drops the face. The container stays. `section { container-type: size; height: 800px }` with `font: 8cqh serif` still reads. Colour stays.
+- **A clipped page of 160px can no longer hide the first line.** `section { height: 160px; overflow: hidden }` drops the height. The clip stays. `180px` still reads. A height with no clip stays. Colour stays.
+- **A mask window that closes before halfway can no longer hide the letters.** `p { -webkit-mask-image: linear-gradient(#000 0 40%, transparent 40%) }` is dropped. A window that closes at `50%` still reads. A fade that starts clear and ends at `40%` still reads. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.68 — The first screen still has the writing
 
 Released 14 November 2026.

@@ -1163,9 +1163,12 @@ function maskCutsTop(value: string): boolean {
       const limit = writing ? 70 : 40;
       if (Number.isFinite(n) && n >= limit) return true;
     }
-    if (writing) return false;
-    if (maskFadesClear(inner)) return true;
     const windowN = maskWindowCloses(inner);
+    if (writing) {
+      if (windowN == null) return false;
+      return windowN < 50;
+    }
+    if (maskFadesClear(inner)) return true;
     if (windowN == null) return false;
     if (activeStar) return windowN < 50;
     if (stack) return windowN < 40;
@@ -4330,6 +4333,7 @@ let activeHtml = false;
 let activeLead = false;
 let activeRecipe = false;
 let activeBorder = false;
+let containerBlockOpen = false;
 
 function withSib<T>(sib: Sib, fn: () => T): T {
   const prev = activeSib;
@@ -5902,8 +5906,11 @@ function paintShiftDrops(parts: string[], hidden: Set<string>): (part: string) =
       }),
     ) || axisTokens(piece.prop, piece.val, "h").some((token) =>
       valueCanHide(token, hidden, (raw) => {
-        const px = lengthDeskPx(raw.replace(/!important/gi, "").trim());
-        return px != null && px <= -300;
+        const plain = raw.replace(/!important/gi, "").trim();
+        const px = lengthDeskPx(plain);
+        if (px != null && px <= -300) return true;
+        const pct = percentOf(plain);
+        return pct != null && pct <= -0.5;
       }),
     ) || positionedViewportHides(piece.prop, piece.val, hidden);
   };
@@ -6041,7 +6048,7 @@ function paintContainDrops(parts: string[], hidden: Set<string>): (part: string)
   };
 }
 
-/** column-count of 40 on the writing leaves no letters. 20 still reads. */
+/** column-count of 30 on the writing leaves single letters. 20 still reads. */
 function writingColumnDrops(parts: string[]): (part: string) => boolean {
   if (!activePaint && !activeInk) return () => false;
   let count = 0;
@@ -6051,7 +6058,7 @@ function writingColumnDrops(parts: string[]): (part: string) => boolean {
     const n = Number(piece.val.replace(/!important/gi, "").trim());
     if (Number.isFinite(n)) count = Math.max(count, n);
   }
-  if (count < 32) return () => false;
+  if (count < 24) return () => false;
   return (part) => {
     const piece = pieceProp(part);
     return Boolean(piece && piece.prop === "column-count");
@@ -6069,19 +6076,41 @@ function columnLengthPx(value: string): number | null {
   return narrowest;
 }
 
-/** columns: 40px, or 80px, on every div leaves a slit. 160px still reads. */
+/** columns: 40px, or 80px, on every div leaves a slit. 120px still reads. */
 function stackColumnDrops(parts: string[]): (part: string) => boolean {
   if (!(activeRepeat && activeDivs >= 2)) return () => false;
   return (part) => {
     const piece = pieceProp(part);
     if (!piece || piece.prop !== "columns") return false;
     const px = columnLengthPx(piece.val);
-    return px != null && px <= 120;
+    return px != null && px <= 80;
+  };
+}
+
+/** A clipped page of 160px, or shorter, hides the first line. 180px still shows it. A height with no clip stays. */
+function pageHeightClipDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  if (!activePage || activeStar || activeRepeat || activePaint) return () => false;
+  const clip = parts.some((part) => {
+    const piece = pieceProp(part);
+    if (!piece) return false;
+    const which = overflowClips(piece.prop, piece.val);
+    return which === "both" || which === "block";
+  });
+  if (!clip) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || !BLOCK_SLIVER.has(piece.prop)) return false;
+    return valueCanHide(piece.val, hidden, (raw) => {
+      const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
+      if (tokens.length !== 1) return false;
+      const px = lengthDeskPx(tokens[0] ?? "");
+      return px != null && px > 0 && px <= 160;
+    });
   };
 }
 
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden)];
+  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden)];
   return (part) => drops.some((drop) => drop(part));
 }
 
@@ -9483,6 +9512,7 @@ export function sanitizePluginCss(css: string): string {
   collectDeskSliver(cleaned, hidden);
   collectDeskPaint(cleaned, hidden);
   hidden.containerBlock = sheetContainerZerosBlock(cleaned);
+  containerBlockOpen = Boolean(hidden.containerBlock);
   return scrubDeskHide(scrubTinyFaces(cleaned, hidden), hidden);
 }
 
@@ -9501,7 +9531,7 @@ const FONT_SKIP = /^(?:italic|oblique|normal|small-caps|bold|bolder|lighter|ultr
 const FONT_ABS = /^(?:xx-small|x-small|small|medium|large|x-large|xx-large|xxx-large|larger|smaller)$/i;
 const FONT_SYS = /^(?:caption|icon|menu|message-box|small-caption|status-bar)$/i;
 
-/** font: 0px serif is font-size: 0. A real size stays. An oblique angle is not the size. */
+/** font: 0px serif is font-size: 0. A real size stays. An oblique angle is not the size. font: 1cqh serif is a blank face when the page is an open size container. */
 function fontShorthandHides(raw: string): boolean {
   const value = raw.replace(/!important/gi, "").trim();
   if (!value || FONT_SYS.test(value)) return false;
@@ -9509,6 +9539,7 @@ function fontShorthandHides(raw: string): boolean {
     const head = (word.split("/")[0] ?? "").trim();
     if (!head || FONT_SKIP.test(head) || /^[1-9]00$/.test(head) || /(?:deg|turn|grad|rad)$/i.test(head)) continue;
     if (FONT_ABS.test(head)) return false;
+    if (containerBlockOpen && containerBlockFace(head)) return true;
     return hidesAsZero(head) || fontFaceTiny(head);
   }
   return false;

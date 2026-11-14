@@ -3267,6 +3267,28 @@ describe("page styles", () => {
     assert.equal(/font-size/.test(sanitizePluginCss("p{font-size:15cqi}")), false);
     assert.match(sanitizePluginCss("p{font-size:12cqi}"), /12cqi/);
     assert.match(sanitizePluginCss("p{rotate:40deg}"), /40deg/);
+    assert.equal(/column-count/.test(sanitizePluginCss("p{column-count:30;color:red}")), false);
+    assert.match(sanitizePluginCss("p{column-count:30;color:red}"), /red/);
+    assert.match(sanitizePluginCss("div{columns:120px}"), /120px/);
+    assert.match(sanitizePluginCss("p{position:absolute;left:-280px}"), /-280px/);
+    const half = sanitizePluginCss("p{position:absolute;left:-50%;color:red}");
+    assert.equal(/left\s*:/.test(half), false);
+    assert.match(half, /absolute/);
+    assert.match(half, /red/);
+    const shorthand = sanitizePluginCss("section{container-type:size}p{font:1cqh serif;color:red}");
+    assert.equal(/\bfont\s*:/.test(shorthand), false);
+    assert.match(shorthand, /red/);
+    assert.match(sanitizePluginCss("section{container-type:size;height:800px}p{font:8cqh serif}"), /8cqh/);
+    const pageClip = sanitizePluginCss("section{height:160px;overflow:hidden;color:red}");
+    assert.equal(/height\s*:/.test(pageClip), false);
+    assert.match(pageClip, /overflow/);
+    assert.match(pageClip, /red/);
+    assert.match(sanitizePluginCss("section{height:180px;overflow:hidden}"), /180px/);
+    assert.match(sanitizePluginCss("section{height:160px}"), /160px/);
+    assert.equal(/mask-image/.test(sanitizePluginCss("p{-webkit-mask-image:linear-gradient(#000 0 40%, transparent 40%)}")), false);
+    assert.equal(/mask-image/.test(sanitizePluginCss("p{-webkit-mask-image:linear-gradient(#000 0 20%, transparent 20%)}")), false);
+    assert.match(sanitizePluginCss("p{-webkit-mask-image:linear-gradient(#000 0 50%, transparent 50%)}"), /50%/);
+    assert.match(sanitizePluginCss("p{-webkit-mask-image:linear-gradient(transparent 0 40%, #000 40%)}"), /40%/);
   });
 });
 
