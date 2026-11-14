@@ -1,3 +1,40 @@
+# Quire 1.9.68 — The first screen still has the writing
+
+Released 14 November 2026.
+
+1.9.67 still let an invert on the writing, a dim brightness, a line parked off by a viewport offset, a wide pad, and a container face paint out the first line. Those are dropped. A rule that still shows the writing stays. `html { filter: invert(1) }` stays. `p { filter: brightness(0.5) }` stays. `p { transform: translateX(-25vw) }` stays. `p { font-size: 12cqi }` stays.
+
+- **invert(0.7) or invert(1) on the writing can no longer turn the ink into the page.** `p { filter: invert(1) }` and `invert(0.7)` are dropped. `html { filter: invert(1) }`, `div { filter: invert(1) }`, and `section { filter: invert(1) }` stay, because the paper turns with the ink. Colour stays.
+- **brightness(0.4) on the writing, or on the page, can no longer leave the line under the paper.** `p { filter: brightness(0.4) }` and `section { filter: brightness(0.4) }` are dropped. `brightness(0.5)` still reads. `html { filter: brightness(0.2) }` stays. Colour stays.
+- **A viewport offset can no longer park the line off the first screen.** `p { position: absolute; left: -25vw }`, `top: 90vh`, and `right: 820px` drop the offset. The position stays. `left: -22vw`, `top: 85vh`, and `right: 750px` still read. `translateX(-30vw)` and `translateY(-15vh)` are dropped. `translateX(-25vw)` and `translateY(-12vh)` still read. `margin-top: 85vh` is dropped. `80vh` still reads. Colour stays.
+- **60vw of padding on the writing can no longer be clipped away by the sheet.** `p { padding-left: 60vw }` is dropped. `52vw` still reads. Colour stays.
+- **A container face can no longer shrink the line under 4px, or walk it off the screen.** `p { font-size: 0.2cqw }` and `15cqi` are dropped. `0.3cqw` and `12cqi` still read. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
+# Quire 1.9.67 — The first screen still has the writing
+
+Released 14 November 2026.
+
+1.9.66 still let a cream face on the sheet frame, a line parked off to the left, forty columns, a narrow column stack, a tall pad on the title, and a zero container face paint out the first line. Those are dropped. A rule that still shows the writing stays. `p { rotate: 0.25turn }` stays. `p { column-count: 20 }` stays. `header { padding-top: 70vh }` stays.
+
+- **A cream or white face on the sheet frame can no longer paint out the ink.** `[data-border] { background: #ece6dc }`, `#fff`, and `#faf7f2` are dropped. `[data-border] { background: #c4a574 }` and `#221e1a` stay. Colour stays.
+- **An absolute line parked at -320px, or further, can no longer walk off the sheet.** `p { position: absolute; left: -4000px }` and `left: -320px` drop the offset. The position stays. `left: -200px` and `left: 600px` still read. Colour stays.
+- **Forty columns on the writing can no longer shred the letters.** `p { column-count: 40 }` is dropped. `p { column-count: 20 }` and `8` still read. Colour stays.
+- **A column 80px wide, or narrower, on every div can no longer leave a slit.** `div { columns: 40px }` and `80px` are dropped. `div { columns: 160px }` still reads. Colour stays.
+- **80vh of padding or margin on the title can no longer push the writing off the first screen.** `header { padding-top: 100vh }` and `80vh`, `header { margin-bottom: 100vh }`, and `textarea { margin-bottom: 80vh }` are dropped. `70vh` still reads. Colour stays.
+- **A size container with no block size can no longer zero a cqh face.** `section { container-type: size }` together with `p { font-size: 1cqh }` or `8cqh` drops the face. The container stays. `p { font-size: 1cqh }` with no container still reads. A class container stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.66 — The first screen still has the writing
 
 Released 13 November 2026.
