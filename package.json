@@ -1,6 +1,6 @@
 {
   "name": "app-builder-workspace",
-  "version": "1.9.69",
+  "version": "1.9.70",
   "description": "A quiet notebook for writing on this device.",
   "author": "KibaLivewire",
   "private": true,
@@ -18,7 +18,7 @@
     "preview": "node scripts/with-app-env.mjs vite preview",
     "preview:restart": "node scripts/preview.mjs restart",
     "preview:stop": "node scripts/preview.mjs stop",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node --stack-size=65536 ./node_modules/typescript/lib/tsc.js --noEmit",
     "check:auth": "node scripts/check-auth-invariant.mjs",
     "test": "node scripts/run-scripts-tests.mjs && node --experimental-strip-types --test src/lib/audit.test.ts src/lib/app-data/app-data.test.ts src/lib/app-data/readiness-schedule.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts",
     "lint": "eslint .",

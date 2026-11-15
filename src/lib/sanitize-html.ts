@@ -2655,13 +2655,13 @@ function starRotateFlattens(token: string, hidden: Set<string>): boolean {
   return Math.abs(m - 90) <= 60;
 }
 
-/** rotateX(89deg) on the writing itself is a hairline. rotateX(80deg) still reads. The same turn on html still reads. */
+/** rotateX(80deg) on the writing walks the line off the sheet. rotateX(70deg) still reads. rotateX(89deg) is a hairline. The same turn on html still reads. */
 function paintRotateFlattens(token: string, hidden: Set<string>): boolean {
   if (!activePaint) return false;
   const deg = angleDegrees(token, hidden);
   if (deg == null) return false;
   const m = ((deg % 180) + 180) % 180;
-  return Math.abs(m - 90) <= 8;
+  return Math.abs(m - 90) <= 12;
 }
 
 /** rotateX(85deg) on the page blanks the sheet. rotateX(20deg) still reads. A turn on the writing uses the tighter paint rule, so rotateX(80deg) on p stays. html stays. */
@@ -2756,6 +2756,16 @@ function planeSpinHides(token: string, hidden: Set<string>): boolean {
   return false;
 }
 
+/** rotate: 40deg on the writing turns the line into a shred. rotate: 24deg still reads. transform: rotate(18deg) still reads. */
+function paintPlaneHides(token: string, hidden: Set<string>): boolean {
+  if (!activePaint || activeStar) return false;
+  const deg = angleDegrees(token, hidden);
+  if (deg == null) return false;
+  const m = ((deg % 180) + 180) % 180;
+  const acute = Math.min(m, 180 - m);
+  return acute >= 35;
+}
+
 function transformAxisHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
   const found = namedFunctionCalls(value, ["rotate3d", "rotatex", "rotatey", "rotatez", "rotate", "skewx", "skewy", "skew"]);
   for (const call of found) {
@@ -2807,7 +2817,7 @@ function rotatePropertyParts(value: string): string[] {
 
 function rotatePropertyHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
   const parts = rotatePropertyParts(value);
-  if (parts.length === 1 && planeSpinHides(parts[0] ?? "", hidden)) return true;
+  if (parts.length === 1 && (planeSpinHides(parts[0] ?? "", hidden) || paintPlaneHides(parts[0] ?? "", hidden))) return true;
   if (parts.length === 2) {
     const axis = (parts[0] ?? "").toLowerCase();
     if (axis === "z" && planeSpinHides(parts[1] ?? "", hidden)) return true;
@@ -3352,6 +3362,72 @@ function axisNumber(token: string, percentFull: number): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** calc(r * 0.05) is a number. Letters other than the one channel are not. */
+function evalArith(expr: string): number | null {
+  const s = expr.replace(/\s+/g, "");
+  let i = 0;
+  function parseExpr(): number | null {
+    let n = parseTerm();
+    if (n == null) return null;
+    while (s[i] === "+" || s[i] === "-") {
+      const op = s[i++];
+      const right = parseTerm();
+      if (right == null) return null;
+      n = op === "+" ? n + right : n - right;
+    }
+    return n;
+  }
+  function parseTerm(): number | null {
+    let n = parseFactor();
+    if (n == null) return null;
+    while (s[i] === "*" || s[i] === "/") {
+      const op = s[i++];
+      const right = parseFactor();
+      if (right == null || (op === "/" && right === 0)) return null;
+      n = op === "*" ? n * right : n / right;
+    }
+    return n;
+  }
+  function parseFactor(): number | null {
+    if (s[i] === "+") {
+      i += 1;
+      return parseFactor();
+    }
+    if (s[i] === "-") {
+      i += 1;
+      const n = parseFactor();
+      return n == null ? null : -n;
+    }
+    if (s[i] === "(") {
+      i += 1;
+      const n = parseExpr();
+      if (s[i] !== ")") return null;
+      i += 1;
+      return n;
+    }
+    const start = i;
+    while ((s[i] >= "0" && s[i] <= "9") || s[i] === ".") i += 1;
+    if (start === i) return null;
+    const n = Number(s.slice(start, i));
+    return Number.isFinite(n) ? n : null;
+  }
+  const n = parseExpr();
+  if (n == null || i !== s.length) return null;
+  return n;
+}
+
+function channelMath(token: string, id: string, value: number, full: number): number | null {
+  const raw = token.trim();
+  if (channelTokenIs(raw, id)) return value;
+  const plain = axisNumber(raw, full);
+  if (plain != null) return plain;
+  const calc = /^calc\(([\s\S]*)\)$/i.exec(raw.trim());
+  if (!calc) return null;
+  const expr = (calc[1] ?? "").replace(new RegExp(`\\b${id}\\b`, "gi"), `(${value})`);
+  if (/[a-z]/i.test(expr)) return null;
+  return evalArith(expr);
+}
+
 function hueOrNone(token: string): number | null {
   if (/^none$/i.test(token.trim())) return 0;
   return hueDegrees(token);
@@ -3763,9 +3839,11 @@ function functionToRgb(name: string, inner: string): [number, number, number] | 
       pb = 0.5;
     } else if (pa == null) pa = Math.max(0, 1 - (pb ?? 0));
     else if (pb == null) pb = Math.max(0, 1 - pa);
-    const sum = pa + pb;
+    const weightA = pa ?? 0;
+    const weightB = pb ?? 0;
+    const sum = weightA + weightB;
     if (sum <= 0) return null;
-    return [Math.round((a[0] * pa + b[0] * pb) / sum), Math.round((a[1] * pa + b[1] * pb) / sum), Math.round((a[2] * pa + b[2] * pb) / sum)];
+    return [Math.round((a[0] * weightA + b[0] * weightB) / sum), Math.round((a[1] * weightA + b[1] * weightB) / sum), Math.round((a[2] * weightA + b[2] * weightB) / sum)];
   }
   return null;
 }
@@ -3835,9 +3913,11 @@ function mixIsPageLight(inner: string): boolean {
     pb = 0.5;
   } else if (pa == null) pa = Math.max(0, 1 - (pb ?? 0));
   else if (pb == null) pb = Math.max(0, 1 - pa);
-  const sum = pa + pb;
+  const weightA = pa ?? 0;
+  const weightB = pb ?? 0;
+  const sum = weightA + weightB;
   if (sum <= 0) return false;
-  return rgbIsPageLight(Math.round((a[0] * pa + b[0] * pb) / sum), Math.round((a[1] * pa + b[1] * pb) / sum), Math.round((a[2] * pa + b[2] * pb) / sum));
+  return rgbIsPageLight(Math.round((a[0] * weightA + b[0] * weightB) / sum), Math.round((a[1] * weightA + b[1] * weightB) / sum), Math.round((a[2] * weightA + b[2] * weightB) / sum));
 }
 
 /** A lightness the page already uses as paper. A dark colour is still ink. */
@@ -3974,8 +4054,7 @@ function evaluateRelativeRgb(name: string, origin: string, channels: string[]): 
   if (name === "rgb" || name === "rgba") {
     const next = channels.map((token, index) => {
       const id = ["r", "g", "b"][index] ?? "";
-      if (channelTokenIs(token, id)) return base[index] ?? 0;
-      return axisNumber(token, 255);
+      return channelMath(token, id, base[index] ?? 0, 255);
     });
     if (next.some((n) => n == null)) return null;
     return [Math.round(next[0] ?? 0), Math.round(next[1] ?? 0), Math.round(next[2] ?? 0)];
@@ -4188,6 +4267,9 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
       return activeStar || (activeRepeat && activeDivs >= 2);
     });
   }
+  if (prop === "unicode-bidi" && (activePaint || activeInk || activeStar || (activeRepeat && activeDivs >= 2) || activePage)) {
+    return valueCanHide(val, hidden, (raw) => /^(?:bidi-override|isolate-override)$/i.test(raw.replace(/!important/gi, "").trim()));
+  }
   if (prop === "writing-mode") {
     return valueCanHide(val, hidden, (raw) => {
       const token = raw.replace(/!important/gi, "").trim().toLowerCase();
@@ -4206,10 +4288,18 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
       return Math.abs(px) <= 8;
     });
   }
+  if (prop === "columns") {
+    return valueCanHide(val, hidden, (raw) => {
+      const px = columnLengthPx(raw);
+      if (px == null) return false;
+      if (activeStar || (activeRepeat && activeDivs >= 2)) return px <= 200;
+      return px <= 12;
+    });
+  }
   if (SHIFT_PROP.has(prop)) {
     if (verticalPushHides(prop, val)) return true;
     if (inlineInsetHides(prop, val, hidden)) return true;
-    if (paddingViewportHides(prop, val, hidden) || marginViewportHides(prop, val, hidden) || sidePushHides(prop, val, hidden) || sideLengthHides(prop, val, hidden)) return true;
+    if (paddingViewportHides(prop, val, hidden) || marginViewportHides(prop, val, hidden) || sidePushHides(prop, val, hidden) || sideLengthHides(prop, val, hidden) || paddingStackLength(prop, val)) return true;
     return shiftValueCovers(val, hidden);
   }
   if (prop === "mask-composite" || prop === "-webkit-mask-composite") {
@@ -5353,9 +5443,20 @@ function borderEdgeHides(prop: string, value: string): boolean {
 function paddingViewportHides(prop: string, value: string, hidden: Set<string>): boolean {
   if (!prop.startsWith("padding")) return false;
   const root = (activeRoot || activeHtml) && !activeStar;
-  if (!activeStar && activeDivs < 2 && !root) return false;
-  const limit = activeStar ? 4 : root ? 80 : 8;
+  const page = activePage && !activeStar && !activeRepeat && !activePaint;
+  if (!activeStar && activeDivs < 2 && !root && !page) return false;
+  const limit = activeStar ? 4 : page ? 80 : root ? 80 : 8;
   return axisTokens(prop, value, "v").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "v", limit)));
+}
+
+/** 2in of padding on every div stacks off the first screen. 1.5in still leaves the line. */
+function paddingStackLength(prop: string, value: string): boolean {
+  if (!prop.startsWith("padding")) return false;
+  if (!(activeRepeat && activeDivs >= 2)) return false;
+  return axisTokens(prop, value, "v").some((token) => {
+    const px = lengthDeskPx(token.replace(/!important/gi, "").trim());
+    return px != null && px >= 192;
+  });
 }
 
 /** A margin in vh does not collapse on the open sheet. 6vh on a star, or 7vh on every div, walks the line off. 5vh on a star and 6vh on a div still leave a line. One box may still shift. */
@@ -5469,14 +5570,29 @@ function columnSpreadDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** A zero grid row on the boxes around the writing, clipped, removes the page. An 8px row stays. */
+/** contain:size with a zero box leaves no writing. contain:size alone still reads. */
+function containZeroDrops(parts: string[]): (part: string) => boolean {
+  if (!activePaint && !activeInk && !activePage && !(activeRepeat && activeDivs >= 2)) return () => false;
+  if (!parts.some((part) => containHasSize(part))) return () => false;
+  const zero = (part: string) => {
+    const piece = pieceProp(part);
+    if (!piece) return false;
+    if (piece.prop !== "width" && piece.prop !== "height" && piece.prop !== "inline-size" && piece.prop !== "block-size" && piece.prop !== "max-width" && piece.prop !== "max-height") return false;
+    return hidesAsZero(piece.val.replace(/!important/gi, "").trim());
+  };
+  if (!parts.some(zero)) return () => false;
+  return (part) => zero(part);
+}
+
+/** A zero grid row on the boxes around the writing removes the page. The sheet already clips, so the same rule does not need its own overflow. An 8px row stays. */
 function trackRowDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
   if (!activeStar && !activeRepeat && !activePage) return () => false;
   const clip = parts.some((part) => {
     const piece = pieceProp(part);
     return Boolean(piece && overflowClips(piece.prop, piece.val));
   });
-  if (!clip) return () => false;
+  const deskClip = activeRepeat && activeDivs >= 2;
+  if (!clip && !deskClip) return () => false;
   return (part) => {
     const piece = pieceProp(part);
     return Boolean(piece && TRACK_PROP.has(piece.prop) && firstTrackSliver(piece.val, hidden));
@@ -6076,14 +6192,14 @@ function columnLengthPx(value: string): number | null {
   return narrowest;
 }
 
-/** columns: 40px, or 80px, on every div leaves a slit. 120px still reads. */
+/** columns: 160px on every div leaves the sheet off the first screen. 240px still reads. 12px on the writing shreds the letters. 16px still reads. */
 function stackColumnDrops(parts: string[]): (part: string) => boolean {
   if (!(activeRepeat && activeDivs >= 2)) return () => false;
   return (part) => {
     const piece = pieceProp(part);
     if (!piece || piece.prop !== "columns") return false;
     const px = columnLengthPx(piece.val);
-    return px != null && px <= 80;
+    return px != null && px <= 200;
   };
 }
 
@@ -6110,7 +6226,7 @@ function pageHeightClipDrops(parts: string[], hidden: Set<string>): (part: strin
 }
 
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden)];
+  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden)];
   return (part) => drops.some((drop) => drop(part));
 }
 

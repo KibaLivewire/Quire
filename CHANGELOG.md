@@ -1,3 +1,27 @@
+# Quire 1.9.70 — The first screen still has the writing
+
+Released 15 November 2026.
+
+1.9.69 still let a narrow column shorthand, a column under 240px on every div, a flat turn of the writing, an edge turn, a stacked inch of padding, a tall page pad, a reversed letter order, a zero box, a zero grid row, and a darkened relative colour paint out the first line. A rule that still shows the writing stays. `p { columns: 16px }` stays. `div { columns: 240px }` stays. `p { rotate: 24deg }` stays. `p { transform: rotate(18deg) }` stays. `div { padding-top: 1.5in }` stays. `section { padding-top: 70vh }` stays. `p { direction: rtl }` stays. `p { contain: size }` stays.
+
+- **A column of 12px on the writing can no longer shred the letters.** `p { columns: 12px }` and `8px` are dropped. `p { columns: 16px }` still reads. Colour stays.
+- **A column of 160px on every div can no longer blank the first screen.** `div { columns: 120px }` and `160px` are dropped. `div { columns: 240px }` and `columns: 2` still read. Colour stays.
+- **rotate: 40deg on the writing can no longer shred the line.** `p { rotate: 40deg }`, `70deg`, and `0.25turn` are dropped. `p { rotate: 24deg }` and `transform: rotate(18deg)` still read. Colour stays.
+- **rotate: x 80deg can no longer walk the line off the sheet.** `p { rotate: x 80deg }` is dropped. `p { rotate: x 40deg }` still reads. Colour stays.
+- **2in of padding on every div can no longer stack the writing off the first screen.** `div { padding-top: 2in }` and `8in` are dropped. `1.5in` still reads. Colour stays.
+- **80vh of padding on the page can no longer blank the first screen.** `section { padding-top: 80vh }` is dropped. `70vh` still reads. Colour stays.
+- **A letter-order override can no longer reverse the line.** `p { unicode-bidi: bidi-override }` and `isolate-override` are dropped. `p { direction: rtl }` still reads. Colour stays.
+- **contain: size on a zero box can no longer blank the line.** `p { contain: size; width: 0; height: 0 }` drops the zero size. `p { contain: size }` still reads. Colour stays.
+- **A zero grid row on every div can no longer collapse the sheet.** `div { grid-template-rows: 0fr }` is dropped. The sheet already clips, so the rule does not need its own overflow. `8px` still reads. Colour stays.
+- **A relative colour that scales the ink down to the sheet is dropped.** `p { color: rgb(from #ece6dc calc(r * 0.05) calc(g * 0.05) calc(b * 0.05)) }` is dropped. `rgb(from red r g b)` still reads. Colour stays.
+- **Typecheck no longer dies on the checker stack.** The script gives the checker a larger stack, and the colour-mix weights and zip bytes are typed so the checker can finish. Writing is unchanged.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.69 — The first screen still has the writing
 
 Released 14 November 2026.
