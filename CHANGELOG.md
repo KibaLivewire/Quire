@@ -1,3 +1,30 @@
+# Quire 1.9.71 — The first screen still has the writing
+
+Released 15 November 2026.
+
+1.9.70 still let a cream wash, a missing-attribute colour, a few-pixel mask, a zero inline face, a tall pad on the sheet, a paper band, a short frame, an ink variable used as paint, a conic wedge, a hairline repeat, a tiny path, and a wide letter-spacing paint out the first line. A rule that still shows the writing stays. `p { color: var(--color-ink) }` stays. `p { letter-spacing: 2em }` and `3em` stay. `p { clip-path: path('M0 0 L10 0 L10 10 Z') }` stays. `[data-border] { height: 56px }` stays. `[data-border] { padding-top: 6in }` stays.
+
+- **A cream gradient on the writing can no longer paint out the letters.** `p { background-image: linear-gradient(#ece6dc, #ece6dc) }` is dropped. `linear-gradient(#c4a574, #221e1a)` still reads. Colour stays.
+- **An attr() colour can no longer fall back to the page.** `p { color: attr(data-x color, #221e1a) }` is dropped. `attr(data-x color, red)` stays. Colour stays.
+- **A radial mask a few pixels across can no longer hide the letters.** A `2px` window is dropped, including a page window of `8px` whose position was `50%`. A window of `40%` still reads. Colour stays.
+- **A zero inline container can no longer blank a cqi or cqw face.** `section { container-type: inline-size; width: 0 }` with `p { font-size: 10cqi }` drops the face. The container stays. `8cqw` with no zero width still reads. Colour stays.
+- **7in of padding on the sheet frame or the recipe can no longer walk the first line off.** `[data-border] { padding-top: 8in }` and `[data-recipe] { padding-top: 9in }` are dropped. `6in`, `4in`, and `3in` still read. Colour stays.
+- **A paper band on the writing can no longer cover the first line.** `p::before` at `1.8em`, `100%`, `50%`, or a positioned `80%` drops the background. `div::after` at `2em` still reads. `30%` on `p { position: relative }` still reads. Colour stays.
+- **A sheet frame of 48px can no longer clip the first line.** `[data-border] { height: 48px }` and `max-height: 40px` are dropped. `56px` and `80px` still read. `[data-recipe] { height: 16px }` and `div { height: 48px }` stay. Colour stays.
+- **The ink colour, used as a background, can no longer paint out the letters.** `var(--color-ink)` and `var(--color-cream)` as a background are dropped. `p { color: var(--color-ink) }` stays. Colour stays.
+- **An inset cream shadow on the sheet frame can no longer wash the page.** `[data-border] { box-shadow: inset 0 0 0 400px #ece6dc }` is dropped. Colour stays.
+- **A conic mask under three quarters of the circle can no longer hide the line.** `2deg`, `40%`, and `180deg` are dropped. `270deg` still reads. Colour stays.
+- **A repeating mask one or two pixels wide can no longer leave a ghost.** `1px` and `2px` are dropped. `4px` still reads. Colour stays.
+- **A path a few pixels across can no longer clip the letters away.** A `4px` triangle on the writing is dropped. A `10px` triangle stays. Colour stays.
+- **60px of letter-spacing can no longer grid the line.** `p { letter-spacing: 60px }` is dropped. `2em` and `3em` still read. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
+
 # Quire 1.9.70 — The first screen still has the writing
 
 Released 15 November 2026.

@@ -616,7 +616,7 @@ function containerBlockFace(value: string): boolean {
   return /\d(?:\.\d+)?cq(?:h|b)\b/i.test(value.replace(/!important/gi, "").replace(/\s+/g, ""));
 }
 
-/** 0.2cqw on the writing is under 4px. 0.3cqw still reads. 15cqi and above walks the line off the first screen. 12cqi still reads. */
+/** 0.2cqw on the writing is under 4px. 0.3cqw still reads. 15cqi and above walks the line off the first screen. 12cqi still reads. A cqi or cqw face is zero when the page container's inline size is zero. */
 function containerInlineFace(value: string): boolean {
   const raw = value.replace(/!important/gi, "").replace(/\s+/g, "");
   const hit = /^[+-]?(\d+\.?\d*|\.\d+)cq(w|i|min|max)$/i.exec(raw);
@@ -626,6 +626,10 @@ function containerInlineFace(value: string): boolean {
   const unit = (hit[2] ?? "").toLowerCase();
   if (unit !== "max" && n <= 0.22) return true;
   return n >= 15;
+}
+
+function containerInlineZeroFace(value: string): boolean {
+  return /\d(?:\.\d+)?cq(?:w|i|min)\b/i.test(value.replace(/!important/gi, "").replace(/\s+/g, ""));
 }
 
 /** A face of 4px or less leaves no word. 5px still reads. On a star, 0.55em and under leaves no word. 0.65em still reads. em and rem use the 16px root. */
@@ -1075,6 +1079,8 @@ function blankColorFns(value: string): string {
 const COLOR_FNS = ["color-mix", "light-dark", "oklch", "oklab", "rgba", "hsla", "hwb", "rgb", "hsl", "lab", "lch", "color"];
 
 function pieceIsClearColor(value: string): boolean {
+  const fallback = attrColorFallback(value);
+  if (fallback != null) return pieceIsClearColor(fallback);
   const token = value.trim();
   if (!token) return false;
   if (/^transparent$/i.test(token)) return true;
@@ -1199,9 +1205,129 @@ function maskWindowCloses(inner: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** A radial window a few pixels across leaves no letters. A window of 40% still reads. */
+function maskRadialSliver(value: string): boolean {
+  const stack = activeRepeat && activeDivs >= 2;
+  const page = (activePage && !activePaint) || activeRoot;
+  const writing = (activePaint || activeInk) && !activeStar && !page && !stack;
+  if (!activeStar && !page && !stack && !writing) return false;
+  const grads = namedFunctionCalls(value, ["repeating-radial-gradient", "-webkit-radial-gradient", "radial-gradient"]);
+  return grads.some((grad) => {
+    let solidPx = 0;
+    let sawSolid = false;
+    let big = false;
+    for (const bit of splitArgs(grad.inner)) {
+      const token = bit.trim();
+      if (!token || (!coloredStop(token) && !/transparent/i.test(token))) continue;
+      const pct = /([0-9.]+)%/.exec(token);
+      if (pct && Number(pct[1]) >= 12) big = true;
+      if (/transparent/i.test(token) && !/#[0-9a-f]/i.test(token)) continue;
+      if (!coloredStop(token)) continue;
+      sawSolid = true;
+      const px = /([0-9.]+)px/i.exec(token);
+      if (px) solidPx = Math.max(solidPx, Number(px[1]));
+    }
+    return sawSolid && !big && solidPx > 0 && solidPx <= 16;
+  });
+}
+
+function coloredStop(token: string): boolean {
+  return /(?:#[0-9a-f]{3,8}|\b(?:black|white|rgb|hsl|hwb|lab|lch|oklch|oklab|color)\b)/i.test(token);
+}
+
+/** A conic wedge under three quarters of the circle misses the first line. 270deg still reads. */
+function maskConicSliver(value: string): boolean {
+  const stack = activeRepeat && activeDivs >= 2;
+  const page = (activePage && !activePaint) || activeRoot;
+  const writing = (activePaint || activeInk) && !activeStar && !page && !stack;
+  if (!activeStar && !page && !stack && !writing) return false;
+  const grads = namedFunctionCalls(value, ["repeating-conic-gradient", "conic-gradient"]);
+  return grads.some((grad) => conicSweepHides(grad.inner));
+}
+
+function angleTurn(token: string): number | null {
+  const t = token.trim().toLowerCase();
+  const pct = percentOf(t);
+  if (pct != null) return pct;
+  const hit = /^([+-]?(?:\d+\.?\d*|\.\d+))(deg|turn|grad|rad)$/.exec(t);
+  if (!hit?.[1]) return null;
+  const n = Number(hit[1]);
+  if (!Number.isFinite(n)) return null;
+  const unit = hit[2] ?? "";
+  if (unit === "turn") return n;
+  if (unit === "deg") return n / 360;
+  if (unit === "grad") return n / 400;
+  return n / (2 * Math.PI);
+}
+
+function conicSweepHides(inner: string): boolean {
+  let body = inner.trim();
+  if (/^from\b/i.test(body)) {
+    const comma = body.indexOf(",");
+    if (comma < 0) return false;
+    body = body.slice(comma + 1);
+  }
+  const bits = splitArgs(body).map((part) => part.trim()).filter(Boolean);
+  let opaqueEnd = 0;
+  let sawOpaque = false;
+  for (const bit of bits) {
+    const clear = /transparent/i.test(bit) && !/#[0-9a-f]{3,8}/i.test(bit);
+    const positions = bit.match(/[+-]?(?:\d+\.?\d*|\.\d+)(?:deg|turn|grad|rad|%)/gi) ?? [];
+    const turns = positions.map((token) => angleTurn(token)).filter((n): n is number => n != null);
+    const end = turns.length ? Math.max(...turns) : null;
+    if (clear) {
+      if (!sawOpaque) continue;
+      if (end == null || end < 0.75) return true;
+      continue;
+    }
+    if (!coloredStop(bit)) continue;
+    sawOpaque = true;
+    if (end != null) opaqueEnd = Math.max(opaqueEnd, end);
+  }
+  return sawOpaque && opaqueEnd > 0 && opaqueEnd < 0.75;
+}
+
+/** A repeating mask one or two pixels wide is a ghost. Four pixels still reads. */
+function maskRepeatHairline(value: string): boolean {
+  const stack = activeRepeat && activeDivs >= 2;
+  const page = (activePage && !activePaint) || activeRoot;
+  const writing = (activePaint || activeInk) && !activeStar && !page && !stack;
+  if (!activeStar && !page && !stack && !writing) return false;
+  const grads = namedFunctionCalls(value, ["repeating-linear-gradient", "repeating-radial-gradient"]);
+  return grads.some((grad) => {
+    let solid = 0;
+    let sawSolid = false;
+    let sawClear = false;
+    for (const bit of splitArgs(grad.inner)) {
+      const token = bit.trim();
+      if (/transparent/i.test(token) && !/#[0-9a-f]{3,8}/i.test(token)) {
+        sawClear = true;
+        continue;
+      }
+      if (!coloredStop(token)) continue;
+      sawSolid = true;
+      const px = /([0-9.]+)px/i.exec(token);
+      if (px) solid = Math.max(solid, Number(px[1]));
+    }
+    return sawSolid && sawClear && solid > 0 && solid <= 2;
+  });
+}
+
+/** attr(name type, fallback) uses the fallback when the attribute is missing. The fallback is the colour. */
+function attrColorFallback(token: string): string | null {
+  const raw = token.replace(/!important/gi, "").trim();
+  const calls = namedFunctionCalls(raw, ["attr"]);
+  if (calls.length !== 1 || !calls[0]) return null;
+  const call = calls[0];
+  if (raw.replace(/\s+/g, "").toLowerCase() !== `attr(${call.inner.replace(/\s+/g, "")})`.toLowerCase()) return null;
+  const args = splitArgs(call.inner).map((part) => part.trim()).filter(Boolean);
+  if (args.length < 2) return null;
+  return args[args.length - 1] ?? null;
+}
+
 /** A custom property set to a clear mask follows that mask. A gradient that still has black stays. A transparent band across the top of the stack does not. */
 function maskHides(value: string, hidden: Set<string>): boolean {
-  if (maskIsClear(value) || maskCutsTop(value)) return true;
+  if (maskIsClear(value) || maskCutsTop(value) || maskRadialSliver(value) || maskConicSliver(value) || maskRepeatHairline(value)) return true;
   const masks = (hidden as HideVars).masks;
   if (!masks) return false;
   return varCalls(value).some((call) => masks.has(call.name) || (Boolean(call.fallback) && maskHides(call.fallback, hidden)));
@@ -2463,7 +2589,7 @@ function rectHides(inner: string): boolean {
   return false;
 }
 
-/** An empty path, or a path that only moves, has no area. A curve stays. A triangle stays. */
+/** An empty path, or a path that only moves, has no area. A curve stays. A triangle larger than 6px stays. A 4px triangle on the writing does not. */
 function pathHides(inner: string): boolean {
   const quoted = /(['"])([\s\S]*)\1/.exec(inner.trim());
   if (!quoted) return inner.trim() === "" || /^(?:evenodd|nonzero)$/i.test(inner.trim());
@@ -2547,10 +2673,11 @@ function pathHides(inner: string): boolean {
   if ((activeStar || activeRoot || (activePage && !activePaint) || (activeRepeat && activeDivs >= 2)) && Math.max(xSpan, ySpan) <= 96) return true;
   if ((activeStar || activeRoot || (activePage && !activePaint) || (activeRepeat && activeDivs >= 2)) && Math.min(xSpan, ySpan) <= 16 && Math.max(xSpan, ySpan) >= 80) return true;
   if (activePage && !activePaint && ySpan <= 120 && xSpan >= 80) return true;
+  if ((activePaint || activeInk) && !activeStar && xSpan <= 6 && ySpan <= 6) return true;
   return (xSpan <= 72 && ySpan >= 400) || (ySpan <= 72 && xSpan >= 400);
 }
 
-type HideVars = Set<string> & { clips?: Set<string>; masks?: Set<string>; defined?: Map<string, string>; perspectives?: number[]; htmlPaintZero?: boolean; bodyPaintZero?: boolean; contentsPaintZero?: boolean; htmlMaskZero?: boolean; bodyMaskZero?: boolean; contentsMaskZero?: boolean; blockPair?: boolean; inlinePair?: boolean; trackPair?: boolean; strokeWide?: boolean; strokeLight?: boolean; strokePair?: boolean; decorStrike?: boolean; decorThick?: boolean; decorLight?: boolean; decorPair?: boolean; containerBlock?: boolean };
+type HideVars = Set<string> & { clips?: Set<string>; masks?: Set<string>; defined?: Map<string, string>; perspectives?: number[]; htmlPaintZero?: boolean; bodyPaintZero?: boolean; contentsPaintZero?: boolean; htmlMaskZero?: boolean; bodyMaskZero?: boolean; contentsMaskZero?: boolean; blockPair?: boolean; inlinePair?: boolean; trackPair?: boolean; strokeWide?: boolean; strokeLight?: boolean; strokePair?: boolean; decorStrike?: boolean; decorThick?: boolean; decorLight?: boolean; decorPair?: boolean; containerBlock?: boolean; containerInline?: boolean };
 
 function lengthPx(token: string): number | null {
   const compact = token.replace(/!important/gi, "").replace(/\s+/g, "");
@@ -3173,6 +3300,18 @@ function spacingHides(value: string, hidden: Set<string>, limit: number, emLimit
   if (px != null && px >= 640) return true;
   return shiftTokenCovers(token, hidden);
 }
+
+/** 2em of letter-spacing still reads. 3.5em, and 60px, turn the line into a grid of letters. Word-spacing is not this. */
+function letterSpreadHides(value: string): boolean {
+  const token = value.replace(/!important/gi, "").trim();
+  const px = lengthPx(token);
+  if (px != null && px >= 56) return true;
+  const unit = lengthUnit(token);
+  if (!unit) return false;
+  const parsed = parseMathSum(token.replace(/\s+/g, ""), 0);
+  if (!parsed || parsed.i !== token.replace(/\s+/g, "").length || !Number.isFinite(parsed.n)) return false;
+  return (unit === "em" || unit === "rem") && parsed.n >= 3.5;
+}
 function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
   const compact = value.replace(/!important/gi, "").replace(/\s+/g, "");
   const parsed = parseMathSum(compact, 0);
@@ -3455,6 +3594,20 @@ const PAPER_VARS = new Set([
   "--color-forest-fg",
 ]);
 
+/** These are the ink on the dark desk. A background painted with one of them is the same cream bar as #ece6dc. */
+const INK_RGB: [number, number, number] = [236, 230, 220];
+const INK_VARS = new Set(["--color-ink", "--color-foreground", "--color-card-foreground", "--color-secondary-foreground", "--color-popover-foreground"]);
+
+function inkVarColor(token: string): [number, number, number] | null {
+  const calls = varCalls(token);
+  if (calls.length !== 1 || !calls[0]) return null;
+  const tight = token.replace(/!important/gi, "").replace(/\s+/g, "").toLowerCase();
+  if (!tight.startsWith("var(") || !tight.endsWith(")")) return null;
+  const name = calls[0].name.toLowerCase();
+  if (name === "--color-cream" || INK_VARS.has(name)) return INK_RGB;
+  return null;
+}
+
 function isPaperVarToken(token: string): boolean {
   const calls = varCalls(token);
   if (calls.length !== 1 || !calls[0]) return false;
@@ -3546,6 +3699,8 @@ const WASH_NAMED = new Set([
 
 /** A stroke in the page colour paints out the ink. A dark stroke is still ink. */
 function colorIsPageLight(token: string): boolean {
+  const fallback = attrColorFallback(token);
+  if (fallback != null) return colorIsPageLight(fallback);
   const t = token.replace(/!important/gi, "").trim().toLowerCase();
   if (!t || pieceIsClearColor(t)) return false;
   const relative = relativePageLight(t);
@@ -3849,6 +4004,8 @@ function functionToRgb(name: string, inner: string): [number, number, number] | 
 }
 
 function resolvedInk(token: string): [number, number, number] | null {
+  const fallback = attrColorFallback(token);
+  if (fallback != null) return resolvedInk(fallback);
   const direct = resolveRgb(token);
   if (direct) return direct;
   const t = token.replace(/!important/gi, "").trim().toLowerCase();
@@ -3866,6 +4023,8 @@ function resolvedInk(token: string): [number, number, number] | null {
 
 /** The light sheet already rejects a pale ink. The dark, navy, leather, and rain sheets reject an ink that sits on the page. Gray still reads. A class that does not target the writing is unchanged. */
 function colorMissesDesk(token: string): boolean {
+  const fallback = attrColorFallback(token);
+  if (fallback != null) return colorMissesDesk(fallback);
   const raw = token.replace(/!important/gi, "").trim();
   const t = raw.toLowerCase();
   const calls = namedFunctionCalls(t, ["light-dark"]);
@@ -4199,6 +4358,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "display" || prop === "pointer-events") return valueCanHide(val, hidden, (v) => /\bnone\b/i.test(v));
   if (prop === "visibility") return valueCanHide(val, hidden, (v) => /\b(?:hidden|collapse)\b/i.test(v));
   if (prop === "content-visibility") return valueCanHide(val, hidden, (v) => /\bhidden\b/i.test(v) || ((activePaint || activePage) && /\bauto\b/i.test(v)));
+  if (activeFrameOnly && activeBorder && (prop === "height" || prop === "max-height" || prop === "block-size" || prop === "max-block-size") && valueCanHide(val, hidden, frameSliver)) return true;
   if (prop === "opacity") {
     if (valueCanHide(val, hidden, clampsToZero)) return true;
     return valueCanHide(val, hidden, opacityAmountHides);
@@ -4233,12 +4393,13 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "zoom") return valueCanHide(val, hidden, (raw) => hidesAsZero(raw) || scaleFactorHides(raw));
   if (prop === "font-size") {
     if ((hidden as HideVars).containerBlock && (activePaint || activeInk || activePage) && containerBlockFace(val)) return true;
+    if ((hidden as HideVars).containerInline && (writingGlyph() || activeInk || activePage) && containerInlineZeroFace(val)) return true;
     if ((writingGlyph() || activeInk) && containerInlineFace(val)) return true;
     return valueCanHide(val, hidden, (v) => hidesAsZero(v) || fontFaceTiny(v));
   }
   if (prop === "font") return valueCanHide(val, hidden, fontShorthandHides);
   if (prop === "font-size-adjust") return fontAspectHides(val, hidden);
-  if (prop === "letter-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 12, 0.5));
+  if (prop === "letter-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 12, 0.5) || letterSpreadHides(v));
   if (prop === "word-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 96));
   if (prop === "-webkit-text-fill-color" || prop === "text-fill-color") {
     return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw) || colorMissesDesk(raw));
@@ -4423,7 +4584,12 @@ let activeHtml = false;
 let activeLead = false;
 let activeRecipe = false;
 let activeBorder = false;
+/** True only when every open-page match is the sheet frame or the recipe box. A bare div also matches those, and 8in on every div is a different rule. */
+let activeFrameOnly = false;
 let containerBlockOpen = false;
+let containerInlineOpen = false;
+/** True when the add-on itself positions a box. A percent band then belongs to that box. Otherwise it belongs to the sheet. */
+let bandPositioned = false;
 
 function withSib<T>(sib: Sib, fn: () => T): T {
   const prev = activeSib;
@@ -5304,6 +5470,21 @@ function borderEats(parts: string[]): (part: string) => boolean {
   };
 }
 
+/** The sheet frame already clips. 48px leaves a ghost of the first line. 56px still reads. The recipe box does not clip this way, and a plain div stays. */
+function frameSliver(raw: string): boolean {
+  const token = raw.replace(/!important/gi, "").trim();
+  if (!token || /^(?:auto|none)$/i.test(token)) return false;
+  if (hidesAsZero(token)) return true;
+  const px = lengthDeskPx(token);
+  if (px != null && px > 0 && px <= 48) return true;
+  const view = viewportAmount(token);
+  if (view && view.kind !== "h") {
+    const desk = view.n * 8;
+    return desk > 0 && desk <= 48;
+  }
+  return false;
+}
+
 function topPushEm(value: string): number | null {
   const parts = splitTopWords(value.replace(/!important/gi, "")).filter((token) => token.toLowerCase() !== "auto");
   if (!parts.length) return null;
@@ -5338,6 +5519,7 @@ function verticalPushHides(prop: string, value: string): boolean {
   if (activeRoot && !padding && em >= 16) return true;
   if (activePaint && em >= 18) return true;
   if (activePage && em >= 32) return true;
+  if (activeFrameOnly && em >= 42) return true;
   if (!activeStar && (activeRepeat || activeRecipe) && padding && em >= 100) return true;
   return false;
 }
@@ -5917,9 +6099,9 @@ function floatShrinkDrops(parts: string[], hidden: Set<string>): (part: string) 
 }
 
 /** A background the same colour as the ink paints the line out. Cream and white do that on the dark desk. A gilt face stays. A rule that also sets an ink which still reads on that face stays. */
-/** An inset cream shadow of 40px covers the letters. 12px still leaves them. */
+/** An inset cream shadow of 40px covers the letters. 12px still leaves them. The sheet frame is the same wash. */
 function insetShadowDrops(parts: string[]): (part: string) => boolean {
-  if (!activePaint && !activeRecipe && !(activeRepeat && activeDivs >= 2)) return () => false;
+  if (!activePaint && !activeRecipe && !activeBorder && !(activeRepeat && activeDivs >= 2)) return () => false;
   const wide = (value: string) => {
     const plain = value.replace(/!important/gi, "");
     if (!/\binset\b/i.test(plain)) return false;
@@ -5949,21 +6131,35 @@ function insetShadowDrops(parts: string[]): (part: string) => boolean {
 function inkBackgroundDrops(parts: string[]): (part: string) => boolean {
   if (!activeStar && !activePaint && !activeRecipe && !activeBorder && !(activeRepeat && activeDivs >= 2)) return () => false;
   const ink: [number, number, number] = [236, 230, 220];
-  const washed = (token: string): [number, number, number] | null => {
+  const washed = (token: string): boolean => {
+    if (inkVarColor(token)) return true;
     const rgb = resolvedInk(token.replace(/!important/gi, "").trim());
-    if (!rgb) return null;
-    return contrastVs(rgb[0], rgb[1], rgb[2], ink) < 1.5 ? rgb : null;
+    if (!rgb) return false;
+    return contrastVs(rgb[0], rgb[1], rgb[2], ink) < 1.5;
   };
-  let face: [number, number, number] | null = null;
+  const paintWashes = (plain: string): boolean => {
+    const body = plain.replace(/!important/gi, "");
+    if (/url\(/i.test(body)) return false;
+    const colors: string[] = [];
+    colors.push(...(body.match(/#[0-9a-fA-F]{3,8}/g) ?? []));
+    for (const call of namedFunctionCalls(body, COLOR_FNS)) colors.push(`${call.name}(${call.inner})`);
+    for (const call of varCalls(body)) {
+      const token = call.fallback ? `var(${call.name}, ${call.fallback})` : `var(${call.name})`;
+      if (inkVarColor(token)) colors.push(token);
+    }
+    const stripped = blankColorFns(body).replace(/#[0-9a-fA-F]{3,8}/g, " ");
+    for (const word of stripped.match(/[A-Za-z]+/g) ?? []) {
+      const lower = word.toLowerCase();
+      if (MASK_SKIP.has(lower) || /^(?:linear|radial|conic|gradient|repeating|url|none|to)$/.test(lower)) continue;
+      if (resolvedInk(word)) colors.push(word);
+    }
+    return colors.length > 0 && colors.every((token) => washed(token));
+  };
+  let face = false;
   for (const part of parts) {
     const piece = pieceProp(part);
-    if (!piece || (piece.prop !== "background" && piece.prop !== "background-color")) continue;
-    const plain = piece.val.replace(/!important/gi, "");
-    if (/url\(|gradient\(/i.test(plain)) continue;
-    for (const token of splitTopWords(plain)) {
-      const rgb = washed(token);
-      if (rgb) face = rgb;
-    }
+    if (!piece || (piece.prop !== "background" && piece.prop !== "background-color" && piece.prop !== "background-image")) continue;
+    if (paintWashes(piece.val)) face = true;
   }
   if (!face) return () => false;
   for (const part of parts) {
@@ -5973,15 +6169,13 @@ function inkBackgroundDrops(parts: string[]): (part: string) => boolean {
       const raw = token.trim();
       if (!raw || pieceIsClearColor(raw) || colorMissesDesk(raw) || colorIsPageLight(raw) || inkTooFaint(raw)) continue;
       const rgb = resolvedInk(raw);
-      if (rgb && contrastVs(rgb[0], rgb[1], rgb[2], face) >= 3) return () => false;
+      if (rgb && contrastVs(rgb[0], rgb[1], rgb[2], [236, 230, 220]) >= 3) return () => false;
     }
   }
   return (part) => {
     const piece = pieceProp(part);
-    if (!piece || (piece.prop !== "background" && piece.prop !== "background-color")) return false;
-    const plain = piece.val.replace(/!important/gi, "");
-    if (/url\(|gradient\(/i.test(plain)) return false;
-    return splitTopWords(plain).some((token) => washed(token));
+    if (!piece || (piece.prop !== "background" && piece.prop !== "background-color" && piece.prop !== "background-image")) return false;
+    return paintWashes(piece.val);
   };
 }
 
@@ -8205,6 +8399,25 @@ function selectorMatchesBorder(selector: string, scopeSel: string | null): boole
   return false;
 }
 
+/** A pad on the sheet frame or the recipe box alone walks the first line off at 7in. The same pad on every div is not this rule. */
+function selectorOnlyFrame(selector: string, scopeSel: string | null): boolean {
+  let matched = 0;
+  for (const part of splitSelectorList(selector)) {
+    const text = part.trim();
+    if (!text || text.includes("::")) continue;
+    const steps = splitCombinators(text.replace(/\s+/g, " "));
+    if (!steps.length) continue;
+    for (const el of liveList()) {
+      if (!el.guardsPage) continue;
+      if (!matchLiveSteps(steps, steps.length - 1, el, scopeSel)) continue;
+      matched += 1;
+      const frame = Boolean(el.attrs?.includes("data-border") || el.attrs?.includes("data-recipe"));
+      if (!frame) return false;
+    }
+  }
+  return matched > 0;
+}
+
 function countLiveDivs(selector: string, scopeSel: string | null): number {
   let n = 0;
   for (const part of splitSelectorList(selector)) {
@@ -8234,6 +8447,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const prevLead = activeLead;
   const prevRecipe = activeRecipe;
   const prevBorder = activeBorder;
+  const prevFrame = activeFrameOnly;
   activeStack = false;
   activeDivs = 0;
   activeRoot = false;
@@ -8241,6 +8455,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   activeLead = false;
   activeRecipe = false;
   activeBorder = false;
+  activeFrameOnly = false;
   if (desk) {
     const sel = nestingSel ?? "";
     const ink = coversInk(sel, scopeSel);
@@ -8260,6 +8475,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activeLead = leadSelector(sel);
     activeRecipe = selectorMatchesRecipe(sel, scopeSel);
     activeBorder = selectorMatchesBorder(sel, scopeSel);
+    activeFrameOnly = selectorOnlyFrame(sel, scopeSel);
   }
   try {
   const scope = deskClipScope(nestingSel ?? "");
@@ -8362,7 +8578,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
           next = scrubPseudoCover(next);
           touched = true;
         }
-        if (pseudoInsetCovers(next, hidden) || pseudoBandCovers(next)) {
+        if (pseudoInsetCovers(next, hidden) || pseudoBandCovers(next) || (pseudoOnWriting(looking) && pseudoBandCovers(next, 24))) {
           next = scrubPseudoCover(next);
           touched = true;
         }
@@ -8413,6 +8629,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activeLead = prevLead;
     activeRecipe = prevRecipe;
     activeBorder = prevBorder;
+    activeFrameOnly = prevFrame;
   }
 }
 
@@ -8779,8 +8996,8 @@ function scrubPseudoCover(body: string): string {
     .join("; ");
 }
 
-/** A full-width band at the top of every div, 4em or taller, covers the first line. 2em still leaves it. A band that starts at 240px stays. */
-function pseudoBandCovers(body: string): boolean {
+/** A full-width band at the top of every div, 4em or taller, covers the first line. 2em still leaves it. A band on the writing itself covers at 1.5em. A band that starts at 240px stays. */
+function pseudoBandCovers(body: string, minPx = 64): boolean {
   const parts = splitCssDeclarations(body)
     .map((part) => part.trim())
     .filter(Boolean);
@@ -8807,7 +9024,18 @@ function pseudoBandCovers(body: string): boolean {
   if (!edge(top.val) || !edge(left.val) || !edge(right.val)) return false;
   const token = (splitTopWords(height.val.replace(/!important/gi, "")).find(Boolean) ?? "").replace(/\s+/g, "");
   const px = lengthDeskPx(token);
-  return px != null && px >= 64;
+  if (px != null && px >= minPx) return true;
+  const pct = percentOf(token);
+  if (pct == null || pct <= 0) return false;
+  return pct >= (bandPositioned ? 0.5 : 0.03);
+}
+
+function pseudoOnWriting(selector: string): boolean {
+  return splitSelectorList(selector).some((part) => {
+    const head = part.trim().replace(/::?(?:before|after)\s*$/i, "").trim();
+    if (!head || /[.#\[]/.test(head) || head.includes("::")) return false;
+    return /(?:^|[\s>+~])p$/i.test(head);
+  });
 }
 
 /** A fixed sheet with a viewport border paints over the desk. An 8px frame stays. */
@@ -9178,7 +9406,7 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
       let next = rawBody;
       let touched = false;
       const looseOnly = loosePseudoHead(opened) && !deskPseudoSelector(opened);
-      if (pseudoCovers(next, hidden) || pseudoInsetCovers(next, hidden) || pseudoBandCovers(next) || (looseSheetSelector(opened) && elementCovers(next)) || (looseOnly && loosePseudoCovers(next))) {
+      if (pseudoCovers(next, hidden) || pseudoInsetCovers(next, hidden) || pseudoBandCovers(next) || (pseudoOnWriting(opened) && pseudoBandCovers(next, 24)) || (looseSheetSelector(opened) && elementCovers(next)) || (looseOnly && loosePseudoCovers(next))) {
         next = scrubPseudoCover(next);
         touched = true;
       }
@@ -9558,6 +9786,21 @@ function containerZerosBlock(body: string): boolean {
   return size && !definite;
 }
 
+function containerInlineZeros(body: string): boolean {
+  let kind = false;
+  let zero = false;
+  for (const part of topLevelDeclarations(body)) {
+    const piece = pieceProp(part);
+    if (!piece) continue;
+    if (piece.prop === "container-type") {
+      const tokens = piece.val.toLowerCase().replace(/!important/gi, "").split(/[\s,/]+/).filter(Boolean);
+      if (tokens.includes("inline-size") || tokens.includes("size")) kind = true;
+    }
+    if ((piece.prop === "width" || piece.prop === "inline-size" || piece.prop === "max-width" || piece.prop === "max-inline-size") && hidesAsZero(piece.val.replace(/!important/gi, "").trim())) zero = true;
+  }
+  return kind && zero;
+}
+
 function selectorTargetsOpenPage(selector: string): boolean {
   return splitSelectorList(selector).some((part) => {
     const text = part.trim();
@@ -9567,8 +9810,8 @@ function selectorTargetsOpenPage(selector: string): boolean {
   });
 }
 
-/** container-type: size on the open page, with no block size, makes a cqh face zero. A class container stays. */
-function sheetContainerZerosBlock(css: string): boolean {
+/** container-type: size on the open page, with no block size, makes a cqh face zero. A zero inline size does the same to cqi and cqw. A class container stays. */
+function sheetContainerMatch(css: string, pred: (body: string) => boolean): boolean {
   let found = false;
   const walk = (sheet: string): void => {
     let i = 0;
@@ -9608,7 +9851,7 @@ function sheetContainerZerosBlock(css: string): boolean {
       const close = matchingBrace(sheet, open);
       if (close < 0) return;
       const body = sheet.slice(open + 1, close);
-      if (selectorTargetsOpenPage(selector) && containerZerosBlock(body)) found = true;
+      if (selectorTargetsOpenPage(selector) && pred(body)) found = true;
       if (body.includes("{")) walk(body);
       i = close + 1;
     }
@@ -9617,10 +9860,19 @@ function sheetContainerZerosBlock(css: string): boolean {
   return found;
 }
 
+function sheetContainerZerosBlock(css: string): boolean {
+  return sheetContainerMatch(css, containerZerosBlock);
+}
+
+function sheetContainerZerosInline(css: string): boolean {
+  return sheetContainerMatch(css, containerInlineZeros);
+}
+
 /** Add-on CSS can restyle the desk. It cannot pull a remote sheet or image, or hide the desk. */
 export function sanitizePluginCss(css: string): string {
   const readable = stripCssComments(decodeCssEscapes(stripCssComments(css), false));
   const cleaned = scrubAttrUrls(scrubRemoteImageCalls(scrubPluginCss(readable)));
+  bandPositioned = /position\s*:\s*(?:relative|absolute|fixed|sticky)\b/i.test(cleaned);
   const hidden = collectHideVars(cleaned);
   hidden.perspectives = collectDeskPerspectives(cleaned);
   collectPaintZero(cleaned, hidden);
@@ -9628,7 +9880,9 @@ export function sanitizePluginCss(css: string): string {
   collectDeskSliver(cleaned, hidden);
   collectDeskPaint(cleaned, hidden);
   hidden.containerBlock = sheetContainerZerosBlock(cleaned);
+  hidden.containerInline = sheetContainerZerosInline(cleaned);
   containerBlockOpen = Boolean(hidden.containerBlock);
+  containerInlineOpen = Boolean(hidden.containerInline);
   return scrubDeskHide(scrubTinyFaces(cleaned, hidden), hidden);
 }
 
@@ -9656,6 +9910,7 @@ function fontShorthandHides(raw: string): boolean {
     if (!head || FONT_SKIP.test(head) || /^[1-9]00$/.test(head) || /(?:deg|turn|grad|rad)$/i.test(head)) continue;
     if (FONT_ABS.test(head)) return false;
     if (containerBlockOpen && containerBlockFace(head)) return true;
+    if (containerInlineOpen && containerInlineZeroFace(head)) return true;
     return hidesAsZero(head) || fontFaceTiny(head);
   }
   return false;
