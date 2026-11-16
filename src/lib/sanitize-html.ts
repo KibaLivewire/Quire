@@ -3921,20 +3921,35 @@ function resolveRgb(token: string): [number, number, number] | null {
 
 function colorAlpha(token: string): number | null {
   const t = token.trim().toLowerCase();
-  const calls = namedFunctionCalls(t, ["rgb", "rgba"]);
+  const hex = /^#([0-9a-f]{4}|[0-9a-f]{8})$/.exec(t);
+  if (hex?.[1]) {
+    const h = hex[1];
+    const a = h.length === 4 ? parseInt(h[3] + h[3], 16) : parseInt(h.slice(6, 8), 16);
+    return a / 255;
+  }
+  const calls = namedFunctionCalls(t, ["color", "oklch", "oklab", "hsla", "rgba", "hwb", "lch", "lab", "hsl", "rgb"]);
   if (calls.length !== 1 || !calls[0]) return null;
   const call = calls[0];
   if (t.replace(/\s+/g, "") !== `${call.name}(${call.inner.replace(/\s+/g, "")})`) return null;
-  const inner = call.inner.trim();
-  const raw = inner.includes(",")
-    ? (splitArgs(inner).map((part) => part.trim()).filter(Boolean)[3] ?? "")
-    : inner.includes("/")
-      ? inner.slice(inner.lastIndexOf("/") + 1)
-      : "";
-  if (!raw.trim()) return 1;
-  const pct = percentOf(raw.trim());
+  let depth = 0;
+  let slash = -1;
+  const inner = call.inner;
+  for (let i = 0; i < inner.length; i += 1) {
+    const ch = inner[i] ?? "";
+    if (ch === "(") depth += 1;
+    else if (ch === ")" && depth > 0) depth -= 1;
+    else if (ch === "/" && depth === 0) slash = i;
+  }
+  let raw = "";
+  if (slash >= 0) raw = inner.slice(slash + 1).trim();
+  else if ((call.name === "rgb" || call.name === "rgba" || call.name === "hsl" || call.name === "hsla") && inner.includes(",")) {
+    const bits = splitArgs(inner).map((part) => part.trim()).filter(Boolean);
+    raw = bits[3] ?? "";
+  }
+  if (!raw) return 1;
+  const pct = percentOf(raw);
   if (pct != null) return pct;
-  const n = Number(raw.trim());
+  const n = Number(raw);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -4096,8 +4111,28 @@ function colorSitsOnSheet(token: string): boolean {
   const dark = DESK_SHEETS.slice(1);
   return dark.some((paper) => Math.max(Math.abs(rgb[0] - paper[0]), Math.abs(rgb[1] - paper[1]), Math.abs(rgb[2] - paper[2])) <= 2);
 }
+function stripSlashAlpha(token: string): string {
+  const t = token.trim();
+  const calls = namedFunctionCalls(t, ["color", "oklch", "oklab", "hsla", "rgba", "hwb", "lch", "lab", "hsl", "rgb"]);
+  if (calls.length !== 1 || !calls[0]) return t;
+  const call = calls[0];
+  if (t.replace(/\s+/g, "") !== `${call.name}(${call.inner.replace(/\s+/g, "")})`) return t;
+  let depth = 0;
+  let slash = -1;
+  const inner = call.inner;
+  for (let i = 0; i < inner.length; i += 1) {
+    const ch = inner[i] ?? "";
+    if (ch === "(") depth += 1;
+    else if (ch === ")" && depth > 0) depth -= 1;
+    else if (ch === "/" && depth === 0) slash = i;
+  }
+  if (slash < 0) return t;
+  return `${call.name}(${inner.slice(0, slash).trim()})`;
+}
+
 function inkTooFaint(token: string): boolean {
-  const rgb = resolveRgb(token.replace(/!important/gi, "").trim());
+  const raw = token.replace(/!important/gi, "").trim();
+  const rgb = resolveRgb(raw) ?? resolvedInk(raw) ?? resolvedInk(stripSlashAlpha(raw));
   if (!rgb) return false;
   const alpha = colorAlpha(token);
   if (alpha == null || alpha >= 0.95) return false;
@@ -4272,9 +4307,9 @@ function evaluateRelativeRgb(name: string, origin: string, channels: string[]): 
   }
   if (name === "hsl" || name === "hsla") {
     const [h0, s0, l0] = rgbToHsl(base[0], base[1], base[2]);
-    const h = channelTokenIs(channels[0] ?? "", "h") ? h0 : hueOrNone(channels[0] ?? "");
-    const s = channelTokenIs(channels[1] ?? "", "s") ? s0 : axisNumber(channels[1] ?? "", 1);
-    const l = channelTokenIs(channels[2] ?? "", "l") ? l0 : axisNumber(channels[2] ?? "", 1);
+    const h = channelMath(channels[0] ?? "", "h", h0, 360);
+    const s = channelMath(channels[1] ?? "", "s", s0, 1);
+    const l = channelMath(channels[2] ?? "", "l", l0, 1);
     if (h == null || s == null || l == null) return null;
     return hslToRgb(h, s, l);
   }
@@ -4282,17 +4317,17 @@ function evaluateRelativeRgb(name: string, origin: string, channels: string[]): 
     const [L0, a0, b0] = rgbToOklab(base[0], base[1], base[2]);
     const C0 = Math.hypot(a0, b0);
     const H0 = (Math.atan2(b0, a0) * 180) / Math.PI;
-    const L = channelTokenIs(channels[0] ?? "", "l") ? L0 : axisNumber(channels[0] ?? "", 1);
-    const C = channelTokenIs(channels[1] ?? "", "c") ? C0 : axisNumber(channels[1] ?? "", 0.4);
-    const H = channelTokenIs(channels[2] ?? "", "h") ? H0 : hueOrNone(channels[2] ?? "");
+    const L = channelMath(channels[0] ?? "", "l", L0, 1);
+    const C = channelMath(channels[1] ?? "", "c", C0, 0.4);
+    const H = channelMath(channels[2] ?? "", "h", H0, 360);
     if (L == null || C == null || H == null) return null;
     return oklchToRgb(L, C, H);
   }
   if (name === "oklab") {
     const [L0, a0, b0] = rgbToOklab(base[0], base[1], base[2]);
-    const L = channelTokenIs(channels[0] ?? "", "l") ? L0 : axisNumber(channels[0] ?? "", 1);
-    const a = channelTokenIs(channels[1] ?? "", "a") ? a0 : axisNumber(channels[1] ?? "", 0.4);
-    const b = channelTokenIs(channels[2] ?? "", "b") ? b0 : axisNumber(channels[2] ?? "", 0.4);
+    const L = channelMath(channels[0] ?? "", "l", L0, 1);
+    const a = channelMath(channels[1] ?? "", "a", a0, 0.4);
+    const b = channelMath(channels[2] ?? "", "b", b0, 0.4);
     if (L == null || a == null || b == null) return null;
     return oklabToRgb(L, a, b);
   }
@@ -4522,6 +4557,12 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "contain") {
     const words = val.toLowerCase().replace(/!important/gi, "").split(/[\s,]+/).filter(Boolean);
     return words.includes("strict") || (words.includes("size") && words.includes("paint"));
+  }
+  if (prop === "z-index" && (activePaint || activeInk || activePage || activeRepeat || activeStar || activeBorder || activeRecipe)) {
+    return valueCanHide(val, hidden, (raw) => {
+      const n = Number(raw.replace(/!important/gi, "").trim());
+      return Number.isFinite(n) && n < 0;
+    });
   }
   if (prop === "offset-path") return val.replace(/!important/gi, "").trim().toLowerCase() !== "none";
   if (prop === "offset") {
@@ -5468,7 +5509,7 @@ function declaresViewport(value: string): boolean {
   return splitTopWords(value.replace(/!important/gi, "")).some((token) => coversViewport(token));
 }
 
-/** A viewport outline pulled inward covers the writing. An 80px frame does not. A 30px outline on the letters still reads. On a star, 24px pulled in covers the line, and so does 80px pulled to -70px. 16px still leaves it. */
+/** A viewport outline pulled inward covers the writing. An 80px frame does not. On the letters, 24px pulled in covers the line, and so does 40px pulled to -36px. 16px still leaves it. On a star, 24px pulled in covers the line, and so does 80px pulled to -70px. 16px still leaves it. */
 function outlineDrops(parts: string[]): (part: string) => boolean {
   let wide = false;
   let inset = false;
@@ -5494,10 +5535,11 @@ function outlineDrops(parts: string[]): (part: string) => boolean {
   }
   const starCover = activeStar && px >= 18 && pull >= 16 && pull >= px - 12;
   const stackCover = !activeStar && activeRepeat && activeDivs >= 2 && px >= 24 && pull >= 20 && pull + 8 >= px;
+  const lineCover = activePaint && !activeStar && px >= 22 && pull >= 18 && pull + 8 >= px;
   const boxCover = (activePaint || activePage || activeRepeat || activeRecipe) && px >= 64 && pull + 16 >= px && pull >= 48;
   return (part) => {
-    if (!wide && !starCover && !stackCover && !boxCover) return false;
-    if (wide && !inset && !starCover && !stackCover && !boxCover) return false;
+    if (!wide && !starCover && !stackCover && !lineCover && !boxCover) return false;
+    if (wide && !inset && !starCover && !stackCover && !lineCover && !boxCover) return false;
     const piece = pieceProp(part);
     return Boolean(piece && (piece.prop === "outline" || piece.prop === "outline-width"));
   };
@@ -5768,7 +5810,7 @@ function gapWide(value: string, count: number): boolean {
 
 /** Columns that leave no first column are dropped. A star at two columns does that, with or without a clip. A stack at four columns, or three with a clip, does that. A wide gap with a clip does it from two columns, including a 2em gap. Two columns on a div stay. A 1em gap on a star stays after the count is dropped. A class may still set columns. */
 function columnSpreadDrops(parts: string[]): (part: string) => boolean {
-  if (!activeStar && !activeRepeat) return () => false;
+  if (!activeStar && !activeRepeat && !activePaint) return () => false;
   const clip = parts.some((part) => {
     const piece = pieceProp(part);
     return Boolean(piece && overflowClips(piece.prop, piece.val));
@@ -7102,15 +7144,25 @@ function firstLengthPx(value: string): number | null {
   return null;
 }
 
-/** A matrix translation of a full page is the same hide as translate(). A few pixels stay. */
+/** A matrix translation of a full page is the same hide as translate(). A few pixels stay. 400 still leaves the sentence. 800 walks it off the sheet. */
 function matrixShifts(value: string, hidden: Set<string>): boolean {
   const found = namedFunctionCalls(value, ["matrix3d", "matrix"]);
   return found.some((call) => {
     const nums = matrixParts(call.inner);
     const tx = call.name === "matrix" ? (nums[4] ?? "") : (nums[12] ?? "");
     const ty = call.name === "matrix" ? (nums[5] ?? "") : (nums[13] ?? "");
-    return starShiftCovers(tx, "x") || starShiftCovers(ty, "y") || pageShiftCovers(tx) || pageShiftCovers(ty) || shiftTokenCovers(tx, hidden) || shiftTokenCovers(ty, hidden);
+    return starShiftCovers(tx, "x") || starShiftCovers(ty, "y") || pageShiftCovers(tx) || pageShiftCovers(ty) || shiftTokenCovers(tx, hidden) || shiftTokenCovers(ty, hidden) || unitlessMatrixShift(tx) || unitlessMatrixShift(ty);
   });
+}
+
+/** matrix() and matrix3d() translations are pixels with no unit. 400 still reads. 760 walks the line off the sheet. */
+function unitlessMatrixShift(raw: string): boolean {
+  const t = raw.replace(/!important/gi, "").replace(/\s+/g, "");
+  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(t)) return false;
+  const n = Math.abs(Number(t));
+  if (!Number.isFinite(n)) return false;
+  if (!(activePaint || activeInk)) return false;
+  return n >= 760;
 }
 
 function shiftAxisCovers(value: string): boolean {
@@ -9070,7 +9122,7 @@ function scrubPseudoCover(body: string): string {
     .join("; ");
 }
 
-/** A full-width band at the top of every div, 4em or taller, covers the first line. 2em still leaves it. A band on the writing itself covers at 1em. 0.8em still leaves the line. A band that starts at 240px stays. */
+/** A full-width band at the top of every div, 4em or taller, covers the first line. 2em still leaves it. A band on the writing itself, edged on the left and the right, covers at 1em. 0.8em still leaves the line. A width of 100% with no right edge covers at 1.5em. 1em of that band still reads. A band that starts at 240px stays. */
 function pseudoBandCovers(body: string, minPx = 64): boolean {
   const parts = splitCssDeclarations(body)
     .map((part) => part.trim())
@@ -9084,21 +9136,27 @@ function pseudoBandCovers(body: string, minPx = 64): boolean {
   if (!background) return false;
   const paint = background.val.replace(/!important/gi, "").trim();
   if (!paint || /^(?:none|transparent)$/i.test(paint) || pieceIsClearColor(paint)) return false;
+  const width = get("width") ?? get("inline-size");
+  const fullWidth = Boolean(width && isFullLength(width.val, "x"));
   const top = get("top");
   const left = get("left");
   const right = get("right");
   const height = get("height") ?? get("block-size");
-  if (!top || !left || !right || !height) return false;
+  if (!top || !left || !height) return false;
+  if (!right && !fullWidth) return false;
   const edge = (value: string) => {
     const token = (splitTopWords(value.replace(/!important/gi, "")).find(Boolean) ?? "").replace(/\s+/g, "");
     if (/^[+-]?0+(?:\.0+)?(?:px)?$/i.test(token)) return true;
     const px = lengthDeskPx(token);
     return px != null && Math.abs(px) <= 1;
   };
-  if (!edge(top.val) || !edge(left.val) || !edge(right.val)) return false;
+  if (!edge(top.val) || !edge(left.val)) return false;
+  if (right && !edge(right.val)) return false;
   const token = (splitTopWords(height.val.replace(/!important/gi, "")).find(Boolean) ?? "").replace(/\s+/g, "");
   const px = lengthDeskPx(token);
-  if (px != null && px >= minPx) return true;
+  const spanned = Boolean(right && edge(right.val));
+  const need = spanned ? minPx : Math.max(minPx, 24);
+  if (px != null && px >= need) return true;
   const pct = percentOf(token);
   if (pct == null || pct <= 0) return false;
   return pct >= (bandPositioned ? 0.5 : 0.03);

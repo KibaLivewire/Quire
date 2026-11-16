@@ -1,3 +1,23 @@
+# Quire 1.9.73 — The first screen still has the writing
+
+Released 16 November 2026.
+
+1.9.72 still let a negative z-index, a unitless matrix3d shift of 800, an inward outline on the letters, a 1.5em band with width 100%, a clipped 70vw column gap, an oklch lightness scaled to the sheet, and a translucent display-p3 cream paint out the first line. A rule that still shows the writing stays. `p { z-index: 0 }` stays. `matrix3d` at 400 stays. `p { outline: 16px solid #221e1a; outline-offset: -12px }` stays. `p { transform: matrix(1, 0.45, 0, 1) }` stays. `p { column-count: 8 }` stays. Colour stays.
+
+- **A negative z-index can no longer paint the writing behind the sheet.** `p`, `div`, and `section` at `z-index: -1` are dropped. `z-index: 0` still reads. `.note { z-index: -1 }` stays. Colour stays.
+- **A unitless matrix3d shift of 800 can no longer walk the line off the sheet.** `matrix3d(..., 800, 400, 0, 1)` is dropped. A shift of 400 still reads. Colour stays.
+- **An inward outline on the letters can no longer cover the first line.** `24px` with `-20px`, `30px` with `-28px`, `40px` with `-36px`, and `2em` with `-1.6em` are dropped. `16px` with `-12px` still reads. A `40px` outline on `header + div` stays. Colour stays.
+- **A 1.5em band with width 100% can no longer cover the first line.** `p::after` at `left: 0`, `width: 100%`, and `height: 1.5em` drops the background. `1em` of that band still reads. A left-and-right band at `1em` was already dropped. `0.8em` still reads. Colour stays.
+- **A clipped 70vw column gap can no longer leave one word.** `p { column-count: 2; column-gap: 70vw; height: 1.4em; overflow: hidden }` drops the count. The same gap with no clip still reads. `column-count: 8` still reads. Colour stays.
+- **An oklch lightness scaled to the sheet can no longer wash the ink.** `oklch(from #ece6dc calc(l * 0.2) c h)` is dropped. `calc(l * 0.55)` still reads. `oklch(from red l c h)` stays. Colour stays.
+- **A translucent display-p3 cream can no longer leave a ghost.** `color(display-p3 0.93 0.9 0.86 / 0.05)` is dropped. `color(srgb 0.8 0.15 0.1)` still reads. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.72 — The first screen still has the writing
 
 Released 16 November 2026.
