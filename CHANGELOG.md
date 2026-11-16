@@ -1,3 +1,34 @@
+# Quire 1.9.72 — The first screen still has the writing
+
+Released 16 November 2026.
+
+1.9.71 still let an ink variable painted with the sheet, a paper variable painted with the ink, a 20px inset cream shadow, a 180px face, 18em of word-spacing, a -10em indent, a 30 degree vertical skew, a -50% shift, a 76vh title, 6.4in of sheet padding, a 54px frame, 1in of padding on every div, a 13cqi face, a tiny container face, a 3px repeating mask, a radial window of 48px, a 1em paper band, and a turned matrix paint out the first line. A rule that still shows the writing stays. `p { color: var(--color-ink) }` stays. `p { color: red }` stays. `p { font-size: 170px }` stays. `p { word-spacing: 16em }` stays. `p { text-indent: -8em }` stays. `[data-border] { height: 56px }` stays. `[data-border] { padding-top: 6.2in }` stays. `div { padding-top: 0.8in }` stays. `header { margin-bottom: 75vh }` stays.
+
+- **An ink or paper variable can no longer wash the desk.** `:root`, `*`, `body`, `section`, `div`, `[data-border]`, and `[data-recipe]` may not set `--color-ink` to the sheet, to transparent, or to a paper variable. They may not set `--color-paper-raised` to the ink. `--color-ink: #ece6dc` and `--color-ink: red` stay. `--color-paper-raised: #111` stays. Colour stays.
+- **An inset cream shadow of 20px can no longer cover the letters.** `box-shadow: inset 0 0 0 20px #ece6dc` is dropped. `16px` still reads. Colour stays.
+- **A 180px face can no longer leave a single word.** `p { font-size: 180px }` and `p { font: 180px Georgia, serif }` are dropped. `170px` still reads. Colour stays.
+- **18em of word-spacing can no longer park the sentence.** `p { word-spacing: 18em }` is dropped. `16em` still reads. Colour stays.
+- **A -10em indent can no longer leave the tail of the line.** `p { text-indent: -10em }` and `-18em` are dropped. `-8em` still reads. Colour stays.
+- **skewY(30deg) can no longer smear the line.** `skewY(30deg)` and `skew(0deg, 30deg)` are dropped. `skewY(20deg)`, `skewX(60deg)`, and `skew(60deg, 0deg)` still read. Colour stays.
+- **A -50% shift can no longer leave one word.** `translateX(-50%)` and `translate: -50%` are dropped. `-40%` still reads. Colour stays.
+- **76vh on the title can no longer push the writing off.** `header` and `textarea` at `76vh` are dropped. `75vh` still reads. Colour stays.
+- **6.4in of padding on the sheet frame can no longer ghost the first line.** `[data-border] { padding-top: 6.4in }` is dropped. `6.2in` and `6in` still read. Colour stays.
+- **A sheet frame of 54px can no longer clip the first line.** `[data-border] { height: 54px }` and `max-height: 54px` are dropped. `56px` still reads. A plain `div` stays. Colour stays.
+- **1in of padding on every div can no longer stack the writing off.** `div { padding-top: 1in }` and `1.5in` are dropped. `0.8in` still reads. Colour stays.
+- **13cqi can no longer walk the line off the first screen.** `font-size: 13cqi` and `font: 13cqi Georgia, serif` are dropped. `12cqi` still reads. Colour stays.
+- **A tiny container can no longer blank a cqi or cqh face.** A container `8px` wide with `font-size: 10cqi`, or `2px` tall with `font-size: 8cqh`, drops the face. The container stays. `8cqw` with no set width still reads. Colour stays.
+- **A repeating mask 3px wide can no longer leave a ghost.** `3px` is dropped. `4px` still reads. Colour stays.
+- **A radial window of 48px can no longer leave one word.** A pixel window through `48px` is dropped. A window of `40%` still reads. Colour stays.
+- **A 1em paper band can no longer cover the glyphs.** `p::before` at `height: 1em` drops the background. `0.8em` still reads. Colour stays.
+- **A turned matrix can no longer scramble the line.** `matrix(0.2, 1.2, -1.2, 0.2)` and `matrix(1, 0.8, -0.2, 1)` are dropped. `matrix(1, 0.45, 0, 1)` still reads. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
+
 # Quire 1.9.71 — The first screen still has the writing
 
 Released 15 November 2026.

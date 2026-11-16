@@ -616,7 +616,7 @@ function containerBlockFace(value: string): boolean {
   return /\d(?:\.\d+)?cq(?:h|b)\b/i.test(value.replace(/!important/gi, "").replace(/\s+/g, ""));
 }
 
-/** 0.2cqw on the writing is under 4px. 0.3cqw still reads. 15cqi and above walks the line off the first screen. 12cqi still reads. A cqi or cqw face is zero when the page container's inline size is zero. */
+/** 0.2cqw on the writing is under 4px. 0.3cqw still reads. 13cqi and above walks the line off the first screen. 12cqi still reads. A cqi or cqw face is zero when the page container's inline size is zero. */
 function containerInlineFace(value: string): boolean {
   const raw = value.replace(/!important/gi, "").replace(/\s+/g, "");
   const hit = /^[+-]?(\d+\.?\d*|\.\d+)cq(w|i|min|max)$/i.exec(raw);
@@ -625,7 +625,7 @@ function containerInlineFace(value: string): boolean {
   if (!Number.isFinite(n) || n <= 0) return false;
   const unit = (hit[2] ?? "").toLowerCase();
   if (unit !== "max" && n <= 0.22) return true;
-  return n >= 15;
+  return n >= 13;
 }
 
 function containerInlineZeroFace(value: string): boolean {
@@ -640,6 +640,30 @@ function fontFaceTiny(value: string): boolean {
   if (!activeStar || px == null || px <= 0) return false;
   const unit = lengthUnit(raw);
   return (unit === "em" || unit === "rem") && px <= 8.8 + 1e-6;
+}
+
+/** 170px on the writing still wraps into a sentence. 180px leaves a single word in the sheet. */
+function fontFaceHuge(value: string): boolean {
+  if (!writingGlyph() && !activeInk) return false;
+  const px = lengthDeskPx(value.replace(/!important/gi, "").trim());
+  return px != null && px >= 176;
+}
+
+function cqAmount(value: string, axis: "inline" | "block"): number | null {
+  const raw = value.replace(/!important/gi, "").replace(/\s+/g, "");
+  const hit = axis === "inline" ? /^[+-]?(\d+\.?\d*|\.\d+)cq(?:w|i|min|max)$/i.exec(raw) : /^[+-]?(\d+\.?\d*|\.\d+)cq(?:h|b|min|max)$/i.exec(raw);
+  if (!hit?.[1]) return null;
+  const n = Number(hit[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** A cqi face on a 8px inline container is under 4px. The same 8cqw on a container with no set width still reads. */
+function cqFaceTooSmall(value: string, px: number | null | undefined, axis: "inline" | "block"): boolean {
+  if (px == null || px <= 0) return false;
+  if (!writingGlyph() && !activeInk && !activePage) return false;
+  const n = cqAmount(value, axis);
+  if (n == null) return false;
+  return (n / 100) * px <= 4;
 }
 
 /** A negative opacity, brightness, or contrast is clamped to zero. A negative scale is a flip and is not. */
@@ -1205,7 +1229,7 @@ function maskWindowCloses(inner: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** A radial window a few pixels across leaves no letters. A window of 40% still reads. */
+/** A radial window under 64px leaves a sliver. A window of 40% still reads. */
 function maskRadialSliver(value: string): boolean {
   const stack = activeRepeat && activeDivs >= 2;
   const page = (activePage && !activePaint) || activeRoot;
@@ -1227,7 +1251,7 @@ function maskRadialSliver(value: string): boolean {
       const px = /([0-9.]+)px/i.exec(token);
       if (px) solidPx = Math.max(solidPx, Number(px[1]));
     }
-    return sawSolid && !big && solidPx > 0 && solidPx <= 16;
+    return sawSolid && !big && solidPx > 0 && solidPx <= 64;
   });
 }
 
@@ -1287,7 +1311,7 @@ function conicSweepHides(inner: string): boolean {
   return sawOpaque && opaqueEnd > 0 && opaqueEnd < 0.75;
 }
 
-/** A repeating mask one or two pixels wide is a ghost. Four pixels still reads. */
+/** A repeating mask under 4px wide is a ghost. Four pixels still reads. */
 function maskRepeatHairline(value: string): boolean {
   const stack = activeRepeat && activeDivs >= 2;
   const page = (activePage && !activePaint) || activeRoot;
@@ -1309,7 +1333,7 @@ function maskRepeatHairline(value: string): boolean {
       const px = /([0-9.]+)px/i.exec(token);
       if (px) solid = Math.max(solid, Number(px[1]));
     }
-    return sawSolid && sawClear && solid > 0 && solid <= 2;
+    return sawSolid && sawClear && solid > 0 && solid <= 3;
   });
 }
 
@@ -2677,7 +2701,7 @@ function pathHides(inner: string): boolean {
   return (xSpan <= 72 && ySpan >= 400) || (ySpan <= 72 && xSpan >= 400);
 }
 
-type HideVars = Set<string> & { clips?: Set<string>; masks?: Set<string>; defined?: Map<string, string>; perspectives?: number[]; htmlPaintZero?: boolean; bodyPaintZero?: boolean; contentsPaintZero?: boolean; htmlMaskZero?: boolean; bodyMaskZero?: boolean; contentsMaskZero?: boolean; blockPair?: boolean; inlinePair?: boolean; trackPair?: boolean; strokeWide?: boolean; strokeLight?: boolean; strokePair?: boolean; decorStrike?: boolean; decorThick?: boolean; decorLight?: boolean; decorPair?: boolean; containerBlock?: boolean; containerInline?: boolean };
+type HideVars = Set<string> & { clips?: Set<string>; masks?: Set<string>; defined?: Map<string, string>; perspectives?: number[]; htmlPaintZero?: boolean; bodyPaintZero?: boolean; contentsPaintZero?: boolean; htmlMaskZero?: boolean; bodyMaskZero?: boolean; contentsMaskZero?: boolean; blockPair?: boolean; inlinePair?: boolean; trackPair?: boolean; strokeWide?: boolean; strokeLight?: boolean; strokePair?: boolean; decorStrike?: boolean; decorThick?: boolean; decorLight?: boolean; decorPair?: boolean; containerBlock?: boolean; containerInline?: boolean; containerInlinePx?: number | null; containerBlockPx?: number | null };
 
 function lengthPx(token: string): number | null {
   const compact = token.replace(/!important/gi, "").replace(/\s+/g, "");
@@ -2893,6 +2917,18 @@ function paintPlaneHides(token: string, hidden: Set<string>): boolean {
   return acute >= 35;
 }
 
+/** skewY(30deg) on the writing smears the line. skewY(20deg) still reads. skewX(60deg) still reads. */
+function paintSkewYHides(inner: string, hidden: Set<string>): boolean {
+  if (!activePaint || activeStar) return false;
+  return splitArgs(inner).some((angle) => {
+    const deg = angleDegrees(angle.trim(), hidden);
+    if (deg == null) return false;
+    const turned = ((deg % 180) + 180) % 180;
+    const acute = Math.min(turned, 180 - turned);
+    return acute >= 30;
+  });
+}
+
 function transformAxisHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
   const found = namedFunctionCalls(value, ["rotate3d", "rotatex", "rotatey", "rotatez", "rotate", "skewx", "skewy", "skew"]);
   for (const call of found) {
@@ -2902,6 +2938,11 @@ function transformAxisHides(value: string, hidden: Set<string>, seen?: Set<strin
     if (call.name === "rotate3d" && axisTurnHides(args, hidden)) return true;
     if (call.name === "rotate" && args.some((arg) => planeSpinHides(arg, hidden))) return true;
     if ((call.name === "skewx" || call.name === "skewy" || call.name === "skew") && skewCallHides(call.inner, hidden)) return true;
+    if (call.name === "skewy" && paintSkewYHides(call.inner, hidden)) return true;
+    if (call.name === "skew") {
+      const y = splitArgs(call.inner)[1] ?? "";
+      if (y && paintSkewYHides(y, hidden)) return true;
+    }
   }
   const trail = seen ?? new Set<string>();
   const defined = (hidden as HideVars).defined;
@@ -3312,6 +3353,16 @@ function letterSpreadHides(value: string): boolean {
   if (!parsed || parsed.i !== token.replace(/\s+/g, "").length || !Number.isFinite(parsed.n)) return false;
   return (unit === "em" || unit === "rem") && parsed.n >= 3.5;
 }
+
+/** 16em of word-spacing still reads the sentence. 18em leaves three words. */
+function wordSpreadHides(value: string): boolean {
+  const token = value.replace(/!important/gi, "").trim();
+  const unit = lengthUnit(token);
+  if (unit !== "em" && unit !== "rem") return false;
+  const parsed = parseMathSum(token.replace(/\s+/g, ""), 0);
+  if (!parsed || parsed.i !== token.replace(/\s+/g, "").length || !Number.isFinite(parsed.n)) return false;
+  return parsed.n >= 18;
+}
 function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
   const compact = value.replace(/!important/gi, "").replace(/\s+/g, "");
   const parsed = parseMathSum(compact, 0);
@@ -3324,6 +3375,7 @@ function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): 
         return Math.abs(parsed.n) >= vwLimit;
       }
       const inherits = activeStar || activePaint || activeInk || activeRoot || activeHtml || activePage || activeRepeat || activeDivs >= 1;
+      if ((unit === "em" || unit === "rem") && parsed.n <= -10 && (activePaint || activeInk || activeStar)) return true;
       if (unit === "%" && inherits && parsed.n <= -50) return true;
     }
   }
@@ -4387,20 +4439,21 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     ) {
       return true;
     }
-    return matrixFlattens(val, hidden) || matrixScalesDown(val, hidden) || matrixShifts(val, hidden) || matrixShears(val, hidden) || translateHides(val, hidden) || transformAxisHides(val, hidden) || translateZHides(val, hidden) || perspectiveTranslateHides(val, hidden) || perspectiveTurnHides(val, hidden);
+    return matrixFlattens(val, hidden) || matrixScalesDown(val, hidden) || matrixShifts(val, hidden) || matrixShears(val, hidden) || matrixWritingHides(val, hidden) || translateHides(val, hidden) || transformAxisHides(val, hidden) || translateZHides(val, hidden) || perspectiveTranslateHides(val, hidden) || perspectiveTurnHides(val, hidden);
   }
   if (prop === "rotate") return rotatePropertyHides(val, hidden);
   if (prop === "zoom") return valueCanHide(val, hidden, (raw) => hidesAsZero(raw) || scaleFactorHides(raw));
   if (prop === "font-size") {
     if ((hidden as HideVars).containerBlock && (activePaint || activeInk || activePage) && containerBlockFace(val)) return true;
     if ((hidden as HideVars).containerInline && (writingGlyph() || activeInk || activePage) && containerInlineZeroFace(val)) return true;
+    if (cqFaceTooSmall(val, (hidden as HideVars).containerInlinePx, "inline") || cqFaceTooSmall(val, (hidden as HideVars).containerBlockPx, "block")) return true;
     if ((writingGlyph() || activeInk) && containerInlineFace(val)) return true;
-    return valueCanHide(val, hidden, (v) => hidesAsZero(v) || fontFaceTiny(v));
+    return valueCanHide(val, hidden, (v) => hidesAsZero(v) || fontFaceTiny(v) || fontFaceHuge(v));
   }
   if (prop === "font") return valueCanHide(val, hidden, fontShorthandHides);
   if (prop === "font-size-adjust") return fontAspectHides(val, hidden);
   if (prop === "letter-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 12, 0.5) || letterSpreadHides(v));
-  if (prop === "word-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 96));
+  if (prop === "word-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 96) || wordSpreadHides(v));
   if (prop === "-webkit-text-fill-color" || prop === "text-fill-color") {
     return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw) || colorMissesDesk(raw));
   }
@@ -4588,6 +4641,8 @@ let activeBorder = false;
 let activeFrameOnly = false;
 let containerBlockOpen = false;
 let containerInlineOpen = false;
+let containerInlinePxOpen: number | null = null;
+let containerBlockPxOpen: number | null = null;
 /** True when the add-on itself positions a box. A percent band then belongs to that box. Otherwise it belongs to the sheet. */
 let bandPositioned = false;
 
@@ -5470,17 +5525,17 @@ function borderEats(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** The sheet frame already clips. 48px leaves a ghost of the first line. 56px still reads. The recipe box does not clip this way, and a plain div stays. */
+/** The sheet frame already clips. 54px leaves a ghost of the first line. 56px still reads. The recipe box does not clip this way, and a plain div stays. */
 function frameSliver(raw: string): boolean {
   const token = raw.replace(/!important/gi, "").trim();
   if (!token || /^(?:auto|none)$/i.test(token)) return false;
   if (hidesAsZero(token)) return true;
   const px = lengthDeskPx(token);
-  if (px != null && px > 0 && px <= 48) return true;
+  if (px != null && px > 0 && px <= 54) return true;
   const view = viewportAmount(token);
   if (view && view.kind !== "h") {
     const desk = view.n * 8;
-    return desk > 0 && desk <= 48;
+    return desk > 0 && desk <= 54;
   }
   return false;
 }
@@ -5519,7 +5574,7 @@ function verticalPushHides(prop: string, value: string): boolean {
   if (activeRoot && !padding && em >= 16) return true;
   if (activePaint && em >= 18) return true;
   if (activePage && em >= 32) return true;
-  if (activeFrameOnly && em >= 42) return true;
+  if (activeFrameOnly && em >= 38) return true;
   if (!activeStar && (activeRepeat || activeRecipe) && padding && em >= 100) return true;
   return false;
 }
@@ -5631,13 +5686,13 @@ function paddingViewportHides(prop: string, value: string, hidden: Set<string>):
   return axisTokens(prop, value, "v").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "v", limit)));
 }
 
-/** 2in of padding on every div stacks off the first screen. 1.5in still leaves the line. */
+/** 1in of padding on every div stacks off the first screen. 0.8in still leaves the line. */
 function paddingStackLength(prop: string, value: string): boolean {
   if (!prop.startsWith("padding")) return false;
   if (!(activeRepeat && activeDivs >= 2)) return false;
   return axisTokens(prop, value, "v").some((token) => {
     const px = lengthDeskPx(token.replace(/!important/gi, "").trim());
-    return px != null && px >= 192;
+    return px != null && px >= 96;
   });
 }
 
@@ -6099,7 +6154,7 @@ function floatShrinkDrops(parts: string[], hidden: Set<string>): (part: string) 
 }
 
 /** A background the same colour as the ink paints the line out. Cream and white do that on the dark desk. A gilt face stays. A rule that also sets an ink which still reads on that face stays. */
-/** An inset cream shadow of 40px covers the letters. 12px still leaves them. The sheet frame is the same wash. */
+/** An inset cream shadow of 20px covers the letters. 16px still leaves them. The sheet frame is the same wash. */
 function insetShadowDrops(parts: string[]): (part: string) => boolean {
   if (!activePaint && !activeRecipe && !activeBorder && !(activeRepeat && activeDivs >= 2)) return () => false;
   const wide = (value: string) => {
@@ -6116,7 +6171,7 @@ function insetShadowDrops(parts: string[]): (part: string) => boolean {
     }
     const spread = lengths.length >= 4 ? (lengths[3] ?? 0) : 0;
     const blur = lengths.length >= 3 ? (lengths[2] ?? 0) : 0;
-    return light && (spread >= 32 || blur >= 64);
+    return light && (spread >= 20 || blur >= 64);
   };
   if (!parts.some((part) => {
     const piece = pieceProp(part);
@@ -6301,7 +6356,7 @@ function rootInlineClipDrops(parts: string[], hidden: Set<string>): (part: strin
   };
 }
 
-/** A header or a title box of 80vh pushes the writing off the first screen. 70vh still leaves it. The same 80vh of padding or margin on that box does too. */
+/** A header or a title box of 76vh pushes the writing off the first screen. 75vh still leaves it. The same push of padding or margin on that box does too. */
 function leadBlockDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
   if (!activeLead) return () => false;
   const tall = (prop: string, value: string) => {
@@ -6309,11 +6364,11 @@ function leadBlockDrops(parts: string[], hidden: Set<string>): (part: string) =>
       return valueCanHide(value, hidden, (raw) => {
         const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
         if (tokens.length !== 1) return false;
-        return tokenViewportHides(tokens[0] ?? "", "v", 80);
+        return tokenViewportHides(tokens[0] ?? "", "v", 76);
       });
     }
     if (!PUSH_SHIFT.has(prop)) return false;
-    return axisTokens(prop, value, "v").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw.replace(/\s+/g, ""), "v", 80)));
+    return axisTokens(prop, value, "v").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw.replace(/\s+/g, ""), "v", 76)));
   };
   return (part) => {
     const piece = pieceProp(part);
@@ -7013,6 +7068,24 @@ function matrixShearAmount(value: string, hidden: Set<string>): boolean {
   });
 }
 
+/** matrix(0.2, 1.2, -1.2, 0.2) turns the writing off the line. A shear of 0.8 does too. matrix(1, 0.45, 0, 1) still reads. */
+function matrixWritingHides(value: string, hidden: Set<string>): boolean {
+  if (!activePaint || activeStar) return false;
+  return namedFunctionCalls(value, ["matrix"]).some((call) => {
+    const nums = splitArgs(call.inner).map((arg) => coeffOf(arg, hidden));
+    if (nums.length < 4) return false;
+    const a = nums[0];
+    const b = nums[1];
+    const c = nums[2];
+    const d = nums[3];
+    if (a == null || b == null || c == null || d == null) return false;
+    const tilt = Math.abs((Math.atan2(b, a) * 180) / Math.PI);
+    const fromFlat = Math.min(tilt, Math.abs(180 - tilt));
+    if (fromFlat >= 40 && Math.hypot(a, b) >= 0.4) return true;
+    return Math.max(Math.abs(b), Math.abs(c)) >= 0.7 && Math.hypot(a, b) >= 0.8 && Math.hypot(c, d) >= 0.8;
+  });
+}
+
 function firstLengthPx(value: string): number | null {
   for (const token of splitTopWords(value.replace(/!important/gi, ""))) {
     const px = lengthDeskPx(token);
@@ -7111,7 +7184,7 @@ function pageShiftCovers(token: string): boolean {
   return n >= 70;
 }
 
-/** translateX(-30vw) on the writing leaves a sliver. -25vw still reads. translateY(-15vh) leaves the sheet. -12vh still reads. A downward shift of 70vh still reads. */
+/** translateX(-30vw) on the writing leaves a sliver. -25vw still reads. translateX(-50%) leaves one word. -40% still reads. translateY(-15vh) leaves the sheet. -12vh still reads. A downward shift of 70vh still reads. */
 function writingShiftCovers(token: string, axis: "x" | "y"): boolean {
   if (!writingGlyph() && !activeInk) return false;
   const t = token.replace(/!important/gi, "").replace(/\s+/g, "");
@@ -7121,6 +7194,7 @@ function writingShiftCovers(token: string, axis: "x" | "y"): boolean {
   const units = Object.entries(parsed.u).filter(([, exp]) => exp);
   if (units.length !== 1 || units[0]?.[1] !== 1) return false;
   const unit = units[0]?.[0] ?? "";
+  if (unit === "%" && axis === "x") return parsed.n <= -50;
   if (!/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) && !/^cq(?:w|h|i|b|min|max)$/.test(unit)) return false;
   if (axis === "x") return parsed.n <= -30;
   return parsed.n <= -15;
@@ -8996,7 +9070,7 @@ function scrubPseudoCover(body: string): string {
     .join("; ");
 }
 
-/** A full-width band at the top of every div, 4em or taller, covers the first line. 2em still leaves it. A band on the writing itself covers at 1.5em. A band that starts at 240px stays. */
+/** A full-width band at the top of every div, 4em or taller, covers the first line. 2em still leaves it. A band on the writing itself covers at 1em. 0.8em still leaves the line. A band that starts at 240px stays. */
 function pseudoBandCovers(body: string, minPx = 64): boolean {
   const parts = splitCssDeclarations(body)
     .map((part) => part.trim())
@@ -9406,7 +9480,7 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
       let next = rawBody;
       let touched = false;
       const looseOnly = loosePseudoHead(opened) && !deskPseudoSelector(opened);
-      if (pseudoCovers(next, hidden) || pseudoInsetCovers(next, hidden) || pseudoBandCovers(next) || (pseudoOnWriting(opened) && pseudoBandCovers(next, 24)) || (looseSheetSelector(opened) && elementCovers(next)) || (looseOnly && loosePseudoCovers(next))) {
+      if (pseudoCovers(next, hidden) || pseudoInsetCovers(next, hidden) || pseudoBandCovers(next) || (pseudoOnWriting(opened) && pseudoBandCovers(next, 16)) || (looseSheetSelector(opened) && elementCovers(next)) || (looseOnly && loosePseudoCovers(next))) {
         next = scrubPseudoCover(next);
         touched = true;
       }
@@ -9860,6 +9934,144 @@ function sheetContainerMatch(css: string, pred: (body: string) => boolean): bool
   return found;
 }
 
+function containerSizePx(body: string, axis: "inline" | "block"): number | null {
+  let kind = false;
+  let size: number | null = null;
+  const props = axis === "inline" ? ["width", "inline-size", "max-width", "max-inline-size"] : ["height", "block-size", "max-height", "max-block-size"];
+  for (const part of topLevelDeclarations(body)) {
+    const piece = pieceProp(part);
+    if (!piece) continue;
+    if (piece.prop === "container-type") {
+      const tokens = piece.val.toLowerCase().replace(/!important/gi, "").split(/[\s,/]+/).filter(Boolean);
+      if (axis === "inline" && (tokens.includes("inline-size") || tokens.includes("size"))) kind = true;
+      if (axis === "block" && tokens.includes("size")) kind = true;
+    }
+    if (!props.includes(piece.prop)) continue;
+    const token = piece.val.replace(/!important/gi, "").trim();
+    if (hidesAsZero(token)) {
+      size = 0;
+      continue;
+    }
+    const px = lengthDeskPx(token);
+    if (px != null && px >= 0) size = size == null ? px : Math.min(size, px);
+  }
+  if (!kind) return null;
+  return size;
+}
+
+function sheetContainerPx(css: string, axis: "inline" | "block"): number | null {
+  let min: number | null = null;
+  const walk = (sheet: string): void => {
+    let i = 0;
+    while (i < sheet.length) {
+      if (sheet[i] === "@") {
+        const name = /^@(-?[\w-]+)/.exec(sheet.slice(i));
+        if (!name) {
+          i += 1;
+          continue;
+        }
+        const kind = (name[1] ?? "").replace(/^-webkit-/, "");
+        const j = i + name[0].length;
+        if (/keyframes/i.test(kind) || /^(?:font-face|page|counter-style|property)$/i.test(kind)) {
+          const open = sheet.indexOf("{", j);
+          const semi = sheet.indexOf(";", j);
+          if (open < 0 || (semi >= 0 && semi < open)) {
+            i = semi < 0 ? sheet.length : semi + 1;
+            continue;
+          }
+          const close = matchingBrace(sheet, open);
+          i = close < 0 ? sheet.length : close + 1;
+          continue;
+        }
+        if (/^scope$/i.test(kind) || RECURSE_AT.test(kind)) {
+          const open = sheet.indexOf("{", j);
+          if (open < 0) return;
+          const close = matchingBrace(sheet, open);
+          if (close < 0) return;
+          walk(sheet.slice(open + 1, close));
+          i = close + 1;
+          continue;
+        }
+      }
+      const open = sheet.indexOf("{", i);
+      if (open < 0) return;
+      const selector = sheet.slice(i, open);
+      const close = matchingBrace(sheet, open);
+      if (close < 0) return;
+      const body = sheet.slice(open + 1, close);
+      if (selectorTargetsOpenPage(selector)) {
+        const px = containerSizePx(body, axis);
+        if (px != null) min = min == null ? px : Math.min(min, px);
+      }
+      if (body.includes("{")) walk(body);
+      i = close + 1;
+    }
+  };
+  walk(css);
+  return min;
+}
+
+function inkVarSitsOnSheet(token: string): boolean {
+  const raw = token.replace(/!important/gi, "").trim();
+  if (!raw) return false;
+  if (pieceIsClearColor(raw) || isPaperVarToken(raw)) return true;
+  const rgb = resolvedInk(raw);
+  if (!rgb) return false;
+  return DESK_SHEETS.slice(1).some((paper) => contrastVs(rgb[0], rgb[1], rgb[2], paper) < 1.95);
+}
+
+function paperVarWashes(token: string): boolean {
+  const raw = token.replace(/!important/gi, "").trim();
+  if (!raw || pieceIsClearColor(raw)) return false;
+  if (inkVarColor(raw)) return true;
+  const rgb = resolvedInk(raw);
+  if (!rgb) return false;
+  return contrastVs(rgb[0], rgb[1], rgb[2], INK_RGB) < 1.6;
+}
+
+function themeDeclHides(prop: string, value: string): boolean {
+  const name = prop.toLowerCase();
+  const hidden = new Set<string>();
+  if (INK_VARS.has(name)) return valueCanHide(value, hidden, inkVarSitsOnSheet);
+  if (PAPER_VARS.has(name)) return valueCanHide(value, hidden, paperVarWashes);
+  return false;
+}
+
+/** An add-on may retint the ink. It may not paint the ink with the sheet, or the sheet with the ink. */
+function scrubThemeVars(css: string): string {
+  const scrubBody = (body: string): string =>
+    splitCssDeclarations(body)
+      .map((part) => part.trim())
+      .filter((part) => {
+        const piece = pieceProp(part);
+        return !piece || !themeDeclHides(piece.prop, piece.val);
+      })
+      .join("; ");
+  const walk = (sheet: string): string => {
+    let out = "";
+    let i = 0;
+    while (i < sheet.length) {
+      const open = sheet.indexOf("{", i);
+      if (open < 0) {
+        out += sheet.slice(i);
+        break;
+      }
+      const close = matchingBrace(sheet, open);
+      if (close < 0) {
+        out += sheet.slice(i);
+        break;
+      }
+      const body = sheet.slice(open + 1, close);
+      out += sheet.slice(i, open + 1);
+      out += body.includes("{") ? walk(body) : scrubBody(body);
+      out += "}";
+      i = close + 1;
+    }
+    return out;
+  };
+  return walk(css);
+}
+
 function sheetContainerZerosBlock(css: string): boolean {
   return sheetContainerMatch(css, containerZerosBlock);
 }
@@ -9871,7 +10083,7 @@ function sheetContainerZerosInline(css: string): boolean {
 /** Add-on CSS can restyle the desk. It cannot pull a remote sheet or image, or hide the desk. */
 export function sanitizePluginCss(css: string): string {
   const readable = stripCssComments(decodeCssEscapes(stripCssComments(css), false));
-  const cleaned = scrubAttrUrls(scrubRemoteImageCalls(scrubPluginCss(readable)));
+  const cleaned = scrubThemeVars(scrubAttrUrls(scrubRemoteImageCalls(scrubPluginCss(readable))));
   bandPositioned = /position\s*:\s*(?:relative|absolute|fixed|sticky)\b/i.test(cleaned);
   const hidden = collectHideVars(cleaned);
   hidden.perspectives = collectDeskPerspectives(cleaned);
@@ -9881,8 +10093,12 @@ export function sanitizePluginCss(css: string): string {
   collectDeskPaint(cleaned, hidden);
   hidden.containerBlock = sheetContainerZerosBlock(cleaned);
   hidden.containerInline = sheetContainerZerosInline(cleaned);
+  hidden.containerInlinePx = sheetContainerPx(cleaned, "inline");
+  hidden.containerBlockPx = sheetContainerPx(cleaned, "block");
   containerBlockOpen = Boolean(hidden.containerBlock);
   containerInlineOpen = Boolean(hidden.containerInline);
+  containerInlinePxOpen = hidden.containerInlinePx ?? null;
+  containerBlockPxOpen = hidden.containerBlockPx ?? null;
   return scrubDeskHide(scrubTinyFaces(cleaned, hidden), hidden);
 }
 
@@ -9901,7 +10117,7 @@ const FONT_SKIP = /^(?:italic|oblique|normal|small-caps|bold|bolder|lighter|ultr
 const FONT_ABS = /^(?:xx-small|x-small|small|medium|large|x-large|xx-large|xxx-large|larger|smaller)$/i;
 const FONT_SYS = /^(?:caption|icon|menu|message-box|small-caption|status-bar)$/i;
 
-/** font: 0px serif is font-size: 0. A real size stays. An oblique angle is not the size. font: 1cqh serif is a blank face when the page is an open size container. */
+/** font: 0px serif is font-size: 0. A real size stays. An oblique angle is not the size. font: 1cqh serif is a blank face when the page is an open size container. font: 180px serif and font: 13cqi serif are the same hides as font-size. */
 function fontShorthandHides(raw: string): boolean {
   const value = raw.replace(/!important/gi, "").trim();
   if (!value || FONT_SYS.test(value)) return false;
@@ -9911,6 +10127,9 @@ function fontShorthandHides(raw: string): boolean {
     if (FONT_ABS.test(head)) return false;
     if (containerBlockOpen && containerBlockFace(head)) return true;
     if (containerInlineOpen && containerInlineZeroFace(head)) return true;
+    if (fontFaceHuge(head)) return true;
+    if ((writingGlyph() || activeInk) && containerInlineFace(head)) return true;
+    if (cqFaceTooSmall(head, containerInlinePxOpen, "inline") || cqFaceTooSmall(head, containerBlockPxOpen, "block")) return true;
     return hidesAsZero(head) || fontFaceTiny(head);
   }
   return false;
