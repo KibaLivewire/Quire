@@ -642,10 +642,11 @@ function fontFaceTiny(value: string): boolean {
   return (unit === "em" || unit === "rem") && px <= 8.8 + 1e-6;
 }
 
-/** 170px on the writing still wraps into a sentence. 180px leaves a single word in the sheet. */
+/** 170px on the writing still wraps into a sentence. 180px leaves a single word in the sheet. 12vi is 154px on this desk and still reads. 14vi is 179px and leaves two words. */
 function fontFaceHuge(value: string): boolean {
   if (!writingGlyph() && !activeInk) return false;
-  const px = lengthDeskPx(value.replace(/!important/gi, "").trim());
+  const raw = value.replace(/!important/gi, "").trim();
+  const px = lengthDeskPx(raw) ?? viewportDeskPx(raw);
   return px != null && px >= 176;
 }
 
@@ -2750,6 +2751,20 @@ function lengthDeskPx(token: string): number | null {
   return null;
 }
 
+/** The scored desk is 1280 wide and 800 tall. Inline viewport units use the width. Block units use the height. */
+function viewportDeskPx(token: string): number | null {
+  const compact = token.replace(/!important/gi, "").replace(/\s+/g, "");
+  if (!compact) return null;
+  const parsed = parseMathSum(compact, 0);
+  if (!parsed || parsed.i !== compact.length || !Number.isFinite(parsed.n)) return null;
+  const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+  if (units.length !== 1 || units[0]?.[1] !== 1) return null;
+  const unit = units[0]?.[0] ?? "";
+  if (/^(?:[dls])?v(?:w|i)$/.test(unit) || unit === "vmax") return parsed.n * 12.8;
+  if (/^(?:[dls])?v(?:h|b|min)$/.test(unit)) return parsed.n * 8;
+  return null;
+}
+
 function angleDegrees(token: string, hidden: Set<string>, seen?: Set<string>): number | null {
   const compact = token.replace(/!important/gi, "").replace(/\s+/g, "");
   if (!compact) return null;
@@ -2907,7 +2922,7 @@ function planeSpinHides(token: string, hidden: Set<string>): boolean {
   return false;
 }
 
-/** rotate: 40deg on the writing turns the line into a shred. rotate: 24deg still reads. transform: rotate(18deg) still reads. */
+/** rotate: 40deg on the writing turns the line into a shred. rotate: 24deg still reads. transform: rotate(18deg) and rotate(28deg) still read. transform: rotate(35deg) leaves a scrap. transform: rotate(70deg) is a speck. */
 function paintPlaneHides(token: string, hidden: Set<string>): boolean {
   if (!activePaint || activeStar) return false;
   const deg = angleDegrees(token, hidden);
@@ -2936,7 +2951,7 @@ function transformAxisHides(value: string, hidden: Set<string>, seen?: Set<strin
     if (call.name === "rotatex" && args.some((arg) => angleIsEdge(arg, hidden) || starRotateFlattens(arg, hidden) || paintRotateFlattens(arg, hidden) || pageRotateFlattens(arg, hidden) || repeatRotateFlattens(arg, hidden, "x"))) return true;
     if (call.name === "rotatey" && args.some((arg) => angleIsEdge(arg, hidden) || starRotateFlattens(arg, hidden) || paintRotateFlattens(arg, hidden) || pageRotateFlattens(arg, hidden) || repeatRotateFlattens(arg, hidden, "y"))) return true;
     if (call.name === "rotate3d" && axisTurnHides(args, hidden)) return true;
-    if (call.name === "rotate" && args.some((arg) => planeSpinHides(arg, hidden))) return true;
+    if (call.name === "rotate" && args.length <= 1 && args.some((arg) => planeSpinHides(arg, hidden) || paintPlaneHides(arg, hidden))) return true;
     if ((call.name === "skewx" || call.name === "skewy" || call.name === "skew") && skewCallHides(call.inner, hidden)) return true;
     if (call.name === "skewy" && paintSkewYHides(call.inner, hidden)) return true;
     if (call.name === "skew") {
@@ -3342,10 +3357,10 @@ function spacingHides(value: string, hidden: Set<string>, limit: number, emLimit
   return shiftTokenCovers(token, hidden);
 }
 
-/** 2em of letter-spacing still reads. 3.5em, and 60px, turn the line into a grid of letters. Word-spacing is not this. */
+/** 2em and 4vw of letter-spacing still read. 3.5em, 60px, and 5vw turn the line into a grid of letters. Word-spacing is not this. */
 function letterSpreadHides(value: string): boolean {
   const token = value.replace(/!important/gi, "").trim();
-  const px = lengthPx(token);
+  const px = lengthPx(token) ?? viewportDeskPx(token);
   if (px != null && px >= 56) return true;
   const unit = lengthUnit(token);
   if (!unit) return false;
@@ -3522,6 +3537,22 @@ function labToRgb(L: number, a: number, b: number): [number, number, number] {
     linearToSrgbByte(-0.9787684 * x + 1.9161415 * y + 0.033454 * z),
     linearToSrgbByte(0.0719453 * x - 0.2289914 * y + 1.4052427 * z),
   ];
+}
+
+function rgbToLab(r: number, g: number, b: number): [number, number, number] {
+  const R = srgbByteToLinear(r);
+  const G = srgbByteToLinear(g);
+  const B = srgbByteToLinear(b);
+  const x = 0.4360747 * R + 0.3850649 * G + 0.1430804 * B;
+  const y = 0.2225045 * R + 0.7168786 * G + 0.0606169 * B;
+  const z = 0.0139322 * R + 0.0971045 * G + 0.7141733 * B;
+  const e = 216 / 24389;
+  const k = 24389 / 27;
+  const f = (t: number) => (t > e ? Math.cbrt(t) : (k * t + 16) / 116);
+  const fx = f(x / 0.96422);
+  const fy = f(y);
+  const fz = f(z / 0.82521);
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
 }
 
 function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
@@ -4330,6 +4361,25 @@ function evaluateRelativeRgb(name: string, origin: string, channels: string[]): 
     const b = channelMath(channels[2] ?? "", "b", b0, 0.4);
     if (L == null || a == null || b == null) return null;
     return oklabToRgb(L, a, b);
+  }
+  if (name === "lab") {
+    const [L0, a0, b0] = rgbToLab(base[0], base[1], base[2]);
+    const L = channelMath(channels[0] ?? "", "l", L0, 100);
+    const a = channelMath(channels[1] ?? "", "a", a0, 125);
+    const b = channelMath(channels[2] ?? "", "b", b0, 125);
+    if (L == null || a == null || b == null) return null;
+    return labToRgb(L, a, b);
+  }
+  if (name === "lch") {
+    const [L0, a0, b0] = rgbToLab(base[0], base[1], base[2]);
+    const C0 = Math.hypot(a0, b0);
+    const H0 = (Math.atan2(b0, a0) * 180) / Math.PI;
+    const L = channelMath(channels[0] ?? "", "l", L0, 100);
+    const C = channelMath(channels[1] ?? "", "c", C0, 150);
+    const H = channelMath(channels[2] ?? "", "h", ((H0 % 360) + 360) % 360, 360);
+    if (L == null || C == null || H == null) return null;
+    const rad = (H * Math.PI) / 180;
+    return labToRgb(L, C * Math.cos(rad), C * Math.sin(rad));
   }
   return null;
 }
@@ -6348,7 +6398,7 @@ function positionedViewportHides(prop: string, value: string, hidden: Set<string
   });
 }
 
-/** 60vw of padding on the writing is clipped by the sheet. 52vw still reads. 85vh of margin-top walks the line off. 80vh still reads. */
+/** 60vw of padding on the writing is clipped by the sheet. 52vw still reads. 67vh of padding on the block start walks the line off the first screen. 66vh still reads. 85vh of margin-top walks the line off. 80vh still reads. */
 function writingPushDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
   if (!writingGlyph() && !activeInk) return () => false;
   return (part) => {
@@ -6357,6 +6407,13 @@ function writingPushDrops(parts: string[], hidden: Set<string>): (part: string) 
     if (piece.prop === "margin-top" || piece.prop === "margin-block-start") {
       return axisTokens(piece.prop, piece.val, "v").some((token) => viewportPast(token, hidden, (n, kind) => (kind === "v" || kind === "either") && n >= 85));
     }
+    const start =
+      piece.prop === "padding-top" || piece.prop === "padding-block-start"
+        ? boxTokens(piece.val)
+        : piece.prop === "padding" || piece.prop === "padding-block"
+          ? boxTokens(piece.val).slice(0, 1)
+          : [];
+    if (start.some((token) => viewportPast(token, hidden, (n, kind) => (kind === "v" || kind === "either") && n >= 67))) return true;
     if (!piece.prop.startsWith("padding")) return false;
     return axisTokens(piece.prop, piece.val, "h").some((token) => viewportPast(token, hidden, (n, kind) => (kind === "h" || kind === "either") && n >= 60));
   };
@@ -6377,7 +6434,7 @@ function inlineSliverStackDrops(parts: string[], hidden: Set<string>): (part: st
   };
 }
 
-/** A root or a body squeezed under 48px, and clipped, leaves a sliver. 80px still leaves the line. */
+/** A root or a body squeezed under 48px, and clipped, leaves a sliver. A width under 720px is dropped on its own. */
 function rootInlineClipDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
   if (!activeRoot && !activeHtml) return () => false;
   if (activeStar) return () => false;
@@ -6516,8 +6573,68 @@ function pageHeightClipDrops(parts: string[], hidden: Set<string>): (part: strin
   };
 }
 
+/** A page, html, or body under 720px wide clips the first line. 710px leaves off "The". 720px still reads. 55vw does not. 56vw still reads. A div at 200px still reads. A class stays. */
+function pageFaceNarrow(token: string): boolean {
+  const raw = token.replace(/!important/gi, "").trim();
+  if (!raw || /^(?:auto|none|min-content|max-content|fit-content|stretch)$/i.test(raw)) return false;
+  const px = lengthDeskPx(raw);
+  if (px != null) return px > 0 && px < 720;
+  const pct = percentOf(raw);
+  if (pct != null) return pct > 0 && pct < 0.56;
+  const compact = raw.replace(/\s+/g, "");
+  const parsed = parseMathSum(compact, 0);
+  if (!parsed || parsed.i !== compact.length || !Number.isFinite(parsed.n) || parsed.n <= 0) return false;
+  const units = Object.entries(parsed.u).filter(([, exp]) => exp);
+  if (units.length !== 1 || units[0]?.[1] !== 1) return false;
+  const unit = units[0]?.[0] ?? "";
+  if (/^(?:[dls])?v(?:w|i)$/.test(unit) || unit === "vmax") return parsed.n < 56;
+  if (/^(?:[dls])?v(?:h|b|min)$/.test(unit)) return parsed.n * 8 < 720;
+  return false;
+}
+
+function pageWidthDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  if (activeStar || activePaint || activeRepeat) return () => false;
+  if (!activePage && !activeRoot && !activeHtml) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || !INLINE_SLIVER.has(piece.prop)) return false;
+    return valueCanHide(piece.val, hidden, (raw) => {
+      const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
+      if (tokens.length !== 1) return false;
+      return pageFaceNarrow(tokens[0] ?? "");
+    });
+  };
+}
+
+/** vertical-rl on the writing still reads. The same mode clipped to 1.3em is a reversed letter cloud. 2em still reads down the page. The mode is dropped. The clip stays. */
+function verticalClipDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
+  if (!writingGlyph() && !activeInk) return () => false;
+  const clip = parts.some((part) => {
+    const piece = pieceProp(part);
+    if (!piece) return false;
+    const which = overflowClips(piece.prop, piece.val);
+    return which === "both" || which === "block";
+  });
+  if (!clip) return () => false;
+  const short = parts.some((part) => {
+    const piece = pieceProp(part);
+    if (!piece || !BLOCK_SLIVER.has(piece.prop)) return false;
+    return valueCanHide(piece.val, hidden, (raw) => {
+      const tokens = splitTopWords(raw.replace(/!important/gi, "")).filter(Boolean);
+      if (tokens.length !== 1) return false;
+      const px = lengthDeskPx(tokens[0] ?? "") ?? viewportDeskPx(tokens[0] ?? "");
+      return px != null && px > 0 && px <= 28;
+    });
+  });
+  if (!short) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop === "writing-mode" && /(?:vertical|sideways)-/i.test(piece.val));
+  };
+}
+
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden)];
+  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden)];
   return (part) => drops.some((drop) => drop(part));
 }
 
@@ -7110,7 +7227,7 @@ function matrixShearAmount(value: string, hidden: Set<string>): boolean {
   });
 }
 
-/** matrix(0.2, 1.2, -1.2, 0.2) turns the writing off the line. A shear of 0.8 does too. matrix(1, 0.45, 0, 1) still reads. */
+/** matrix(1, 0.55, 0, 1) leaves a scrap of the line. matrix(1, 0.5, 0, 1) and matrix(1, 0.45, 0, 1) still read. A turned matrix was already dropped. */
 function matrixWritingHides(value: string, hidden: Set<string>): boolean {
   if (!activePaint || activeStar) return false;
   return namedFunctionCalls(value, ["matrix"]).some((call) => {
@@ -7124,7 +7241,7 @@ function matrixWritingHides(value: string, hidden: Set<string>): boolean {
     const tilt = Math.abs((Math.atan2(b, a) * 180) / Math.PI);
     const fromFlat = Math.min(tilt, Math.abs(180 - tilt));
     if (fromFlat >= 40 && Math.hypot(a, b) >= 0.4) return true;
-    return Math.max(Math.abs(b), Math.abs(c)) >= 0.7 && Math.hypot(a, b) >= 0.8 && Math.hypot(c, d) >= 0.8;
+    return Math.max(Math.abs(b), Math.abs(c)) >= 0.55 && Math.hypot(a, b) >= 0.8 && Math.hypot(c, d) >= 0.8;
   });
 }
 

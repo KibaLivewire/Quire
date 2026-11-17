@@ -1,3 +1,24 @@
+# Quire 1.9.74 — The first screen still has the writing
+
+Released 17 November 2026.
+
+1.9.73 still let a relative lab or lch lightness scaled onto the sheet, 67vh of padding on the writing, a 14vi face, a 35 degree turn, 5vw of letter-spacing, a clipped vertical line, a 0.55 shear, and a page under 720px wide paint out the first line. A rule that still shows the writing stays. `p { color: lab(from #ece6dc calc(l * 0.4) a b) }` stays. `p { padding-top: 66vh }` stays. `p { font-size: 12vi }` stays. `p { transform: rotate(28deg) }` stays. `p { letter-spacing: 4vw }` stays. `p { writing-mode: vertical-rl }` stays. `p { transform: matrix(1, 0.5, 0, 1) }` stays. `section { width: 720px }` stays. Colour stays.
+
+- **A relative lab or lch lightness can no longer wash the ink.** `lab(from #ece6dc calc(l * 0.15) a b)` and `calc(l * 0.3)` are dropped, and the same scale in lch. `calc(l * 0.4)` still reads. `lab(from red l a b)` stays. Colour stays.
+- **67vh of padding on the writing can no longer push the line off the first screen.** `padding-top` and `padding-block-start` at `67vh` are dropped. `66vh` still reads. `padding-bottom: 90vh` stays. Colour stays.
+- **A 14vi face can no longer leave two words.** `p { font-size: 14vi }` and `font: 14vi Georgia, serif` are dropped. `12vi` still reads. `18vb` and `9svh` still read. `170px` still reads. Colour stays.
+- **transform: rotate(35deg) can no longer leave a scrap.** `rotate(35deg)` and `rotate(70deg)` are dropped. `rotate(28deg)` and `rotate(18deg)` still read. `rotate: 24deg` stays. Colour stays.
+- **5vw of letter-spacing can no longer grid the line.** `5vw` and `8vw` are dropped. `4vw` and `3em` still read. Colour stays.
+- **A clipped vertical line can no longer scramble the letters.** `writing-mode: vertical-rl` with `height: 1.3em` and `overflow: hidden` drops the mode. The height stays. `2em` with the same clip still reads. A bare `vertical-rl` stays. Colour stays.
+- **A shear of 0.55 can no longer leave a scrap.** `matrix(1, 0.55, 0, 1)` is dropped. `matrix(1, 0.5, 0, 1)` and `matrix(1, 0.45, 0, 1)` still read. Colour stays.
+- **A page under 720px wide can no longer clip the first line.** `section`, `html`, and `body` at `710px` or `55vw` drop the width. `720px` and `56vw` still read. `div { width: 200px }` stays. `.note { width: 200px }` stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.73 — The first screen still has the writing
 
 Released 16 November 2026.
