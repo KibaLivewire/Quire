@@ -691,6 +691,70 @@ function scaleFactorHides(value: string): boolean {
   return amount != null && Math.abs(amount) < limit;
 }
 
+function scaleNumber(token: string): number | null {
+  const t = token.replace(/!important/gi, "").trim();
+  if (!t || /^(?:none|auto|initial|inherit|unset)$/i.test(t)) return null;
+  const pct = percentOf(t);
+  if (pct != null) return pct;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** scale(1.5) from the centre walks the writing off the sheet. scale(1.2) still reads. scaleY(0.5) is a ghost. scaleY(0.55) still reads. A stack of divs compounds at 1.15. scale(1.1) on that stack still reads. */
+function axesBlow(x: number, y: number): boolean {
+  const writing = (activePaint || activeInk) && !activeStar && !activeRepeat;
+  if (writing) {
+    if (y > 0 && y < 0.55) return true;
+    if (x >= 1.5 || y >= 1.5) return true;
+  }
+  if (activeRepeat && activeDivs >= 4 && (x >= 1.15 || y >= 1.15)) return true;
+  return false;
+}
+
+function scaleCallBlows(name: string, inner: string): boolean {
+  const raw = splitArgs(inner).map((part) => part.trim()).filter(Boolean);
+  const nums = raw.map((part) => scaleNumber(part));
+  if (!raw.length || nums.some((n) => n == null)) return false;
+  const values = nums as number[];
+  if (name === "scaley") return axesBlow(1, values[0] ?? 1);
+  if (name === "scalex") return axesBlow(values[0] ?? 1, 1);
+  const x = values[0] ?? 1;
+  const y = (name === "scale" || name === "scale3d") && values.length > 1 ? (values[1] ?? x) : x;
+  return axesBlow(x, y);
+}
+
+function scaleListBlows(value: string): boolean {
+  const parts = splitScaleParts(value.replace(/!important/gi, ""));
+  const nums = parts.map((part) => scaleNumber(part));
+  if (!nums.length || nums.some((n) => n == null)) return false;
+  const x = nums[0] ?? 1;
+  const y = nums.length > 1 ? (nums[1] ?? x) : x;
+  return axesBlow(x, y);
+}
+
+/** div { zoom: 1.08 } loses the first word. zoom: 1.05 still shows the sentence. html { zoom: 2 } and section { zoom: 2 } shove the start off. zoom: 1.8 still reads. */
+function zoomBlows(value: string): boolean {
+  const token = (splitTopWords(value.replace(/!important/gi, "")).find(Boolean) ?? "").trim();
+  const n = scaleNumber(token);
+  if (n == null || n <= 1) return false;
+  if (activeRepeat && activeDivs >= 4 && n > 1.05) return true;
+  if ((activeHtml || activeRoot || (activePage && !activePaint && !activeStar)) && n >= 2) return true;
+  return false;
+}
+
+function matrixBlows(value: string, hidden: Set<string>): boolean {
+  return namedFunctionCalls(value, ["matrix"]).some((call) => {
+    const nums = splitArgs(call.inner).map((arg) => coeffOf(arg, hidden));
+    if (nums.length < 4) return false;
+    const a = nums[0];
+    const b = nums[1];
+    const c = nums[2];
+    const d = nums[3];
+    if (a == null || b == null || c == null || d == null) return false;
+    return axesBlow(Math.hypot(a, b), Math.hypot(c, d));
+  });
+}
+
 function varNameParen(value: string, i: number): number {
   if (i > 0 && /[A-Za-z0-9_-]/.test(value[i - 1] ?? "")) return 0;
   if (value.slice(i, i + 3).toLowerCase() !== "var") return 0;
@@ -2570,6 +2634,7 @@ function clipHides(value: string, hidden: Set<string>): boolean {
       const bottomN = asPct(bottom);
       const across = leftN != null && rightN != null ? 100 - leftN - rightN : null;
       const down = topN != null && bottomN != null ? 100 - topN - bottomN : null;
+      if ((activePaint || activeInk) && !activeStar && down != null && down > 0 && down < 50) return true;
       const slit = (activeStar || activePage || activeRoot || (activeRepeat && activeDivs >= 1)) && across != null && across >= 0 && across <= 30 && (down == null || down >= 50);
       if (slit) return true;
       return insetPairCovers(top, bottom) || insetPairCovers(left, right);
@@ -2944,7 +3009,38 @@ function paintSkewYHides(inner: string, hidden: Set<string>): boolean {
   });
 }
 
+/** skewX(40deg) with skewY(15deg) smears the writing. skewX(60deg) alone still reads. skewY(20deg) alone still reads. */
+function paintSkewPairHides(value: string, hidden: Set<string>): boolean {
+  if (!activePaint || activeStar) return false;
+  let x = 0;
+  let y = 0;
+  const acuteOf = (token: string) => {
+    const deg = angleDegrees(token, hidden);
+    if (deg == null) return null;
+    const m = ((deg % 180) + 180) % 180;
+    return Math.min(m, 180 - m);
+  };
+  for (const call of namedFunctionCalls(value, ["skewx", "skewy", "skew"])) {
+    const args = splitArgs(call.inner).map((part) => part.trim()).filter(Boolean);
+    if (call.name === "skewx") {
+      const n = acuteOf(args[0] ?? "");
+      if (n != null) x = Math.max(x, n);
+    } else if (call.name === "skewy") {
+      const n = acuteOf(args[0] ?? "");
+      if (n != null) y = Math.max(y, n);
+    } else {
+      const nx = acuteOf(args[0] ?? "");
+      const ny = args.length > 1 ? acuteOf(args[1] ?? "") : 0;
+      if (nx != null) x = Math.max(x, nx);
+      if (ny != null) y = Math.max(y, ny);
+    }
+  }
+  if (x <= 0 || y <= 0) return false;
+  return (x >= 40 && y >= 15) || (y >= 40 && x >= 15);
+}
+
 function transformAxisHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
+  if (paintSkewPairHides(value, hidden)) return true;
   const found = namedFunctionCalls(value, ["rotate3d", "rotatex", "rotatey", "rotatez", "rotate", "skewx", "skewy", "skew"]);
   for (const call of found) {
     const args = splitArgs(call.inner);
@@ -3411,7 +3507,7 @@ function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): 
   return false;
 }
 
-/** A zero aspect, or one too small to leave a letter, hides the line. 0.1 leaves no word. 0.15 and from-font still paint. A calculation of that aspect does too. */
+/** A zero aspect, or one too small to leave a letter, hides the line. 0.3 leaves no readable word. 0.4 and from-font still paint. A calculation of that aspect does too. */
 function fontAspectHides(value: string, hidden: Set<string>): boolean {
   return valueCanHide(value, hidden, (raw) => {
     let token = raw.replace(/!important/gi, "").trim().toLowerCase();
@@ -3420,13 +3516,13 @@ function fontAspectHides(value: string, hidden: Set<string>): boolean {
     if (!token || token === "none" || token === "from-font") return false;
     if (hidesAsZero(token)) return true;
     const plain = Number(token);
-    if (Number.isFinite(plain)) return plain > 0 && plain <= 0.1;
+    if (Number.isFinite(plain)) return plain > 0 && plain < 0.4;
     const compact = token.replace(/\s+/g, "");
     const parsed = parseMathSum(compact, 0);
     if (!parsed || parsed.i !== compact.length || !Number.isFinite(parsed.n)) return false;
     const units = Object.keys(parsed.u).filter((key) => parsed.u[key]);
     if (units.length) return false;
-    return parsed.n === 0 || (parsed.n > 0 && parsed.n <= 0.1);
+    return parsed.n === 0 || (parsed.n > 0 && parsed.n < 0.4);
   });
 }
 
@@ -4514,6 +4610,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "color" && (activeInk || activePaint || /!important/i.test(val))) return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw) || colorMissesDesk(raw) || inkTooFaint(raw));
   if (prop === "color" && (activeRepeat || activeRecipe)) return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorSitsOnSheet(raw));
   if (prop === "scale") {
+    if (scaleListBlows(val)) return true;
     return splitScaleParts(val.replace(/!important/gi, "")).some((arg) => valueCanHide(arg, hidden, (raw) => hidesAsZero(raw) || scaleFactorHides(raw)));
   }
   if (prop === "transform" || prop === "-webkit-transform") {
@@ -4524,10 +4621,11 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
     ) {
       return true;
     }
-    return matrixFlattens(val, hidden) || matrixScalesDown(val, hidden) || matrixShifts(val, hidden) || matrixShears(val, hidden) || matrixWritingHides(val, hidden) || translateHides(val, hidden) || transformAxisHides(val, hidden) || translateZHides(val, hidden) || perspectiveTranslateHides(val, hidden) || perspectiveTurnHides(val, hidden);
+    if (namedFunctionCalls(val, ["scale3d", "scalex", "scaley", "scale"]).some((call) => scaleCallBlows(call.name, call.inner))) return true;
+    return matrixFlattens(val, hidden) || matrixScalesDown(val, hidden) || matrixBlows(val, hidden) || matrixShifts(val, hidden) || matrixShears(val, hidden) || matrixWritingHides(val, hidden) || translateHides(val, hidden) || transformAxisHides(val, hidden) || translateZHides(val, hidden) || perspectiveTranslateHides(val, hidden) || perspectiveTurnHides(val, hidden);
   }
   if (prop === "rotate") return rotatePropertyHides(val, hidden);
-  if (prop === "zoom") return valueCanHide(val, hidden, (raw) => hidesAsZero(raw) || scaleFactorHides(raw));
+  if (prop === "zoom") return valueCanHide(val, hidden, (raw) => hidesAsZero(raw) || scaleFactorHides(raw) || zoomBlows(raw));
   if (prop === "font-size") {
     if ((hidden as HideVars).containerBlock && (activePaint || activeInk || activePage) && containerBlockFace(val)) return true;
     if ((hidden as HideVars).containerInline && (writingGlyph() || activeInk || activePage) && containerInlineZeroFace(val)) return true;
@@ -6633,8 +6731,33 @@ function verticalClipDrops(parts: string[], hidden: Set<string>): (part: string)
   };
 }
 
+/** padding-left of 28em, clipped to a 1.6em line, leaves the tail. 20em in that pair still shows the sentence. 36em with no clip still wraps into view. The padding is dropped. The clip and the colour stay. */
+function padClipDrops(parts: string[]): (part: string) => boolean {
+  if (!((activePaint || activeInk) && !activeStar)) return () => false;
+  const clip = parts.some((part) => isBoxClip(part));
+  const short = parts.some((part) => {
+    const piece = pieceProp(part);
+    if (!piece || !BLOCK_SLIVER.has(piece.prop)) return false;
+    const px = lengthDeskPx(piece.val.replace(/!important/gi, "").trim());
+    return px != null && px > 0 && px <= 32;
+  });
+  const wide = parts.some((part) => {
+    const piece = pieceProp(part);
+    if (!piece || !piece.prop.startsWith("padding")) return false;
+    return axisTokens(piece.prop, piece.val, "h").some((token) => {
+      const px = lengthDeskPx(token.replace(/!important/gi, "").trim());
+      return px != null && px >= 448;
+    });
+  });
+  if (!clip || !short || !wide) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop.startsWith("padding"));
+  };
+}
+
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden)];
+  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts)];
   return (part) => drops.some((drop) => drop(part));
 }
 

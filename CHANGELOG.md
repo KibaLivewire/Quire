@@ -1,3 +1,24 @@
+# Quire 1.9.75 — The first screen still has the writing
+
+Released 17 November 2026.
+
+1.9.74 still let a centre-origin scale of 1.5, a flattened scaleY(0.5), a nested zoom of 1.08, a page zoom of 2, a font aspect of 0.3, an inset that keeps under half the line, a clipped 28em pad, and a paired skew paint out the first line. A rule that still shows the writing stays. `p { transform: scale(1.2) }` stays. `p { transform: scaleY(0.55) }` stays. `div { zoom: 1.05 }` stays. `html { zoom: 1.8 }` stays. `p { font-size-adjust: 0.4 }` stays. `p { clip-path: inset(0 0 40% 0) }` stays. `p { padding-left: 20em }` with the same clip stays. `p { transform: skewX(60deg) }` stays. Colour stays.
+
+- **scale(1.5) from the centre can no longer walk the line off.** `scale(1.5)`, `scaleX(2)`, and `matrix(1.5, 0, 0, 1)` are dropped. `scale(1.2)` and `matrix(1.2, 0, 0, 1)` still read. `matrix(1, 0.45, 0, 1)` stays. Colour stays.
+- **scaleY(0.5) can no longer flatten the line.** `scaleY(0.5)` is dropped. `scaleY(0.55)` still reads. Colour stays.
+- **A nested zoom of 1.08 can no longer compound the boxes.** `div { zoom: 1.08 }` and `div { transform: scale(1.15) }` are dropped. `zoom: 1.05` and `scale(1.1)` still show the sentence. Colour stays.
+- **Zoom 2 on the page can no longer shove the first words off.** `html { zoom: 2 }` and `section { zoom: 2 }` are dropped. `zoom: 1.8` still shows the sentence. Colour stays.
+- **A font aspect of 0.3 can no longer ghost the letters.** `font-size-adjust: 0.15`, `0.2`, `0.25`, and `0.3` are dropped on the writing and on `html`. `0.4` still shows the sentence. `from-font` stays. A class hook stays. Colour stays.
+- **An inset that keeps under half the line can no longer leave a sliver.** `clip-path: inset(0 0 55% 0)` is dropped. `inset(0 0 40% 0)` still shows the sentence. Colour stays.
+- **A clipped 28em pad can no longer leave the tail.** `padding-left: 28em` with `overflow: hidden` and `height: 1.6em` drops the padding. `20em` in that pair still shows the sentence. `padding-left: 36em` with no clip stays. Colour stays.
+- **A paired skew can no longer smear the line.** `skewX(40deg) skewY(15deg)` and `skewX(55deg) skewY(25deg)` are dropped. `skewX(60deg)` and `skewY(20deg)` still read. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.74 — The first screen still has the writing
 
 Released 17 November 2026.
