@@ -1,3 +1,19 @@
+# Quire 1.9.77 — The first screen still has the writing
+
+Released 18 November 2026.
+
+1.9.76 still let a left cut of 3% eat the first word, a border-box pad that leaves 12px ghost the line, and a clipped line-height of 0.25 leave a sliver. A rule that still shows the writing stays. `p { clip-path: inset(0 0 0 2.5%) }` stays. `p { clip-path: inset(0 0 0 1em) }` stays. `p { box-sizing: border-box; height: 40px; padding-top: 26px }` stays. `p { line-height: 0.3 }` stays. Colour stays.
+
+- **A left cut of 3% can no longer eat the first word.** `inset(0 0 0 3%)`, `inset(0 0 0 1.25em)`, `polygon(4% 0, 100% 0, 100% 100%, 4% 100%)`, and `xywh(4% 0 96% 100%)` are dropped on the writing. `2.5%`, `1em`, and `xywh(2% 0 98% 100%)` still show the sentence. A cut from the right stays. A class hook stays. Colour stays.
+- **A border-box pad that leaves 12px can no longer ghost the line.** `padding-top: 28px` inside `height: 40px` with `box-sizing: border-box` and `overflow: hidden` drops the padding. `26px` in that pair still shows the sentence. The same pad without `border-box` stays. The height and the clip stay. Colour stays.
+- **A clipped line-height of 0.25 can no longer leave a sliver.** `line-height: 0.25` with `overflow: hidden` drops the line-height. `0.3` with the same clip still shows the sentence. `0.25` with no clip stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.76 — The first screen still has the writing
 
 Released 18 November 2026.

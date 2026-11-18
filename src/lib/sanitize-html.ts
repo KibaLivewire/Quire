@@ -2541,7 +2541,7 @@ function windowSliver(token: string): boolean {
   return px != null && px >= 0 && px <= 80;
 }
 
-function polygonPercents(inner: string): { minY: number; maxY: number; spanX: number } | null {
+function polygonPercents(inner: string): { minX: number; minY: number; maxY: number; spanX: number } | null {
   const pctOrZero = (token: string): number | null => {
     const t = token.replace(/!important/gi, "").trim();
     if (t === "0") return 0;
@@ -2562,7 +2562,7 @@ function polygonPercents(inner: string): { minY: number; maxY: number; spanX: nu
     ys.push(y);
   }
   if (ys.length < 3 || xs.length < 3) return null;
-  return { minY: Math.min(...ys), maxY: Math.max(...ys), spanX: Math.max(...xs) - Math.min(...xs) };
+  return { minX: Math.min(...xs), minY: Math.min(...ys), maxY: Math.max(...ys), spanX: Math.max(...xs) - Math.min(...xs) };
 }
 
 /** A polygon that keeps only the top of the stack covers the line. 20% on a stack of divs does. 22% still leaves it. On a star, 45% does. 50% still leaves it. On the writing, 40% is a sliver. 45% still shows the sentence. */
@@ -2580,6 +2580,24 @@ function polygonCutsTop(inner: string): boolean {
   const box = polygonPercents(inner);
   if (!box || box.spanX < 0.5 || box.maxY < 0.9) return false;
   return box.minY >= 0.08 - 1e-9;
+}
+
+/** A left cut of 3% eats the first word. 2.5% still shows it. 1.25em does. 1em still shows it. The same cut in a polygon or an xywh box does too. A cut from the right still shows the sentence. */
+function polygonLeftCut(inner: string): boolean {
+  if (!writingGlyph() && !activeInk) return false;
+  const box = polygonPercents(inner);
+  if (!box || box.spanX < 0.5 || box.maxY < 0.9 || box.minY > 0.02) return false;
+  return box.minX >= 0.03 - 1e-9;
+}
+
+function writingLeftToken(token: string): boolean {
+  if (!writingGlyph() && !activeInk) return false;
+  const t = token.replace(/!important/gi, "").trim();
+  if (!t || hidesAsZero(t)) return false;
+  const pct = percentOf(t);
+  if (pct != null) return pct >= 0.03 - 1e-9;
+  const px = lengthDeskPx(t) ?? viewportDeskPx(t);
+  return px != null && px >= 20;
 }
 
 function clipHides(value: string, hidden: Set<string>): boolean {
@@ -2610,10 +2628,11 @@ function clipHides(value: string, hidden: Set<string>): boolean {
         const narrow = Boolean(widthPct != null && widthPct > 0 && widthPct <= 0.22 && stacked);
         const sheet = Boolean(heightPct != null && heightPct > 0 && heightPct <= 0.32 && (activeRoot || (activePage && !activePaint)));
         const writingBand = Boolean(writingGlyph() && heightPct != null && heightPct > 0 && heightPct <= 0.4 && (yPct == null || yPct <= 0.02));
-        return zero || (windowSliver(width) && windowSliver(height)) || thinStrip(width) || thinStrip(height) || deep || starWindow || yOff || narrow || sheet || writingBand;
+        const writingLeft = writingLeftToken(parts[0] ?? "");
+        return zero || (windowSliver(width) && windowSliver(height)) || thinStrip(width) || thinStrip(height) || deep || starWindow || yOff || narrow || sheet || writingBand || writingLeft;
       }
       if (call.name === "rect") return rectHides(call.inner);
-      if (call.name === "polygon") return polygonAreaZero(call.inner) || coordSpanHides(call.inner) || polygonStrips(call.inner) || polygonTopBand(call.inner) || polygonCutsTop(call.inner);
+      if (call.name === "polygon") return polygonAreaZero(call.inner) || coordSpanHides(call.inner) || polygonStrips(call.inner) || polygonTopBand(call.inner) || polygonCutsTop(call.inner) || polygonLeftCut(call.inner);
       if (call.name === "path") return pathHides(call.inner);
       if (call.name === "shape") return shapeHides(call.inner) || coordSpanHides(call.inner) || shapeStrips(call.inner);
       if (call.name === "ellipse") return ellipseHides(call.inner, hidden);
@@ -2638,6 +2657,7 @@ function clipHides(value: string, hidden: Set<string>): boolean {
       const across = leftN != null && rightN != null ? 100 - leftN - rightN : null;
       const down = topN != null && bottomN != null ? 100 - topN - bottomN : null;
       if ((activePaint || activeInk) && !activeStar && down != null && down > 0 && down < 50) return true;
+      if (writingLeftToken(sides[3] ?? "")) return true;
       const slit = (activeStar || activePage || activeRoot || (activeRepeat && activeDivs >= 1)) && across != null && across >= 0 && across <= 30 && (down == null || down >= 50);
       if (slit) return true;
       return insetPairCovers(top, bottom) || insetPairCovers(left, right);
@@ -5325,11 +5345,11 @@ function isLineFlat(part: string, hidden: Set<string>): boolean {
     const token = raw.replace(/!important/gi, "").trim();
     if (hidesAsZero(token)) return true;
     const n = Number(token);
-    return Number.isFinite(n) && n >= 0 && n < 0.2;
+    return Number.isFinite(n) && n >= 0 && n <= 0.25;
   });
 }
 
-/** A back-face flip, a full indent on one line, or a flat line inside a clip, hides the desk only as a pair. Either one alone stays. */
+/** A back-face flip, a full indent on one line, or a flat line inside a clip, hides the desk only as a pair. Either one alone stays. line-height 0.25 inside the clip is a sliver. 0.3 still reads. */
 function pairedHide(parts: string[], hidden: Set<string>): (part: string) => boolean {
   const back = parts.some((part) => isBackHidden(part)) && parts.some((part) => isBackTurn(part, hidden));
   const indent = parts.some((part) => isNowrap(part)) && parts.some((part) => isBoxClip(part)) && parts.some((part) => isIndentCover(part, hidden));
@@ -6761,6 +6781,57 @@ function padClipDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
+/** padding-top of 28px inside a 40px border-box, clipped, leaves a ghost. 26px still shows the sentence. The same pad with content-box still shows it. The padding is dropped. The height and the clip stay. */
+function eatenLineDrops(parts: string[]): (part: string) => boolean {
+  if (!writingGlyph() && !activeInk) return () => false;
+  const border = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop === "box-sizing" && /border-box/i.test(piece.val));
+  });
+  if (!border || !parts.some((part) => isBoxClip(part))) return () => false;
+  let size: number | null = null;
+  let topPad: number | null = null;
+  let bottomPad: number | null = null;
+  const pxOf = (token: string) => lengthDeskPx(token.replace(/!important/gi, "").trim());
+  for (const part of parts) {
+    const piece = pieceProp(part);
+    if (!piece) continue;
+    if (piece.prop === "height" || piece.prop === "block-size" || piece.prop === "max-height" || piece.prop === "max-block-size") {
+      const token = boxTokens(piece.val)[0] ?? "";
+      const px = pxOf(token);
+      if (px != null && px > 0) size = size == null ? px : Math.min(size, px);
+    }
+    if (piece.prop === "padding") {
+      const tokens = boxTokens(piece.val);
+      const top = pxOf(tokens[0] ?? "");
+      const bottom = pxOf(tokens[2] ?? tokens[0] ?? "");
+      if (top != null) topPad = top;
+      if (bottom != null) bottomPad = bottom;
+    }
+    if (piece.prop === "padding-block") {
+      const tokens = boxTokens(piece.val);
+      const start = pxOf(tokens[0] ?? "");
+      const end = pxOf(tokens[1] ?? tokens[0] ?? "");
+      if (start != null) topPad = start;
+      if (end != null) bottomPad = end;
+    }
+    if (piece.prop === "padding-top" || piece.prop === "padding-block-start") {
+      const px = pxOf(boxTokens(piece.val)[0] ?? "");
+      if (px != null) topPad = px;
+    }
+    if (piece.prop === "padding-bottom" || piece.prop === "padding-block-end") {
+      const px = pxOf(boxTokens(piece.val)[0] ?? "");
+      if (px != null) bottomPad = px;
+    }
+  }
+  const pad = (topPad ?? 0) + (bottomPad ?? 0);
+  if (size == null || pad <= 0 || size - pad > 12) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop.startsWith("padding"));
+  };
+}
+
 /** overflow-clip-margin of -18px, with overflow clip, eats the line. -20px does it with no set height. -16px on a 2em line still reads. The margin is dropped. The clip stays. */
 function clipMarginDrops(parts: string[]): (part: string) => boolean {
   if (!writingGlyph() && !activeInk) return () => false;
@@ -6776,7 +6847,7 @@ function clipMarginDrops(parts: string[]): (part: string) => boolean {
 }
 
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts)];
+  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts)];
   return (part) => drops.some((drop) => drop(part));
 }
 
