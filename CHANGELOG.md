@@ -1,4 +1,23 @@
+# Quire 1.9.76 — The first screen still has the writing
+
+Released 18 November 2026.
+
+1.9.75 still let a zoom of 0.26 ghost the writing, a top band of 40% leave a sliver, a clip margin of -18px eat the line, a page scale of 1.7 or 2 walk the sheet off, and 35vw of padding on the root clip the tail. A rule that still shows the writing stays. `p { zoom: 0.28 }` stays. `p { clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%) }` stays. `p { overflow-clip-margin: -16px }` stays. `section { transform: scale(1.65) }` stays. `html { transform: scale(1.9) }` stays. `html { padding-left: 30vw }` stays. Colour stays.
+
+- **A zoom of 0.26 can no longer ghost the writing.** `p { zoom: 0.26 }` is dropped. `zoom: 0.28` and `div p { zoom: 0.3 }` still read. Colour stays.
+- **A top band of 40% can no longer leave a sliver.** `polygon(0 0, 100% 0, 100% 40%, 0 40%)` and `xywh(0 0 100% 40%)` are dropped on the writing. `45%` still shows the sentence. A class hook stays. Colour stays.
+- **A clip margin of -18px can no longer eat the line.** `overflow-clip-margin: -18px` and `-20px`, with `overflow: clip`, drop the margin. `-16px` on a 2em line still reads. The clip stays. Colour stays.
+- **A page scale can no longer walk the sheet off.** `section { transform: scale(1.7) }` and `html { transform: scale(2) }` are dropped. `section { transform: scale(1.65) }` and `html { transform: scale(1.9) }` still read. `section { transform: scale(0.2) }` stays. Colour stays.
+- **35vw of padding on the root can no longer clip the tail.** `html` and `body` `padding-left: 35vw` are dropped. `30vw` and `6vw` still read. `.note { padding-left: 40vw }` stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.75 — The first screen still has the writing
+
 
 Released 17 November 2026.
 

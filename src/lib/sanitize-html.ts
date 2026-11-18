@@ -678,11 +678,11 @@ function clampsToZero(value: string): boolean {
   return units.length === 0 || (units.length === 1 && units[0] === "%");
 }
 
-/** scale(0.5) and scale(-1) still show the line. scale(0.2) and zoom(0.25) shrink it to a speck. On the page, scale(0.15) and zoom(0.15) are a speck. 0.2 still reads. A star compounds, so scale(0.7) is already gone. scale(0.85) on a star still reads. A calculation of that speck does too. */
+/** scale(0.5) and scale(-1) still show the line. scale(0.2) and zoom(0.26) shrink it to a speck. zoom(0.28) and zoom(0.3) still read. On the page, scale(0.15) and zoom(0.15) are a speck. 0.2 still reads. A star compounds, so scale(0.7) is already gone. scale(0.85) on a star still reads. A calculation of that speck does too. */
 function scaleFactorHides(value: string): boolean {
   const token = value.replace(/!important/gi, "").trim();
   if (!token || /^(?:none|auto|initial|inherit|unset)$/i.test(token)) return false;
-  const limit = activeStar ? 0.95 : activeRepeat ? 0.93 : activeInk ? 0.85 : activePaint ? 0.25 : activePage ? 0.2 : 0.4;
+  const limit = activeStar ? 0.95 : activeRepeat ? 0.93 : activeInk ? 0.85 : activePaint ? 0.28 : activePage ? 0.2 : 0.4;
   const pct = percentOf(token);
   if (pct != null) return Math.abs(pct) < limit;
   const n = Number(token);
@@ -700,7 +700,7 @@ function scaleNumber(token: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** scale(1.5) from the centre walks the writing off the sheet. scale(1.2) still reads. scaleY(0.5) is a ghost. scaleY(0.55) still reads. A stack of divs compounds at 1.15. scale(1.1) on that stack still reads. */
+/** scale(1.5) from the centre walks the writing off the sheet. scale(1.2) still reads. scaleY(0.5) is a ghost. scaleY(0.55) still reads. A stack of divs compounds at 1.15. scale(1.1) on that stack still reads. section scale(1.7) walks the sheet off. section scale(1.65) still reads. html scale(2) does the same. html scale(1.9) still reads. */
 function axesBlow(x: number, y: number): boolean {
   const writing = (activePaint || activeInk) && !activeStar && !activeRepeat;
   if (writing) {
@@ -708,6 +708,8 @@ function axesBlow(x: number, y: number): boolean {
     if (x >= 1.5 || y >= 1.5) return true;
   }
   if (activeRepeat && activeDivs >= 4 && (x >= 1.15 || y >= 1.15)) return true;
+  if (!activeStar && !activePaint && (activeHtml || activeRoot) && (x >= 2 || y >= 2)) return true;
+  if (activePage && !activePaint && !activeRoot && !activeHtml && (x >= 1.7 || y >= 1.7)) return true;
   return false;
 }
 
@@ -2563,9 +2565,9 @@ function polygonPercents(inner: string): { minY: number; maxY: number; spanX: nu
   return { minY: Math.min(...ys), maxY: Math.max(...ys), spanX: Math.max(...xs) - Math.min(...xs) };
 }
 
-/** A polygon that keeps only the top of the stack covers the line. 20% on a stack of divs does. 22% still leaves it. On a star, 45% does. 50% still leaves it. */
+/** A polygon that keeps only the top of the stack covers the line. 20% on a stack of divs does. 22% still leaves it. On a star, 45% does. 50% still leaves it. On the writing, 40% is a sliver. 45% still shows the sentence. */
 function polygonTopBand(inner: string): boolean {
-  const limit = activeStar ? 0.45 : activeRepeat && activeDivs >= 6 ? 0.2 : 0;
+  const limit = activeStar ? 0.45 : activeRepeat && activeDivs >= 6 ? 0.2 : writingGlyph() ? 0.4 : 0;
   if (!limit) return false;
   const box = polygonPercents(inner);
   if (!box || box.minY > 0.02 || box.spanX < 0.5) return false;
@@ -2607,7 +2609,8 @@ function clipHides(value: string, hidden: Set<string>): boolean {
         );
         const narrow = Boolean(widthPct != null && widthPct > 0 && widthPct <= 0.22 && stacked);
         const sheet = Boolean(heightPct != null && heightPct > 0 && heightPct <= 0.32 && (activeRoot || (activePage && !activePaint)));
-        return zero || (windowSliver(width) && windowSliver(height)) || thinStrip(width) || thinStrip(height) || deep || starWindow || yOff || narrow || sheet;
+        const writingBand = Boolean(writingGlyph() && heightPct != null && heightPct > 0 && heightPct <= 0.4 && (yPct == null || yPct <= 0.02));
+        return zero || (windowSliver(width) && windowSliver(height)) || thinStrip(width) || thinStrip(height) || deep || starWindow || yOff || narrow || sheet || writingBand;
       }
       if (call.name === "rect") return rectHides(call.inner);
       if (call.name === "polygon") return polygonAreaZero(call.inner) || coordSpanHides(call.inner) || polygonStrips(call.inner) || polygonTopBand(call.inner) || polygonCutsTop(call.inner);
@@ -5894,11 +5897,13 @@ function marginViewportHides(prop: string, value: string, hidden: Set<string>): 
   return axisTokens(prop, value, "v").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "v", limit)));
 }
 
-/** A side margin or padding in vw stacks across. 7vw on a star, or 8vw on every div, leaves a sliver. 6vw still reads. 80% on the root or the page does that too. 75% on one box does. One box may still shift in vw. */
+/** A side margin or padding in vw stacks across. 7vw on a star, or 8vw on every div, leaves a sliver. 6vw still reads. 35vw on html or body clips the tail. 30vw still reads. 80% on the root or the page does that too. 75% on one box does. One box may still shift in vw. */
 function sidePushHides(prop: string, value: string, hidden: Set<string>): boolean {
   if (!prop.startsWith("margin") && !prop.startsWith("padding")) return false;
   const single = !activeStar && !activeRoot && !activePage && activeRepeat && activeDivs === 1;
   const stack = !activeStar && activeDivs >= 2;
+  const root = (activeRoot || activeHtml) && !activeStar;
+  if (root && axisTokens(prop, value, "h").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "h", 35)))) return true;
   if (!activeStar && !activeRoot && !activePage && !stack && !single) return false;
   const limit = activeStar ? 7 : stack ? 8 : 0;
   if (limit && axisTokens(prop, value, "h").some((token) => valueCanHide(token, hidden, (raw) => tokenViewportHides(raw, "h", limit)))) return true;
@@ -6756,8 +6761,22 @@ function padClipDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
+/** overflow-clip-margin of -18px, with overflow clip, eats the line. -20px does it with no set height. -16px on a 2em line still reads. The margin is dropped. The clip stays. */
+function clipMarginDrops(parts: string[]): (part: string) => boolean {
+  if (!writingGlyph() && !activeInk) return () => false;
+  if (!parts.some((part) => isBoxClip(part))) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || piece.prop !== "overflow-clip-margin") return false;
+    return splitTopWords(piece.val.replace(/!important/gi, "")).some((token) => {
+      const px = lengthDeskPx(token.trim());
+      return px != null && px <= -18;
+    });
+  };
+}
+
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts)];
+  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts)];
   return (part) => drops.some((drop) => drop(part));
 }
 
