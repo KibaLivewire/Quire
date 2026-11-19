@@ -3598,6 +3598,24 @@ describe("page styles", () => {
     assert.match(flatLine, /red/);
     assert.match(sanitizePluginCss("p{line-height:0.3;overflow:hidden}"), /0\.3/);
     assert.match(sanitizePluginCss("p{line-height:0.25}"), /0\.25/);
+    const ghostPad = sanitizePluginCss("p{box-sizing:border-box;height:40px;padding-top:27px;overflow:hidden;color:red}");
+    assert.equal(/padding-top/.test(ghostPad), false);
+    assert.match(ghostPad, /40px/);
+    assert.match(ghostPad, /hidden/);
+    assert.match(ghostPad, /red/);
+    assert.match(sanitizePluginCss("p{box-sizing:border-box;height:40px;padding-top:26px;overflow:hidden}"), /26px/);
+    assert.match(sanitizePluginCss("p{height:40px;padding-top:27px;overflow:hidden}"), /27px/);
+    const parked = sanitizePluginCss("p{clip-path:circle(46% at 78% 50%);color:red}");
+    assert.equal(/circle/.test(parked), false);
+    assert.match(parked, /red/);
+    assert.match(sanitizePluginCss("p{clip-path:circle(46%)}"), /46%/);
+    assert.match(sanitizePluginCss("p{clip-path:circle(40%)}"), /40%/);
+    assert.match(sanitizePluginCss("p{clip-path:circle(40% at 50% 50%)}"), /40%/);
+    assert.equal(/ellipse/.test(sanitizePluginCss("p{clip-path:ellipse(40% 60% at 75% 50%);color:red}")), false);
+    assert.match(sanitizePluginCss("p{clip-path:ellipse(40% 60% at 75% 50%);color:red}"), /red/);
+    assert.match(sanitizePluginCss("p{clip-path:ellipse(60% 50%)}"), /60%/);
+    assert.match(sanitizePluginCss(".note{clip-path:circle(46% at 78% 50%)}"), /78%/);
+    assert.match(sanitizePluginCss(".quire-doc{clip-path:ellipse(40% 60% at 75% 50%)}"), /75%/);
   });
 });
 

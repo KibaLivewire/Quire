@@ -2379,6 +2379,19 @@ function splitTopWords(value: string): string[] {
   return tokens;
 }
 
+/** A circle parked on the right misses the line. circle(46% at 78% 50%) and ellipse(40% 60% at 75% 50%) leave nothing. A centred circle(46%) and circle(40% at 50% 50%) still show the sentence. */
+function shapeParkedOffLine(inner: string): boolean {
+  if (!writingGlyph() && !activeInk) return false;
+  const tokens = splitTopWords(inner).filter(Boolean);
+  const at = tokens.findIndex((token) => /^at$/i.test(token));
+  if (at < 0) return false;
+  const rx = percentOf((tokens[0] ?? "").replace(/!important/gi, ""));
+  const place = (tokens[at + 1] ?? "").replace(/!important/gi, "").trim().toLowerCase();
+  const cx = place === "left" ? 0 : place === "right" ? 1 : place === "center" ? 0.5 : percentOf(place);
+  if (rx == null || cx == null) return false;
+  return cx - rx * 0.707 >= 0.25 - 1e-9;
+}
+
 /** A circle or ellipse small enough to miss the writing. 20% and 200px still show the line. */
 function clipRadiusHides(token: string, hidden: Set<string>): boolean {
   const t = token.trim();
@@ -2407,6 +2420,7 @@ function clipRadiusFlat(token: string, hidden: Set<string>): boolean {
 }
 
 function ellipseHides(inner: string, hidden: Set<string>): boolean {
+  if (shapeParkedOffLine(inner)) return true;
   const tokens = splitTopWords(inner).filter(Boolean);
   const at = tokens.findIndex((token) => /^at$/i.test(token));
   const radii = (at >= 0 ? tokens.slice(0, at) : tokens).slice(0, 2);
@@ -2606,7 +2620,7 @@ function clipHides(value: string, hidden: Set<string>): boolean {
     found.some((call) => {
       if (call.name === "circle") {
         const radius = (call.inner.trim().match(/^[^\s]+/)?.[0] ?? "").trim();
-        return clipRadiusHides(radius, hidden);
+        return clipRadiusHides(radius, hidden) || shapeParkedOffLine(call.inner);
       }
       if (call.name === "xywh") {
         const parts = splitArgs(call.inner)
@@ -6781,7 +6795,7 @@ function padClipDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** padding-top of 28px inside a 40px border-box, clipped, leaves a ghost. 26px still shows the sentence. The same pad with content-box still shows it. The padding is dropped. The height and the clip stay. */
+/** padding-top of 27px inside a 40px border-box, clipped, leaves a ghost. 26px still shows the sentence. The same pad with content-box still shows it. The padding is dropped. The height and the clip stay. */
 function eatenLineDrops(parts: string[]): (part: string) => boolean {
   if (!writingGlyph() && !activeInk) return () => false;
   const border = parts.some((part) => {
@@ -6825,7 +6839,7 @@ function eatenLineDrops(parts: string[]): (part: string) => boolean {
     }
   }
   const pad = (topPad ?? 0) + (bottomPad ?? 0);
-  if (size == null || pad <= 0 || size - pad > 12) return () => false;
+  if (size == null || pad <= 0 || size - pad > 13) return () => false;
   return (part) => {
     const piece = pieceProp(part);
     return Boolean(piece && piece.prop.startsWith("padding"));

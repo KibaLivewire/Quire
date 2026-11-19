@@ -1,3 +1,18 @@
+# Quire 1.9.78 — The first screen still has the writing
+
+Released 19 November 2026.
+
+1.9.77 still let a border-box pad that leaves 13px ghost the line, and a circle or ellipse parked off the line blank the writing. A rule that still shows the writing stays. `p { box-sizing: border-box; height: 40px; padding-top: 26px }` stays. `p { clip-path: circle(46%) }` stays. `p { clip-path: circle(40% at 50% 50%) }` stays. `p { clip-path: ellipse(60% 50%) }` stays. Colour stays.
+
+- **A border-box pad that leaves 13px can no longer ghost the line.** `padding-top: 27px` inside `height: 40px` with `box-sizing: border-box` and `overflow: hidden` drops the padding. `26px` in that pair still shows the sentence. The same pad without `border-box` stays. The height and the clip stay. Colour stays.
+- **A circle or ellipse parked off the line can no longer blank the writing.** `circle(46% at 78% 50%)` and `ellipse(40% 60% at 75% 50%)` are dropped on the writing. A centred `circle(46%)`, `circle(40%)`, and `circle(40% at 50% 50%)` still show the sentence. `ellipse(60% 50%)` still shows it. A class hook stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.77 — The first screen still has the writing
 
 Released 18 November 2026.
