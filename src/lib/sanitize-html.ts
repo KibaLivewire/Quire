@@ -2429,7 +2429,21 @@ function ellipseHides(inner: string, hidden: Set<string>): boolean {
   if (!rx) return false;
   if (!ry) return clipRadiusHides(rx, hidden);
   if (clipRadiusHides(rx, hidden)) return true;
-  return clipRadiusFlat(ry, hidden);
+  return clipRadiusFlat(ry, hidden) || ellipseMissesLine(inner);
+}
+
+/** ellipse(55% 12% at 15% 20%) misses the line. A centred ellipse(50% 12% at 50% 50%) still shows it. */
+function ellipseMissesLine(inner: string): boolean {
+  if (!writingGlyph() && !activeInk) return false;
+  const tokens = splitTopWords(inner).filter(Boolean);
+  const at = tokens.findIndex((token) => /^at$/i.test(token));
+  if (at < 0) return false;
+  const radii = tokens.slice(0, at);
+  const ry = percentOf((radii[1] ?? radii[0] ?? "").replace(/!important/gi, ""));
+  const place = (tokens[at + 2] ?? tokens[at + 1] ?? "").replace(/!important/gi, "").trim().toLowerCase();
+  const cy = place === "top" ? 0 : place === "bottom" ? 1 : place === "center" ? 0.5 : percentOf(place);
+  if (ry == null || cy == null || ry > 0.14) return false;
+  return cy <= 0.3 || cy >= 0.7;
 }
 
 function thinStrip(token: string): boolean {
@@ -2649,11 +2663,12 @@ function clipHides(value: string, hidden: Set<string>): boolean {
       if (call.name === "polygon") return polygonAreaZero(call.inner) || coordSpanHides(call.inner) || polygonStrips(call.inner) || polygonTopBand(call.inner) || polygonCutsTop(call.inner) || polygonLeftCut(call.inner);
       if (call.name === "path") return pathHides(call.inner);
       if (call.name === "shape") return shapeHides(call.inner) || coordSpanHides(call.inner) || shapeStrips(call.inner);
-      if (call.name === "ellipse") return ellipseHides(call.inner, hidden);
+      if (call.name === "ellipse") return ellipseHides(call.inner, hidden) || ellipseMissesLine(call.inner);
       const rawTokens = splitArgs(call.inner).flatMap((part) => splitTopWords(part));
       const roundAt = rawTokens.findIndex((token) => /^round$/i.test(token));
       const raw = roundAt >= 0 ? rawTokens.slice(0, roundAt) : rawTokens;
       const sides = raw.length <= 1 ? [raw[0] ?? "", raw[0] ?? "", raw[0] ?? "", raw[0] ?? ""] : raw.length === 2 ? [raw[0] ?? "", raw[1] ?? "", raw[0] ?? "", raw[1] ?? ""] : raw.length === 3 ? [raw[0] ?? "", raw[1] ?? "", raw[2] ?? "", raw[1] ?? ""] : [raw[0] ?? "", raw[1] ?? "", raw[2] ?? "", raw[3] ?? ""];
+      if (insetEatsWriting(sides[0] ?? "") || insetEatsWriting(sides[2] ?? "")) return true;
       const parsed = sides.map((side) => insetSide(side, hidden));
       const top = parsed[0];
       const right = parsed[1];
@@ -2684,6 +2699,23 @@ function clipHides(value: string, hidden: Set<string>): boolean {
   return varCalls(value).some((call) => clips.has(call.name) || (Boolean(call.fallback) && clipHides(call.fallback, hidden)));
 }
 
+/** inset(1.15em) from the top or the bottom of the writing eats the line. inset(1.1em) and inset(20px) still show the sentence. The writing face is 18px. */
+function insetEatsWriting(token: string): boolean {
+  if (!(writingGlyph() || activeInk) || activeStar || activeRepeat) return false;
+  const px = writingFacePx(token);
+  return px != null && px >= 20.5;
+}
+
+/** The open page is 1.125rem, so an em on the writing is 18px. The desk root stays 16px everywhere else. */
+function writingFacePx(token: string): number | null {
+  const raw = token.replace(/!important/gi, "").trim();
+  if (!raw || hidesAsZero(raw)) return 0;
+  const px = lengthDeskPx(raw);
+  if (px == null) return null;
+  if (lengthUnit(raw) === "em") return (px / 16) * 18;
+  return px;
+}
+
 function edgeAmount(token: string): { n: number; unit: string } | null {
   const m = /^([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)(%|px|em|rem)?$/i.exec(token.trim());
   if (!m?.[1] || m[1] === "." || m[1] === "+" || m[1] === "-") return null;
@@ -2692,7 +2724,7 @@ function edgeAmount(token: string): { n: number; unit: string } | null {
   return { n, unit: (m[2] ?? "").toLowerCase() };
 }
 
-/** rect() with no width or no height is a zero box. A real rectangle stays. */
+/** rect() with no width or no height is a zero box. A real rectangle stays. On the writing, a window 13px tall still misses the line. 14px shows it. A percent width with a pixel height is the same window. */
 function rectHides(inner: string): boolean {
   const parts = splitArgs(inner)
     .flatMap((part) => part.trim().split(/\s+/))
@@ -2705,18 +2737,27 @@ function rectHides(inner: string): boolean {
   const bottom = edges[2];
   const left = edges[3];
   if (!top || !right || !bottom || !left) return false;
-  const unit = top.unit;
-  if (right.unit !== unit || bottom.unit !== unit || left.unit !== unit) return false;
-  const width = right.n - left.n;
-  const height = bottom.n - top.n;
-  if (width === 0 || height === 0) return true;
-  if ((unit === "px" || unit === "") && (Math.abs(width) <= 2 || Math.abs(height) <= 2)) return true;
-  if ((activeStar || (activeRepeat && activeDivs >= 2)) && (unit === "px" || unit === "") && width > 0 && height > 0 && width <= 120 && height <= 64) return true;
-  if ((activePaint || activePage || activeRecipe) && (unit === "px" || unit === "") && width > 0 && height > 0 && (width <= 16 || height <= 8)) return true;
-  return false;
+  const sameUnit = top.unit === right.unit && right.unit === bottom.unit && bottom.unit === left.unit;
+  if (sameUnit) {
+    const unit = top.unit;
+    const width = right.n - left.n;
+    const height = bottom.n - top.n;
+    if (width === 0 || height === 0) return true;
+    if ((unit === "px" || unit === "") && (Math.abs(width) <= 2 || Math.abs(height) <= 2)) return true;
+    if ((activeStar || (activeRepeat && activeDivs >= 2)) && (unit === "px" || unit === "") && width > 0 && height > 0 && width <= 120 && height <= 64) return true;
+    if ((activePaint || activePage || activeRecipe) && (unit === "px" || unit === "") && width > 0 && height > 0 && (width <= 16 || height <= 13)) return true;
+  }
+  const pxLen = (edge: { n: number; unit: string }) => (edge.unit === "px" || edge.unit === "" ? edge.n : null);
+  const topPx = pxLen(top);
+  const bottomPx = pxLen(bottom);
+  const heightPx = topPx != null && bottomPx != null ? bottomPx - topPx : null;
+  const wide =
+    (right.unit === "%" && right.n >= 50 && (left.unit === "%" ? right.n - left.n >= 50 : (left.unit === "px" || left.unit === "") && left.n <= 16)) ||
+    ((right.unit === "px" || right.unit === "") && (left.unit === "px" || left.unit === "") && right.n - left.n >= 80);
+  return Boolean((writingGlyph() || activePaint || activePage) && heightPx != null && heightPx > 0 && heightPx <= 13 && wide);
 }
 
-/** An empty path, or a path that only moves, has no area. A curve stays. A triangle larger than 6px stays. A 4px triangle on the writing does not. */
+/** An empty path, or a path that only moves, has no area. A curve stays. A triangle of 36px or less on the writing misses the line. A 40px triangle stays. */
 function pathHides(inner: string): boolean {
   const quoted = /(['"])([\s\S]*)\1/.exec(inner.trim());
   if (!quoted) return inner.trim() === "" || /^(?:evenodd|nonzero)$/i.test(inner.trim());
@@ -2800,7 +2841,7 @@ function pathHides(inner: string): boolean {
   if ((activeStar || activeRoot || (activePage && !activePaint) || (activeRepeat && activeDivs >= 2)) && Math.max(xSpan, ySpan) <= 96) return true;
   if ((activeStar || activeRoot || (activePage && !activePaint) || (activeRepeat && activeDivs >= 2)) && Math.min(xSpan, ySpan) <= 16 && Math.max(xSpan, ySpan) >= 80) return true;
   if (activePage && !activePaint && ySpan <= 120 && xSpan >= 80) return true;
-  if ((activePaint || activeInk) && !activeStar && xSpan <= 6 && ySpan <= 6) return true;
+  if ((activePaint || activeInk) && !activeStar && xSpan <= 36 && ySpan <= 36) return true;
   return (xSpan <= 72 && ySpan >= 400) || (ySpan <= 72 && xSpan >= 400);
 }
 
@@ -4240,6 +4281,8 @@ function resolvedInk(token: string): [number, number, number] | null {
   const direct = resolveRgb(token);
   if (direct) return direct;
   const t = token.replace(/!important/gi, "").trim().toLowerCase();
+  // MarkText stays black on the dark desk, so the line sits on the sheet. CanvasText turns with the scheme and still reads.
+  if (t === "marktext") return [0, 0, 0];
   const calls = namedFunctionCalls(t, ["color-mix", "oklch", "oklab", "hsla", "rgba", "hwb", "lch", "lab", "hsl", "rgb", "color"]);
   if (calls.length !== 1 || !calls[0]) return null;
   const call = calls[0];
@@ -5694,12 +5737,14 @@ function declaresViewport(value: string): boolean {
   return splitTopWords(value.replace(/!important/gi, "")).some((token) => coversViewport(token));
 }
 
-/** A viewport outline pulled inward covers the writing. An 80px frame does not. On the letters, 24px pulled in covers the line, and so does 40px pulled to -36px. 16px still leaves it. On a star, 24px pulled in covers the line, and so does 80px pulled to -70px. 16px still leaves it. */
+/** A viewport outline pulled inward covers the writing. An 80px frame does not. On the letters, and on a star that also hits the letters, 16px pulled to -14px covers the line, and so does 0.9em pulled to -0.8em, because the writing face is 18px. 14px pulled to -12px still leaves it, 16px pulled only to -8px still leaves it, and 0.85em pulled to -0.75em still leaves it. On a star, 24px pulled in covers the line, and so does 80px pulled to -70px. */
 function outlineDrops(parts: string[]): (part: string) => boolean {
   let wide = false;
   let inset = false;
   let px = 0;
   let pull = 0;
+  let linePx = 0;
+  let linePull = 0;
   for (const part of parts) {
     const piece = pieceProp(part);
     if (!piece) continue;
@@ -5709,18 +5754,22 @@ function outlineDrops(parts: string[]): (part: string) => boolean {
       for (const token of splitTopWords(piece.val.replace(/!important/gi, ""))) {
         const n = lengthDeskPx(token);
         if (n != null) px = Math.max(px, n);
+        const face = writingFacePx(token);
+        if (face != null) linePx = Math.max(linePx, face);
       }
     }
     if (piece.prop === "outline-offset") {
       for (const token of splitTopWords(piece.val.replace(/!important/gi, ""))) {
         const n = lengthDeskPx(token);
         if (n != null && n < 0) pull = Math.max(pull, Math.abs(n));
+        const face = writingFacePx(token);
+        if (face != null && face < 0) linePull = Math.max(linePull, Math.abs(face));
       }
     }
   }
   const starCover = activeStar && px >= 18 && pull >= 16 && pull >= px - 12;
   const stackCover = !activeStar && activeRepeat && activeDivs >= 2 && px >= 24 && pull >= 20 && pull + 8 >= px;
-  const lineCover = activePaint && !activeStar && px >= 22 && pull >= 18 && pull + 8 >= px;
+  const lineCover = (activePaint || activeStar) && linePx >= 16 && linePull >= 14 && linePull + 8 >= linePx;
   const boxCover = (activePaint || activePage || activeRepeat || activeRecipe) && px >= 64 && pull + 16 >= px && pull >= 48;
   return (part) => {
     if (!wide && !starCover && !stackCover && !lineCover && !boxCover) return false;
@@ -6795,7 +6844,7 @@ function padClipDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** padding-top of 27px inside a 40px border-box, clipped, leaves a ghost. 26px still shows the sentence. The same pad with content-box still shows it. The padding is dropped. The height and the clip stay. */
+/** padding-top of 27px, or 1.5em on the writing face, inside a 40px border-box, clipped, leaves a ghost. 26px and 1.45em still show the sentence. A bottom pad of 1.5em still shows it. The same pad with content-box still shows it. The padding is dropped. The height and the clip stay. */
 function eatenLineDrops(parts: string[]): (part: string) => boolean {
   if (!writingGlyph() && !activeInk) return () => false;
   const border = parts.some((part) => {
@@ -6807,6 +6856,7 @@ function eatenLineDrops(parts: string[]): (part: string) => boolean {
   let topPad: number | null = null;
   let bottomPad: number | null = null;
   const pxOf = (token: string) => lengthDeskPx(token.replace(/!important/gi, "").trim());
+  const faceOf = (token: string) => writingFacePx(token.replace(/!important/gi, "").trim());
   for (const part of parts) {
     const piece = pieceProp(part);
     if (!piece) continue;
@@ -6817,20 +6867,20 @@ function eatenLineDrops(parts: string[]): (part: string) => boolean {
     }
     if (piece.prop === "padding") {
       const tokens = boxTokens(piece.val);
-      const top = pxOf(tokens[0] ?? "");
+      const top = faceOf(tokens[0] ?? "");
       const bottom = pxOf(tokens[2] ?? tokens[0] ?? "");
       if (top != null) topPad = top;
       if (bottom != null) bottomPad = bottom;
     }
     if (piece.prop === "padding-block") {
       const tokens = boxTokens(piece.val);
-      const start = pxOf(tokens[0] ?? "");
+      const start = faceOf(tokens[0] ?? "");
       const end = pxOf(tokens[1] ?? tokens[0] ?? "");
       if (start != null) topPad = start;
       if (end != null) bottomPad = end;
     }
     if (piece.prop === "padding-top" || piece.prop === "padding-block-start") {
-      const px = pxOf(boxTokens(piece.val)[0] ?? "");
+      const px = faceOf(boxTokens(piece.val)[0] ?? "");
       if (px != null) topPad = px;
     }
     if (piece.prop === "padding-bottom" || piece.prop === "padding-block-end") {
@@ -6860,8 +6910,40 @@ function clipMarginDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
+/** border-block-start of 1.9em inside a 2.4em border-box, clipped, leaves a ghost. 1.6em still shows the sentence. border-top is already covered. The logical border is dropped. The height and the clip stay. */
+function borderBlockEats(parts: string[]): (part: string) => boolean {
+  if (!writingGlyph() && !activeInk) return () => false;
+  const borderBox = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop === "box-sizing" && /border-box/i.test(piece.val));
+  });
+  if (!borderBox || !parts.some((part) => isBoxClip(part))) return () => false;
+  let size: number | null = null;
+  let edge = 0;
+  for (const part of parts) {
+    const piece = pieceProp(part);
+    if (!piece) continue;
+    if (piece.prop === "height" || piece.prop === "block-size" || piece.prop === "max-height" || piece.prop === "max-block-size") {
+      const token = splitTopWords(piece.val.replace(/!important/gi, "")).find(Boolean) ?? "";
+      const px = writingFacePx(token);
+      if (px != null && px > 0) size = size == null ? px : Math.min(size, px);
+    }
+    if (piece.prop === "border-block-start" || piece.prop === "border-block-end") {
+      for (const token of splitTopWords(piece.val.replace(/!important/gi, ""))) {
+        const px = writingFacePx(token);
+        if (px != null && px > edge) edge = px;
+      }
+    }
+  }
+  if (size == null || edge <= 0 || size - edge > 13) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && (piece.prop === "border-block-start" || piece.prop === "border-block-end"));
+  };
+}
+
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts)];
+  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts)];
   return (part) => drops.some((drop) => drop(part));
 }
 

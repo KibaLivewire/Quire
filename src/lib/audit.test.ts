@@ -2485,6 +2485,57 @@ describe("page styles", () => {
     assert.match(sanitizePluginCss("*{filter:blur(1.5px)}"), /1\.5px/);
   });
 
+  it("drops a dark-desk hide that still cleared the scrub", () => {
+    assert.equal(/marktext/i.test(sanitizePluginCss("p{color:MarkText}")), false);
+    assert.match(sanitizePluginCss("p{color:MarkText;color:red}"), /red/);
+    assert.match(sanitizePluginCss(".note{color:MarkText}"), /MarkText/);
+    assert.match(sanitizePluginCss("p{color:CanvasText}"), /CanvasText/);
+    assert.match(sanitizePluginCss("p{color:GrayText}"), /GrayText/);
+    assert.equal(/inset/i.test(sanitizePluginCss("p{clip-path:inset(1.2em 0 0 0)}")), false);
+    assert.equal(/inset/i.test(sanitizePluginCss("p{clip-path:inset(0 0 1.2em 0)}")), false);
+    assert.equal(/inset/i.test(sanitizePluginCss("p{clip-path:inset(1.5em 0 0 0)}")), false);
+    assert.equal(/inset/i.test(sanitizePluginCss("p{clip-path:inset(1.15em 0 0 0)}")), false);
+    assert.match(sanitizePluginCss("p{clip-path:inset(1.1em 0 0 0)}"), /1\.1em/);
+    assert.match(sanitizePluginCss("p{clip-path:inset(1em 0 0 0)}"), /1em/);
+    assert.match(sanitizePluginCss("p{clip-path:inset(20px 0 0 0)}"), /20px/);
+    assert.match(sanitizePluginCss(".note{clip-path:inset(1.5em 0 0 0)}"), /1\.5em/);
+    assert.equal(/rect/i.test(sanitizePluginCss("p{clip-path:rect(0px 100% 8px 0px)}")), false);
+    assert.equal(/rect/i.test(sanitizePluginCss("p{clip-path:rect(0px 100% 12px 0px)}")), false);
+    assert.equal(/rect/i.test(sanitizePluginCss("p{clip-path:rect(0px 100% 13px 0px)}")), false);
+    assert.match(sanitizePluginCss("p{clip-path:rect(0px 100% 14px 0px)}"), /14px/);
+    assert.equal(/path/i.test(sanitizePluginCss("p{clip-path:path('M0 0 L12 0 L0 12 Z')}")), false);
+    assert.match(sanitizePluginCss("p{clip-path:path('M0 0 L40 0 L0 40 Z')}"), /path/i);
+    assert.match(sanitizePluginCss(".quire-doc{clip-path:path('M0 0 L12 0 L0 12 Z')}"), /path/i);
+    assert.equal(/ellipse/i.test(sanitizePluginCss("p{clip-path:ellipse(55% 12% at 15% 20%)}")), false);
+    assert.match(sanitizePluginCss("p{clip-path:ellipse(50% 12% at 50% 50%)}"), /ellipse/);
+    assert.equal(/border-block-start/i.test(sanitizePluginCss("p{border-block-start:1.9em solid #221e1a;height:2.4em;overflow:hidden;box-sizing:border-box}")), false);
+    assert.match(sanitizePluginCss("p{border-block-start:1.9em solid #221e1a;height:2.4em;overflow:hidden;box-sizing:border-box}"), /2\.4em/);
+    assert.match(sanitizePluginCss("p{border-block-start:1.6em solid #221e1a;height:2.4em;overflow:hidden;box-sizing:border-box}"), /1\.6em/);
+    assert.match(sanitizePluginCss(".note{border-block-start:2.2em solid #221e1a;height:2.4em;overflow:hidden;box-sizing:border-box}"), /border-block-start/);
+    assert.equal(/outline\s*:/i.test(sanitizePluginCss("p{outline:18px solid #221e1a;outline-offset:-16px}")), false);
+    assert.match(sanitizePluginCss("p{outline:18px solid #221e1a;outline-offset:-16px}"), /-16px/);
+    assert.equal(/outline\s*:/i.test(sanitizePluginCss("p{outline:16px solid #221e1a;outline-offset:-14px}")), false);
+    assert.match(sanitizePluginCss("p{outline:16px solid #221e1a;outline-offset:-14px}"), /-14px/);
+    assert.match(sanitizePluginCss("p{outline:14px solid #221e1a;outline-offset:-12px}"), /14px/);
+    assert.match(sanitizePluginCss("p{outline:16px solid #221e1a;outline-offset:-8px}"), /16px/);
+    assert.equal(/outline\s*:/i.test(sanitizePluginCss("p{outline:0.9em solid #221e1a;outline-offset:-0.8em}")), false);
+    assert.match(sanitizePluginCss("p{outline:0.9em solid #221e1a;outline-offset:-0.8em}"), /-0\.8em/);
+    assert.equal(/outline\s*:/i.test(sanitizePluginCss("p{outline:0.95em solid #221e1a;outline-offset:-0.85em}")), false);
+    assert.match(sanitizePluginCss("p{outline:0.85em solid #221e1a;outline-offset:-0.75em}"), /0\.85em/);
+    assert.match(sanitizePluginCss(".note{outline:0.95em solid #221e1a;outline-offset:-0.85em}"), /0\.95em/);
+    assert.equal(/outline\s*:/i.test(sanitizePluginCss("*{outline:0.95em solid #221e1a;outline-offset:-0.85em}")), false);
+    assert.match(sanitizePluginCss("*{outline:0.85em solid #221e1a;outline-offset:-0.75em}"), /0\.85em/);
+    assert.match(sanitizePluginCss("*{outline:16px solid #221e1a;outline-offset:-8px}"), /16px/);
+    assert.match(sanitizePluginCss(".note{outline:18px solid #221e1a;outline-offset:-16px}"), /18px/);
+    assert.equal(/padding-top/i.test(sanitizePluginCss("p{box-sizing:border-box;height:40px;padding-top:1.5em;overflow:hidden}")), false);
+    assert.match(sanitizePluginCss("p{box-sizing:border-box;height:40px;padding-top:1.5em;overflow:hidden}"), /40px/);
+    assert.match(sanitizePluginCss("p{box-sizing:border-box;height:40px;padding-top:1.45em;overflow:hidden}"), /1\.45em/);
+    assert.match(sanitizePluginCss("p{box-sizing:border-box;height:40px;padding-bottom:1.5em;overflow:hidden}"), /padding-bottom/);
+    assert.match(sanitizePluginCss("p{height:40px;padding-top:1.5em;overflow:hidden}"), /1\.5em/);
+    assert.match(sanitizePluginCss(".note{box-sizing:border-box;height:40px;padding-top:1.6em;overflow:hidden}"), /1\.6em/);
+    assert.match(sanitizePluginCss("p{color:red}"), /red/);
+  });
+
   it("drops a descendant or a sibling that still blanks the open page", () => {
     assert.equal(/display\s*:\s*none/i.test(sanitizePluginCss("section p{display:none}")), false);
     assert.equal(/display\s*:\s*none/i.test(sanitizePluginCss("div div{display:none}")), false);
@@ -2720,7 +2771,7 @@ describe("page styles", () => {
     assert.match(sanitizePluginCss("html{clip-path:xywh(0 0 100% 40%)}"), /40%/);
     assert.equal(/xywh/i.test(sanitizePluginCss("section{clip-path:xywh(0 0 100% 30%)}")), false);
     assert.match(sanitizePluginCss("section{clip-path:xywh(0 0 100% 40%)}"), /40%/);
-    assert.match(sanitizePluginCss("p{clip-path:xywh(0 0 100% 20%)}"), /20%/);
+    assert.equal(/xywh/i.test(sanitizePluginCss("p{clip-path:xywh(0 0 100% 20%)}")), false);
     assert.equal(/column-count/.test(sanitizePluginCss("div{column-count:8}")), false);
     assert.equal(/column-count/.test(sanitizePluginCss("div{column-count:6}")), false);
     assert.match(sanitizePluginCss("div{column-count:2}"), /column-count:\s*2/);
@@ -2979,7 +3030,8 @@ describe("page styles", () => {
     assert.equal(/background/i.test(sideCover), false);
     assert.match(sideCover, /content/);
     assert.match(sanitizePluginCss("p::before{content:'';position:absolute;top:64px;left:0;right:0;background:#221e1a}"), /background/);
-    assert.match(sanitizePluginCss("p{outline:16px solid #221e1a;outline-offset:-14px}"), /16px/);
+    assert.equal(/outline\s*:/.test(sanitizePluginCss("p{outline:16px solid #221e1a;outline-offset:-14px}")), false);
+    assert.match(sanitizePluginCss("p{outline:16px solid #221e1a;outline-offset:-14px}"), /-14px/);
     const thickOutline = sanitizePluginCss("p{outline:30px solid #221e1a;outline-offset:-28px;color:red}");
     assert.equal(/outline\s*:/.test(thickOutline), false);
     assert.match(thickOutline, /red/);
@@ -3007,7 +3059,7 @@ describe("page styles", () => {
     assert.equal(/mask-image/.test(sanitizePluginCss("html{-webkit-mask-image:linear-gradient(transparent,#000)}")), false);
     assert.match(sanitizePluginCss("html{mask-image:linear-gradient(black, transparent)}"), /black/);
     assert.equal(/path/i.test(sanitizePluginCss("*{clip-path:path('M0 0 L80 0 L80 40 Z')}")), false);
-    assert.match(sanitizePluginCss("p{clip-path:path('M0 0 L10 0 L10 10 Z')}"), /path/i);
+    assert.equal(/path/i.test(sanitizePluginCss("p{clip-path:path('M0 0 L10 0 L10 10 Z')}")), false);
     const painted = sanitizePluginCss("*{contain:paint;height:24px}");
     assert.equal(/contain/.test(painted), false);
     assert.match(painted, /24px/);
@@ -3152,7 +3204,8 @@ describe("page styles", () => {
     assert.equal(/top:/.test(sanitizePluginCss("p{position:fixed;top:-40px;color:red}")), false);
     assert.match(sanitizePluginCss("p{position:fixed;top:-40px;color:red}"), /fixed/);
     assert.match(sanitizePluginCss("footer{position:fixed;top:-40px}"), /-40px/);
-    assert.match(sanitizePluginCss("*{outline:16px solid #1a1714;outline-offset:-14px}"), /16px/);
+    assert.equal(/outline\s*:/.test(sanitizePluginCss("*{outline:16px solid #1a1714;outline-offset:-14px}")), false);
+    assert.match(sanitizePluginCss("*{outline:16px solid #1a1714;outline-offset:-14px}"), /-14px/);
     assert.equal(/outline\s*:/.test(sanitizePluginCss("*{outline:18px solid #1a1714;outline-offset:-16px}")), false);
     assert.equal(/outline\s*:/.test(sanitizePluginCss("div{outline:24px solid #1a1714;outline-offset:-20px}")), false);
     assert.match(sanitizePluginCss("header + div{outline:40px solid #1a1714;outline-offset:-36px}"), /40px/);
@@ -3366,7 +3419,7 @@ describe("page styles", () => {
     assert.equal(/mask-image/.test(sanitizePluginCss("p{mask-image:repeating-linear-gradient(#000 0 2px,transparent 2px 20px)}")), false);
     assert.match(sanitizePluginCss("p{mask-image:repeating-linear-gradient(#000 0 4px,transparent 4px 12px)}"), /4px/);
     assert.equal(/clip-path/.test(sanitizePluginCss("p{clip-path:path('M 0 0 L 4 0 L 4 4 Z')}")), false);
-    assert.match(sanitizePluginCss("p{clip-path:path('M0 0 L10 0 L10 10 Z')}"), /path/);
+    assert.equal(/path/i.test(sanitizePluginCss("p{clip-path:path('M0 0 L10 0 L10 10 Z')}")), false);
     const sheetBand = sanitizePluginCss("p::before{content:'';position:absolute;left:0;right:0;top:0;height:100%;background:#221e1a}");
     assert.equal(/background/.test(sheetBand), false);
     assert.match(sheetBand, /100%/);

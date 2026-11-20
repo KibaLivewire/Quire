@@ -1,3 +1,25 @@
+# Quire 1.9.79 — The first screen still has the writing
+
+Released 20 November 2026.
+
+1.9.78 still let MarkText paint the line the colour of the dark sheet, a 1.15em inset eat the line from the top or the bottom, a short rect() window miss it, a path of 36px or less miss it, a thin ellipse parked off the line miss it, a logical border eat it inside a border-box, a 16px outline pulled to -14px cover it, a 0.9em outline pulled to -0.8em cover it, and a 1.5em pad ghost it. A rule that still shows the writing stays. `p { color: CanvasText }` stays. `p { color: GrayText }` stays. `p { clip-path: inset(1.1em 0 0 0) }` stays. `p { clip-path: inset(20px 0 0 0) }` stays. `p { clip-path: rect(0px 100% 14px 0px) }` stays. `p { clip-path: path('M0 0 L40 0 L0 40 Z') }` stays. `p { clip-path: ellipse(50% 12% at 50% 50%) }` stays. `p { border-block-start: 1.6em solid #221e1a }` inside a 2.4em border-box stays. `p { outline: 14px solid #221e1a; outline-offset: -12px }` stays. `p { outline: 16px solid #221e1a; outline-offset: -8px }` stays. `p { outline: 0.85em solid #221e1a; outline-offset: -0.75em }` stays. `p { box-sizing: border-box; height: 40px; padding-top: 1.45em }` stays. `p { padding-bottom: 1.5em }` in that pair stays. Colour stays.
+
+- **MarkText can no longer sit on the dark sheet.** `p { color: MarkText }` drops the colour. It stays black when the scheme is dark, so the line disappears. `CanvasText` and `GrayText` still read. A class hook stays. Colour stays.
+- **A 1.15em inset can no longer eat the line.** `inset(1.15em 0 0 0)` and `inset(1.2em 0 0 0)` and `inset(0 0 1.2em 0)` are dropped on the writing. `inset(1.1em 0 0 0)`, `inset(1em 0 0 0)`, and `inset(20px 0 0 0)` still show the sentence. A class hook stays. Colour stays.
+- **A short rect() window can no longer miss the line.** `rect(0px 100% 8px 0px)`, `rect(0px 100% 12px 0px)`, and `rect(0px 100% 13px 0px)` are dropped on the writing, including a percent width beside a pixel height. `rect(0px 100% 14px 0px)` still shows the sentence. Colour stays.
+- **A path of 36px or less can no longer miss the line.** `path('M0 0 L12 0 L0 12 Z')` is dropped on the writing. A 40px triangle stays. A curve stays. A class hook stays. Colour stays.
+- **A thin ellipse parked off the line can no longer miss it.** `ellipse(55% 12% at 15% 20%)` is dropped on the writing. A centred `ellipse(50% 12% at 50% 50%)` still shows the sentence. Colour stays.
+- **A logical border can no longer eat the line.** `border-block-start: 1.9em` inside `height: 2.4em` with `box-sizing: border-box` and `overflow: hidden` drops the border. `1.6em` in that pair still shows the sentence. The height and the clip stay. A class hook stays. Colour stays.
+- **A 16px outline pulled to -14px can no longer cover the line.** `outline: 18px` with `outline-offset: -16px`, `outline: 16px` with `outline-offset: -14px`, and `outline: 0.9em` with `outline-offset: -0.8em` drop the outline, on the writing and on a star. `14px` pulled to `-12px` still shows the sentence. `16px` pulled only to `-8px` stays. `0.85em` pulled to `-0.75em` stays. The offset stays. A class hook stays. Colour stays.
+- **A 1.5em pad can no longer ghost the line.** `padding-top: 1.5em` inside `height: 40px` with `box-sizing: border-box` and `overflow: hidden` drops the padding. `1.45em` and `26px` in that pair still show the sentence. `padding-bottom: 1.5em` still shows it. The same top pad without `border-box` stays. The height and the clip stay. A class hook stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
+
 # Quire 1.9.78 — The first screen still has the writing
 
 Released 19 November 2026.
