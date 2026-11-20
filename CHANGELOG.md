@@ -1,3 +1,19 @@
+# Quire 1.9.80 — The first screen still has the writing
+
+Released 20 November 2026.
+
+1.9.79 still let a shift walk the first line off the sheet, a clipped indent eat the first word, and a cut from both ends leave nothing. A rule that still shows the writing stays. `p { transform: translateX(-40px) }` stays. `p { text-indent: -16px }` with `overflow: hidden` stays. `p { text-indent: -40px }` stays. `p { left: -48px }` stays. `p { margin-left: -80px }` stays. `p { position: absolute; left: -280px }` stays. `p { clip-path: inset(20px 0 0 0) }` stays. `p { clip-path: inset(1.1em 0 0 0) }` stays. `p { clip-path: inset(14px 0) }` stays. `p { clip-path: polygon(0 55%, 100% 55%, 100% 100%, 0 100%) }` stays. Colour stays.
+
+- **A shift can no longer walk the line off the sheet.** `translateX(-56px)` and `translateX(-70px)` are dropped on the writing. `left: -80px` is dropped on a paragraph the sheet already positions. `text-indent: -56px` and `-8em` are dropped. `translateX(-40px)` still shows the sentence. `left: -48px` still shows it. `text-indent: -40px` and `-2.5em` still show it. An absolute `left: -280px` stays. A margin stays. A class hook stays. Colour stays.
+- **A clipped indent of -20px can no longer eat the first word.** `text-indent: -20px` with `overflow: hidden` drops the indent. `-16px` with the same clip still shows the sentence. The clip stays. Colour stays.
+- **A cut from both ends can no longer blank the line.** `inset(15px 0)`, `inset(18px 0)`, and `inset(18px 0 12px 0)` are dropped on a paragraph. `polygon(0 58%, 100% 58%, 100% 100%, 0 100%)` and `xywh(0 58% 100% 42%)` are dropped. `inset(14px 0)` still reads. `inset(20px 0 0 0)` and `inset(1.1em 0 0 0)` still read. `inset(18px 0 10px 0)` and `inset(16px 0 8px 0)` still read. A 55% window still reads. A heading stays. A class hook stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.79 — The first screen still has the writing
 
 Released 20 November 2026.

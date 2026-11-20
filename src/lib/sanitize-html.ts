@@ -2610,6 +2610,14 @@ function polygonCutsTop(inner: string): boolean {
   return box.minY >= 0.08 - 1e-9;
 }
 
+/** A polygon that keeps only the bottom of a paragraph leaves a descender. 58% does. 55% still reads. A heading is taller, so this is only the paragraph. */
+function polygonBottoms(inner: string): boolean {
+  if (!writingGlyph() || !activeLine) return false;
+  const box = polygonPercents(inner);
+  if (!box || box.spanX < 0.5 || box.maxY < 0.9) return false;
+  return box.minY >= 0.58 - 1e-9;
+}
+
 /** A left cut of 3% eats the first word. 2.5% still shows it. 1.25em does. 1em still shows it. The same cut in a polygon or an xywh box does too. A cut from the right still shows the sentence. */
 function polygonLeftCut(inner: string): boolean {
   if (!writingGlyph() && !activeInk) return false;
@@ -2656,11 +2664,12 @@ function clipHides(value: string, hidden: Set<string>): boolean {
         const narrow = Boolean(widthPct != null && widthPct > 0 && widthPct <= 0.22 && stacked);
         const sheet = Boolean(heightPct != null && heightPct > 0 && heightPct <= 0.32 && (activeRoot || (activePage && !activePaint)));
         const writingBand = Boolean(writingGlyph() && heightPct != null && heightPct > 0 && heightPct <= 0.4 && (yPct == null || yPct <= 0.02));
+        const writingBottom = Boolean(writingGlyph() && activeLine && yPct != null && yPct >= 0.58 - 1e-9 && heightPct != null && yPct + heightPct >= 0.9 - 1e-9);
         const writingLeft = writingLeftToken(parts[0] ?? "");
-        return zero || (windowSliver(width) && windowSliver(height)) || thinStrip(width) || thinStrip(height) || deep || starWindow || yOff || narrow || sheet || writingBand || writingLeft;
+        return zero || (windowSliver(width) && windowSliver(height)) || thinStrip(width) || thinStrip(height) || deep || starWindow || yOff || narrow || sheet || writingBand || writingBottom || writingLeft;
       }
       if (call.name === "rect") return rectHides(call.inner);
-      if (call.name === "polygon") return polygonAreaZero(call.inner) || coordSpanHides(call.inner) || polygonStrips(call.inner) || polygonTopBand(call.inner) || polygonCutsTop(call.inner) || polygonLeftCut(call.inner);
+      if (call.name === "polygon") return polygonAreaZero(call.inner) || coordSpanHides(call.inner) || polygonStrips(call.inner) || polygonTopBand(call.inner) || polygonCutsTop(call.inner) || polygonLeftCut(call.inner) || polygonBottoms(call.inner);
       if (call.name === "path") return pathHides(call.inner);
       if (call.name === "shape") return shapeHides(call.inner) || coordSpanHides(call.inner) || shapeStrips(call.inner);
       if (call.name === "ellipse") return ellipseHides(call.inner, hidden) || ellipseMissesLine(call.inner);
@@ -2669,6 +2678,7 @@ function clipHides(value: string, hidden: Set<string>): boolean {
       const raw = roundAt >= 0 ? rawTokens.slice(0, roundAt) : rawTokens;
       const sides = raw.length <= 1 ? [raw[0] ?? "", raw[0] ?? "", raw[0] ?? "", raw[0] ?? ""] : raw.length === 2 ? [raw[0] ?? "", raw[1] ?? "", raw[0] ?? "", raw[1] ?? ""] : raw.length === 3 ? [raw[0] ?? "", raw[1] ?? "", raw[2] ?? "", raw[1] ?? ""] : [raw[0] ?? "", raw[1] ?? "", raw[2] ?? "", raw[3] ?? ""];
       if (insetEatsWriting(sides[0] ?? "") || insetEatsWriting(sides[2] ?? "")) return true;
+      if (linePairGhost(sides[0] ?? "", sides[2] ?? "")) return true;
       const parsed = sides.map((side) => insetSide(side, hidden));
       const top = parsed[0];
       const right = parsed[1];
@@ -2697,6 +2707,14 @@ function clipHides(value: string, hidden: Set<string>): boolean {
   const clips = (hidden as HideVars).clips;
   if (!clips) return false;
   return varCalls(value).some((call) => clips.has(call.name) || (Boolean(call.fallback) && clipHides(call.fallback, hidden)));
+}
+
+/** inset(15px 0) and inset(18px 0) take the line from both ends. inset(14px 0) still reads. inset(20px 0 0 0) is one end and still reads. A heading is taller, so this is only the paragraph. */
+function linePairGhost(topToken: string, bottomToken: string): boolean {
+  if (!writingGlyph() || !activeLine) return false;
+  const topPx = writingFacePx(topToken);
+  const bottomPx = writingFacePx(bottomToken);
+  return topPx != null && bottomPx != null && topPx > 0 && bottomPx > 0 && topPx + bottomPx >= 30;
 }
 
 /** inset(1.15em) from the top or the bottom of the writing eats the line. inset(1.1em) and inset(20px) still show the sentence. The writing face is 18px. */
@@ -4906,6 +4924,8 @@ let activeHtml = false;
 let activeLead = false;
 let activeRecipe = false;
 let activeBorder = false;
+/** True only when the rule matches a paragraph on the open page. A heading is taller, and a class is not this. */
+let activeLine = false;
 /** True only when every open-page match is the sheet frame or the recipe box. A bare div also matches those, and 8in on every div is a different rule. */
 let activeFrameOnly = false;
 let containerBlockOpen = false;
@@ -6942,8 +6962,38 @@ function borderBlockEats(parts: string[]): (part: string) => boolean {
   };
 }
 
+/** A text-indent of -20px, clipped, eats the first word. -16px with the same clip still shows the sentence. -56px walks the line off the sheet even with no clip. -40px and -2.5em with no clip still show it. -8em does not. */
+function lineIndentDrops(parts: string[]): (part: string) => boolean {
+  if (!writingGlyph()) return () => false;
+  const clip = parts.some((part) => isBoxClip(part));
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || piece.prop !== "text-indent") return false;
+    const px = lengthDeskPx(piece.val.replace(/!important/gi, "").trim());
+    if (px == null) return false;
+    if (px <= -56) return true;
+    return clip && px <= -20;
+  };
+}
+
+/** left of -80px shifts a paragraph the sheet already positions. -48px still shows the sentence. An absolute left of -280px is a different rule and stays. A margin does not. A heading is not already positioned, so this is only the paragraph. */
+function lineParkDrops(parts: string[]): (part: string) => boolean {
+  if (!writingGlyph() || !activeLine) return () => false;
+  const takenOff = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop === "position" && /\b(?:fixed|absolute)\b/i.test(piece.val));
+  });
+  if (takenOff) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || (piece.prop !== "left" && piece.prop !== "inset-inline-start")) return false;
+    const px = lengthDeskPx(piece.val.replace(/!important/gi, "").trim());
+    return px != null && px <= -56;
+  };
+}
+
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts)];
+  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts), lineIndentDrops(parts), lineParkDrops(parts)];
   return (part) => drops.some((drop) => drop(part));
 }
 
@@ -7662,7 +7712,7 @@ function pageShiftCovers(token: string): boolean {
   return n >= 70;
 }
 
-/** translateX(-30vw) on the writing leaves a sliver. -25vw still reads. translateX(-50%) leaves one word. -40% still reads. translateY(-15vh) leaves the sheet. -12vh still reads. A downward shift of 70vh still reads. */
+/** translateX(-30vw) on the writing leaves a sliver. -25vw still reads. translateX(-50%) leaves one word. -40% still reads. translateX(-56px) walks the line off the sheet. -40px still shows the sentence. translateY(-15vh) leaves the sheet. -12vh still reads. A downward shift of 70vh still reads. A star keeps its own shift. */
 function writingShiftCovers(token: string, axis: "x" | "y"): boolean {
   if (!writingGlyph() && !activeInk) return false;
   const t = token.replace(/!important/gi, "").replace(/\s+/g, "");
@@ -7672,6 +7722,10 @@ function writingShiftCovers(token: string, axis: "x" | "y"): boolean {
   const units = Object.entries(parsed.u).filter(([, exp]) => exp);
   if (units.length !== 1 || units[0]?.[1] !== 1) return false;
   const unit = units[0]?.[0] ?? "";
+  if (writingGlyph() && axis === "x") {
+    const px = lengthDeskPx(t);
+    if (px != null && px <= -56) return true;
+  }
   if (unit === "%" && axis === "x") return parsed.n <= -50;
   if (!/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) && !/^cq(?:w|h|i|b|min|max)$/.test(unit)) return false;
   if (axis === "x") return parsed.n <= -30;
@@ -8781,6 +8835,22 @@ function coversInk(selector: string, scopeSel: string | null): boolean {
   });
 }
 
+/** A paragraph on the open page. A heading is taller. A class is not this. The title in the header is not this. */
+function coversLine(selector: string, scopeSel: string | null): boolean {
+  for (const part of splitSelectorList(selector)) {
+    const raw = part.trim();
+    const text = firstLineSelector(raw) ?? raw;
+    if (!text || text.includes("::")) continue;
+    const steps = splitCombinators(text.replace(/\s+/g, " "));
+    if (!steps.length) continue;
+    for (const el of liveList()) {
+      if (el.tag !== "p" || !el.pageText) continue;
+      if (matchLiveSteps(steps, steps.length - 1, el, scopeSel)) return true;
+    }
+  }
+  return false;
+}
+
 function specTuple(selector: string): { a: number; b: number; c: number } {
   let a = 0;
   let b = 0;
@@ -9000,6 +9070,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const prevRecipe = activeRecipe;
   const prevBorder = activeBorder;
   const prevFrame = activeFrameOnly;
+  const prevLine = activeLine;
   activeStack = false;
   activeDivs = 0;
   activeRoot = false;
@@ -9008,6 +9079,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   activeRecipe = false;
   activeBorder = false;
   activeFrameOnly = false;
+  activeLine = false;
   if (desk) {
     const sel = nestingSel ?? "";
     const ink = coversInk(sel, scopeSel);
@@ -9028,6 +9100,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activeRecipe = selectorMatchesRecipe(sel, scopeSel);
     activeBorder = selectorMatchesBorder(sel, scopeSel);
     activeFrameOnly = selectorOnlyFrame(sel, scopeSel);
+    activeLine = !activeStar && coversLine(sel, scopeSel);
   }
   try {
   const scope = deskClipScope(nestingSel ?? "");
@@ -9182,6 +9255,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activeRecipe = prevRecipe;
     activeBorder = prevBorder;
     activeFrameOnly = prevFrame;
+    activeLine = prevLine;
   }
 }
 
