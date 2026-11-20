@@ -1245,7 +1245,7 @@ function maskIsClear(value: string): boolean {
   return grads.every((grad) => gradientIsClear(grad.inner));
 }
 
-/** A custom property set to a clear mask follows that mask. A gradient that still has black stays. A transparent band across the top of the stack does not. A fade from clear to solid, or a window that closes before the line, does not either. */
+/** A custom property set to a clear mask follows that mask. A gradient that still has black stays. A transparent band across the top of the stack does not. On the writing, a clear band through 67% ghosts the line. 66% still reads. A fade from clear to solid, or a window that closes before the line, does not either. */
 function maskCutsTop(value: string): boolean {
   const stack = activeRepeat && activeDivs >= 2;
   const page = (activePage && !activePaint) || activeRoot;
@@ -1257,7 +1257,7 @@ function maskCutsTop(value: string): boolean {
     const hit = /^transparent(?:\s+0%?)?\s+([0-9.]+)%/i.exec(inner);
     if (hit) {
       const n = Number(hit[1]);
-      const limit = writing ? 70 : 40;
+      const limit = writing ? 67 : 40;
       if (Number.isFinite(n) && n >= limit) return true;
     }
     const windowN = maskWindowCloses(inner);
@@ -2379,17 +2379,23 @@ function splitTopWords(value: string): string[] {
   return tokens;
 }
 
-/** A circle parked on the right misses the line. circle(46% at 78% 50%) and ellipse(40% 60% at 75% 50%) leave nothing. A centred circle(46%) and circle(40% at 50% 50%) still show the sentence. */
+/** A circle parked on the right misses the line. circle(46% at 78% 50%) and ellipse(40% 60% at 75% 50%) leave nothing. A centred circle(46%) and circle(40% at 50% 50%) still show the sentence. An ellipse parked under the line does the same: ellipse(50% 20% at 50% 85%) and at 50% 100% leave nothing. ellipse(50% 20% at 50% 80%) still shows the sentence. An ellipse parked over the line does it too: ellipse(50% 18% at 50% 12%) and ellipse(50% 16% at 50% 10%) leave nothing. ellipse(50% 22% at 50% 10%) still shows the sentence. */
 function shapeParkedOffLine(inner: string): boolean {
   if (!writingGlyph() && !activeInk) return false;
   const tokens = splitTopWords(inner).filter(Boolean);
   const at = tokens.findIndex((token) => /^at$/i.test(token));
   if (at < 0) return false;
-  const rx = percentOf((tokens[0] ?? "").replace(/!important/gi, ""));
+  const radii = tokens.slice(0, at);
+  const rx = percentOf((radii[0] ?? "").replace(/!important/gi, ""));
+  const ry = percentOf((radii[1] ?? "").replace(/!important/gi, ""));
   const place = (tokens[at + 1] ?? "").replace(/!important/gi, "").trim().toLowerCase();
   const cx = place === "left" ? 0 : place === "right" ? 1 : place === "center" ? 0.5 : percentOf(place);
-  if (rx == null || cx == null) return false;
-  return cx - rx * 0.707 >= 0.25 - 1e-9;
+  const placeY = (tokens[at + 2] ?? "").replace(/!important/gi, "").trim().toLowerCase();
+  const cy = placeY ? (placeY === "top" ? 0 : placeY === "bottom" ? 1 : placeY === "center" ? 0.5 : percentOf(placeY)) : null;
+  if (rx != null && cx != null && cx - rx * 0.707 >= 0.25 - 1e-9) return true;
+  if (ry == null || cy == null) return false;
+  if (cy - ry >= 0.65 - 1e-9) return true;
+  return cy + ry <= 0.3 + 1e-9;
 }
 
 /** A circle or ellipse small enough to miss the writing. 20% and 200px still show the line. */
@@ -2610,12 +2616,12 @@ function polygonCutsTop(inner: string): boolean {
   return box.minY >= 0.08 - 1e-9;
 }
 
-/** A polygon that keeps only the bottom of a paragraph leaves a descender. 58% does. 55% still reads. A heading is taller, so this is only the paragraph. */
+/** A polygon that keeps only the bottom of a paragraph leaves a descender. 66% does. 65% still shows the sentence. 58% still shows it. A heading is taller, so this is only the paragraph. */
 function polygonBottoms(inner: string): boolean {
   if (!writingGlyph() || !activeLine) return false;
   const box = polygonPercents(inner);
   if (!box || box.spanX < 0.5 || box.maxY < 0.9) return false;
-  return box.minY >= 0.58 - 1e-9;
+  return box.minY >= 0.66 - 1e-9;
 }
 
 /** A left cut of 3% eats the first word. 2.5% still shows it. 1.25em does. 1em still shows it. The same cut in a polygon or an xywh box does too. A cut from the right still shows the sentence. */
@@ -2664,7 +2670,7 @@ function clipHides(value: string, hidden: Set<string>): boolean {
         const narrow = Boolean(widthPct != null && widthPct > 0 && widthPct <= 0.22 && stacked);
         const sheet = Boolean(heightPct != null && heightPct > 0 && heightPct <= 0.32 && (activeRoot || (activePage && !activePaint)));
         const writingBand = Boolean(writingGlyph() && heightPct != null && heightPct > 0 && heightPct <= 0.4 && (yPct == null || yPct <= 0.02));
-        const writingBottom = Boolean(writingGlyph() && activeLine && yPct != null && yPct >= 0.58 - 1e-9 && heightPct != null && yPct + heightPct >= 0.9 - 1e-9);
+        const writingBottom = Boolean(writingGlyph() && activeLine && yPct != null && yPct >= 0.66 - 1e-9 && (widthPct == null || widthPct >= 0.5) && (heightPct == null || (heightPct > 0 && yPct + heightPct >= 0.9 - 1e-9)));
         const writingLeft = writingLeftToken(parts[0] ?? "");
         return zero || (windowSliver(width) && windowSliver(height)) || thinStrip(width) || thinStrip(height) || deep || starWindow || yOff || narrow || sheet || writingBand || writingBottom || writingLeft;
       }
@@ -2709,12 +2715,12 @@ function clipHides(value: string, hidden: Set<string>): boolean {
   return varCalls(value).some((call) => clips.has(call.name) || (Boolean(call.fallback) && clipHides(call.fallback, hidden)));
 }
 
-/** inset(15px 0) and inset(18px 0) take the line from both ends. inset(14px 0) still reads. inset(20px 0 0 0) is one end and still reads. A heading is taller, so this is only the paragraph. */
+/** inset(16px 0) and inset(18px 0) take the line from both ends. inset(18px 0 14px 0) does too. inset(15px 0) still reads. inset(18px 0 12px 0) still reads. inset(14px 0) still reads. inset(20px 0 0 0) is one end and still reads. A heading is taller, so this is only the paragraph. */
 function linePairGhost(topToken: string, bottomToken: string): boolean {
   if (!writingGlyph() || !activeLine) return false;
   const topPx = writingFacePx(topToken);
   const bottomPx = writingFacePx(bottomToken);
-  return topPx != null && bottomPx != null && topPx > 0 && bottomPx > 0 && topPx + bottomPx >= 30;
+  return topPx != null && bottomPx != null && topPx > 0 && bottomPx > 0 && topPx + bottomPx >= 32;
 }
 
 /** inset(1.15em) from the top or the bottom of the writing eats the line. inset(1.1em) and inset(20px) still show the sentence. The writing face is 18px. */
@@ -6962,38 +6968,8 @@ function borderBlockEats(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** A text-indent of -20px, clipped, eats the first word. -16px with the same clip still shows the sentence. -56px walks the line off the sheet even with no clip. -40px and -2.5em with no clip still show it. -8em does not. */
-function lineIndentDrops(parts: string[]): (part: string) => boolean {
-  if (!writingGlyph()) return () => false;
-  const clip = parts.some((part) => isBoxClip(part));
-  return (part) => {
-    const piece = pieceProp(part);
-    if (!piece || piece.prop !== "text-indent") return false;
-    const px = lengthDeskPx(piece.val.replace(/!important/gi, "").trim());
-    if (px == null) return false;
-    if (px <= -56) return true;
-    return clip && px <= -20;
-  };
-}
-
-/** left of -80px shifts a paragraph the sheet already positions. -48px still shows the sentence. An absolute left of -280px is a different rule and stays. A margin does not. A heading is not already positioned, so this is only the paragraph. */
-function lineParkDrops(parts: string[]): (part: string) => boolean {
-  if (!writingGlyph() || !activeLine) return () => false;
-  const takenOff = parts.some((part) => {
-    const piece = pieceProp(part);
-    return Boolean(piece && piece.prop === "position" && /\b(?:fixed|absolute)\b/i.test(piece.val));
-  });
-  if (takenOff) return () => false;
-  return (part) => {
-    const piece = pieceProp(part);
-    if (!piece || (piece.prop !== "left" && piece.prop !== "inset-inline-start")) return false;
-    const px = lengthDeskPx(piece.val.replace(/!important/gi, "").trim());
-    return px != null && px <= -56;
-  };
-}
-
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts), lineIndentDrops(parts), lineParkDrops(parts)];
+  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts)];
   return (part) => drops.some((drop) => drop(part));
 }
 
@@ -7712,7 +7688,7 @@ function pageShiftCovers(token: string): boolean {
   return n >= 70;
 }
 
-/** translateX(-30vw) on the writing leaves a sliver. -25vw still reads. translateX(-50%) leaves one word. -40% still reads. translateX(-56px) walks the line off the sheet. -40px still shows the sentence. translateY(-15vh) leaves the sheet. -12vh still reads. A downward shift of 70vh still reads. A star keeps its own shift. */
+/** translateX(-30vw) on the writing leaves a sliver. -25vw still reads. translateX(-50%) leaves one word. -40% still reads. translateX(-56px) and translateX(-70px) still show the sentence. translateY(-15vh) leaves the sheet. -12vh still reads. A downward shift of 70vh still reads. A star keeps its own shift. */
 function writingShiftCovers(token: string, axis: "x" | "y"): boolean {
   if (!writingGlyph() && !activeInk) return false;
   const t = token.replace(/!important/gi, "").replace(/\s+/g, "");
@@ -7722,10 +7698,6 @@ function writingShiftCovers(token: string, axis: "x" | "y"): boolean {
   const units = Object.entries(parsed.u).filter(([, exp]) => exp);
   if (units.length !== 1 || units[0]?.[1] !== 1) return false;
   const unit = units[0]?.[0] ?? "";
-  if (writingGlyph() && axis === "x") {
-    const px = lengthDeskPx(t);
-    if (px != null && px <= -56) return true;
-  }
   if (unit === "%" && axis === "x") return parsed.n <= -50;
   if (!/^(?:[dls])?v(?:w|h|i|b|min|max)$/.test(unit) && !/^cq(?:w|h|i|b|min|max)$/.test(unit)) return false;
   if (axis === "x") return parsed.n <= -30;
@@ -9622,7 +9594,7 @@ function scrubPseudoCover(body: string): string {
     .join("; ");
 }
 
-/** A full-width band at the top of every div, 4em or taller, covers the first line. 2em still leaves it. A band on the writing itself, edged on the left and the right, covers at 1em. 0.8em still leaves the line. A width of 100% with no right edge covers at 1.5em. 1em of that band still reads. A band that starts at 240px stays. */
+/** A full-width band at the top of every div, 4em or taller, covers the first line. 2em still leaves it. A band on the writing itself, edged on the left and the right, covers at 1em. 0.8em still leaves the line. A width of 100% with no right edge covers at 1.12em on the writing face. 1.1em and 20px of that band still read. A nested band with both edges covers at 1.15em. 1.1em of that nested band still reads. A band that starts at 240px stays. */
 function pseudoBandCovers(body: string, minPx = 64): boolean {
   const parts = splitCssDeclarations(body)
     .map((part) => part.trim())
@@ -9655,8 +9627,12 @@ function pseudoBandCovers(body: string, minPx = 64): boolean {
   const token = (splitTopWords(height.val.replace(/!important/gi, "")).find(Boolean) ?? "").replace(/\s+/g, "");
   const px = lengthDeskPx(token);
   const spanned = Boolean(right && edge(right.val));
-  const need = spanned ? minPx : Math.max(minPx, 24);
-  if (px != null && px >= need) return true;
+  const writingCall = minPx <= 24;
+  const measured = writingCall ? (writingFacePx(token) ?? px) : px;
+  let need = spanned ? minPx : Math.max(minPx, 24);
+  if (writingCall && !spanned) need = 20.1;
+  else if (writingCall && spanned && minPx >= 20) need = 20.1;
+  if (measured != null && measured >= need - 1e-9) return true;
   const pct = percentOf(token);
   if (pct == null || pct <= 0) return false;
   return pct >= (bandPositioned ? 0.5 : 0.03);
@@ -9664,7 +9640,10 @@ function pseudoBandCovers(body: string, minPx = 64): boolean {
 
 function pseudoOnWriting(selector: string): boolean {
   return splitSelectorList(selector).some((part) => {
-    const head = part.trim().replace(/::?(?:before|after)\s*$/i, "").trim();
+    let head = part.trim().replace(/::?(?:before|after)\s*$/i, "").trim();
+    if (!head || head.includes("::")) return false;
+    const wrapped = /^:(?:is|where|matches|-webkit-any)\(([^()]*)\)$/i.exec(head);
+    if (wrapped?.[1]) head = wrapped[1].trim();
     if (!head || /[.#\[]/.test(head) || head.includes("::")) return false;
     return /(?:^|[\s>+~])p$/i.test(head);
   });

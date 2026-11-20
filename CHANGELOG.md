@@ -1,3 +1,22 @@
+# Quire 1.9.81 — The first screen still has the writing
+
+Released 20 November 2026.
+
+1.9.80 dropped shifts, indents, and a 58% window that still show the sentence. It also still let a 1.12em paper band cover the glyphs, a window at 66% leave a sliver, a clear mask through 67% ghost the line, and an ellipse parked off the line blank the writing. A two-sided inset that removes the line stays dropped. A rule that still shows the writing stays. `translateX(-70px)` stays. `text-indent: -20px` with a clip stays. `text-indent: -8em` stays. `left: -80px` stays. A polygon at `65%` and at `58%` stays. `inset(15px 0)` stays. `inset(18px 0 12px 0)` stays. `p::after` at `1.1em` and `20px` stays. A mask that clears through `66%` stays. `ellipse(50% 20% at 50% 80%)` stays. Colour stays. A class hook stays.
+
+- **A shift, an indent, and a 58% window stay when the sentence still shows.** `translateX(-56px)` and `translateX(-70px)` stay. `left: -80px` stays. `text-indent: -20px` with `overflow: hidden` stays. `text-indent: -56px` and `-8em` stay. `polygon` and `xywh` that start at `58%` or `65%` stay. Colour stays.
+- **A two-sided inset that removes the line stays dropped.** `inset(16px 0)`, `inset(18px 0)`, and `inset(18px 0 14px 0)` are dropped on a paragraph. `inset(15px 0)` still reads. `inset(18px 0 12px 0)` still reads. `inset(14px 0)` still reads. A heading stays. A class hook stays. Colour stays.
+- **A 1.12em paper band can no longer cover the glyphs.** `p::after` at `width: 100%` and `height: 1.12em`, `1.15em`, or `21px` drops the background. The same band nested under `p` drops too. `1.1em`, `1em`, and `20px` still show the sentence. A nested left-and-right band at `1.1em` still shows it. The height stays. Colour stays. A class hook stays.
+- **A window under the line can no longer leave a sliver.** `polygon(0 66%, 100% 66%, 100% 100%, 0 100%)` and `xywh(0 66% 100% 34%)` are dropped on a paragraph. `65%` still shows the sentence. A clear mask through `67%` is dropped on the writing. `66%` still shows the sentence. A class hook stays. Colour stays.
+- **An ellipse parked off the line can no longer blank the writing.** `ellipse(50% 20% at 50% 85%)` and `ellipse(50% 20% at 50% 100%)` are dropped on the writing. `ellipse(50% 18% at 50% 12%)` and `ellipse(50% 16% at 50% 10%)` are dropped too. `ellipse(50% 20% at 50% 80%)` and `ellipse(50% 22% at 50% 10%)` still show the sentence. A centred `ellipse(50% 20%)` still shows it. A class hook stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
+
 # Quire 1.9.80 — The first screen still has the writing
 
 Released 20 November 2026.
