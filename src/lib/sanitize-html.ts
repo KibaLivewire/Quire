@@ -1245,7 +1245,7 @@ function maskIsClear(value: string): boolean {
   return grads.every((grad) => gradientIsClear(grad.inner));
 }
 
-/** A custom property set to a clear mask follows that mask. A gradient that still has black stays. A transparent band across the top of the stack does not. On the writing, a clear band through 67% ghosts the line. 66% still reads. A fade from clear to solid, or a window that closes before the line, does not either. */
+/** A custom property set to a clear mask follows that mask. A gradient that still has black stays. A transparent band across the top of the stack does not. On the writing, a clear band through 62% ghosts the line. 60% still reads. A fade from clear to solid, or a window that closes before the line, does not either. */
 function maskCutsTop(value: string): boolean {
   const stack = activeRepeat && activeDivs >= 2;
   const page = (activePage && !activePaint) || activeRoot;
@@ -1257,7 +1257,7 @@ function maskCutsTop(value: string): boolean {
     const hit = /^transparent(?:\s+0%?)?\s+([0-9.]+)%/i.exec(inner);
     if (hit) {
       const n = Number(hit[1]);
-      const limit = writing ? 67 : 40;
+      const limit = writing ? 62 : 40;
       if (Number.isFinite(n) && n >= limit) return true;
     }
     const windowN = maskWindowCloses(inner);
@@ -1326,7 +1326,7 @@ function coloredStop(token: string): boolean {
   return /(?:#[0-9a-f]{3,8}|\b(?:black|white|rgb|hsl|hwb|lab|lch|oklch|oklab|color)\b)/i.test(token);
 }
 
-/** A conic wedge under three quarters of the circle misses the first line. 270deg still reads. */
+/** A conic wedge under three quarters of the circle misses the first line. 270deg still reads. A clear sweep through the first 60% of the turn, before any ink, misses it too. */
 function maskConicSliver(value: string): boolean {
   const stack = activeRepeat && activeDivs >= 2;
   const page = (activePage && !activePaint) || activeRoot;
@@ -1367,7 +1367,10 @@ function conicSweepHides(inner: string): boolean {
     const turns = positions.map((token) => angleTurn(token)).filter((n): n is number => n != null);
     const end = turns.length ? Math.max(...turns) : null;
     if (clear) {
-      if (!sawOpaque) continue;
+      if (!sawOpaque) {
+        if (end != null && end >= 0.6 - 1e-9) return true;
+        continue;
+      }
       if (end == null || end < 0.75) return true;
       continue;
     }
@@ -1416,9 +1419,21 @@ function attrColorFallback(token: string): string | null {
   return args[args.length - 1] ?? null;
 }
 
+/** A radial ellipse 20% tall or shorter misses most of the line. A circle window is a different cut. */
+function maskEllipseMisses(value: string): boolean {
+  if (!writingGlyph()) return false;
+  const grads = namedFunctionCalls(value, ["repeating-radial-gradient", "-webkit-radial-gradient", "radial-gradient"]);
+  return grads.some((grad) => {
+    const hit = /^ellipse\s+([0-9.]+)%\s+([0-9.]+)%/i.exec(grad.inner.trim());
+    if (!hit?.[2]) return false;
+    const ry = Number(hit[2]) / 100;
+    return Number.isFinite(ry) && ry > 0 && ry <= 0.2 + 1e-9;
+  });
+}
+
 /** A custom property set to a clear mask follows that mask. A gradient that still has black stays. A transparent band across the top of the stack does not. */
 function maskHides(value: string, hidden: Set<string>): boolean {
-  if (maskIsClear(value) || maskCutsTop(value) || maskRadialSliver(value) || maskConicSliver(value) || maskRepeatHairline(value)) return true;
+  if (maskIsClear(value) || maskCutsTop(value) || maskRadialSliver(value) || maskConicSliver(value) || maskRepeatHairline(value) || maskEllipseMisses(value)) return true;
   const masks = (hidden as HideVars).masks;
   if (!masks) return false;
   return varCalls(value).some((call) => masks.has(call.name) || (Boolean(call.fallback) && maskHides(call.fallback, hidden)));
@@ -2379,7 +2394,20 @@ function splitTopWords(value: string): string[] {
   return tokens;
 }
 
-/** A circle parked on the right misses the line. circle(46% at 78% 50%) and ellipse(40% 60% at 75% 50%) leave nothing. A centred circle(46%) and circle(40% at 50% 50%) still show the sentence. An ellipse parked under the line does the same: ellipse(50% 20% at 50% 85%) and at 50% 100% leave nothing. ellipse(50% 20% at 50% 80%) still shows the sentence. An ellipse parked over the line does it too: ellipse(50% 18% at 50% 12%) and ellipse(50% 16% at 50% 10%) leave nothing. ellipse(50% 22% at 50% 10%) still shows the sentence. */
+/** A centred circle of 60% or less clips a run of words on a wide line. circle(62%) only shortens the first word. circle(68%) still shows the sentence. A circle parked off to the side is a different cut. */
+function circleClipsLine(inner: string): boolean {
+  if (!writingGlyph() && !activeInk) return false;
+  const tokens = splitTopWords(inner).filter(Boolean);
+  const radius = percentOf((tokens[0] ?? "").replace(/!important/gi, ""));
+  if (radius == null || radius <= 0.1 || radius > 0.6) return false;
+  const at = tokens.findIndex((token) => /^at$/i.test(token));
+  if (at < 0) return true;
+  const place = (tokens[at + 1] ?? "").replace(/!important/gi, "").trim().toLowerCase();
+  const cx = place === "left" ? 0 : place === "right" ? 1 : place === "center" ? 0.5 : percentOf(place);
+  return cx != null && cx >= 0.35 && cx <= 0.65;
+}
+
+/** A circle parked on the right misses the line. circle(46% at 78% 50%) and ellipse(40% 60% at 75% 50%) leave nothing. A centred circle(68%) still shows the sentence. circle(60%) and circle(46%) take a run of words off the left of a wide line. An ellipse parked under the line does the same: ellipse(50% 20% at 50% 75%) leaves a sliver. ellipse(50% 22% at 50% 70%) still shows the sentence. An ellipse parked over the line does it too: ellipse(50% 22% at 50% 10%) and ellipse(50% 20% at 50% 22%) leave nothing. ellipse(50% 30% at 50% 40%) still shows the sentence. */
 function shapeParkedOffLine(inner: string): boolean {
   if (!writingGlyph() && !activeInk) return false;
   const tokens = splitTopWords(inner).filter(Boolean);
@@ -2394,8 +2422,8 @@ function shapeParkedOffLine(inner: string): boolean {
   const cy = placeY ? (placeY === "top" ? 0 : placeY === "bottom" ? 1 : placeY === "center" ? 0.5 : percentOf(placeY)) : null;
   if (rx != null && cx != null && cx - rx * 0.707 >= 0.25 - 1e-9) return true;
   if (ry == null || cy == null) return false;
-  if (cy - ry >= 0.65 - 1e-9) return true;
-  return cy + ry <= 0.3 + 1e-9;
+  if (cy - ry >= 0.55 - 1e-9) return true;
+  return cy + ry <= 0.42 + 1e-9;
 }
 
 /** A circle or ellipse small enough to miss the writing. 20% and 200px still show the line. */
@@ -2616,12 +2644,26 @@ function polygonCutsTop(inner: string): boolean {
   return box.minY >= 0.08 - 1e-9;
 }
 
-/** A polygon that keeps only the bottom of a paragraph leaves a descender. 66% does. 65% still shows the sentence. 58% still shows it. A heading is taller, so this is only the paragraph. */
+/** A polygon that keeps only the bottom of a paragraph leaves a descender. 62% does. 60% still shows the sentence. 58% still shows it. A heading is taller, so this is only the paragraph. */
 function polygonBottoms(inner: string): boolean {
   if (!writingGlyph() || !activeLine) return false;
   const box = polygonPercents(inner);
   if (!box || box.spanX < 0.5 || box.maxY < 0.9) return false;
-  return box.minY >= 0.66 - 1e-9;
+  return box.minY >= 0.62 - 1e-9;
+}
+
+/** A shape() window that keeps only the bottom of a paragraph leaves a descender. 62% does. 60% still shows the sentence. */
+function shapeBottoms(inner: string): boolean {
+  if (!writingGlyph() || !activeLine) return false;
+  const nums = [...inner.matchAll(/([+-]?(?:\d*\.?\d+))%/g)].map((match) => Number(match[1]) / 100);
+  if (nums.length < 4) return false;
+  const ys = nums.filter((_, index) => index % 2 === 1);
+  const xs = nums.filter((_, index) => index % 2 === 0);
+  if (ys.length < 3) return false;
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const spanX = Math.max(...xs) - Math.min(...xs);
+  return spanX >= 0.5 && maxY >= 0.9 && minY >= 0.62 - 1e-9;
 }
 
 /** A left cut of 3% eats the first word. 2.5% still shows it. 1.25em does. 1em still shows it. The same cut in a polygon or an xywh box does too. A cut from the right still shows the sentence. */
@@ -2648,7 +2690,7 @@ function clipHides(value: string, hidden: Set<string>): boolean {
     found.some((call) => {
       if (call.name === "circle") {
         const radius = (call.inner.trim().match(/^[^\s]+/)?.[0] ?? "").trim();
-        return clipRadiusHides(radius, hidden) || shapeParkedOffLine(call.inner);
+        return clipRadiusHides(radius, hidden) || shapeParkedOffLine(call.inner) || circleClipsLine(call.inner);
       }
       if (call.name === "xywh") {
         const parts = splitArgs(call.inner)
@@ -2670,14 +2712,14 @@ function clipHides(value: string, hidden: Set<string>): boolean {
         const narrow = Boolean(widthPct != null && widthPct > 0 && widthPct <= 0.22 && stacked);
         const sheet = Boolean(heightPct != null && heightPct > 0 && heightPct <= 0.32 && (activeRoot || (activePage && !activePaint)));
         const writingBand = Boolean(writingGlyph() && heightPct != null && heightPct > 0 && heightPct <= 0.4 && (yPct == null || yPct <= 0.02));
-        const writingBottom = Boolean(writingGlyph() && activeLine && yPct != null && yPct >= 0.66 - 1e-9 && (widthPct == null || widthPct >= 0.5) && (heightPct == null || (heightPct > 0 && yPct + heightPct >= 0.9 - 1e-9)));
+        const writingBottom = Boolean(writingGlyph() && activeLine && yPct != null && yPct >= 0.62 - 1e-9 && (widthPct == null || widthPct >= 0.5) && (heightPct == null || (heightPct > 0 && yPct + heightPct >= 0.9 - 1e-9)));
         const writingLeft = writingLeftToken(parts[0] ?? "");
         return zero || (windowSliver(width) && windowSliver(height)) || thinStrip(width) || thinStrip(height) || deep || starWindow || yOff || narrow || sheet || writingBand || writingBottom || writingLeft;
       }
       if (call.name === "rect") return rectHides(call.inner);
       if (call.name === "polygon") return polygonAreaZero(call.inner) || coordSpanHides(call.inner) || polygonStrips(call.inner) || polygonTopBand(call.inner) || polygonCutsTop(call.inner) || polygonLeftCut(call.inner) || polygonBottoms(call.inner);
       if (call.name === "path") return pathHides(call.inner);
-      if (call.name === "shape") return shapeHides(call.inner) || coordSpanHides(call.inner) || shapeStrips(call.inner);
+      if (call.name === "shape") return shapeHides(call.inner) || coordSpanHides(call.inner) || shapeStrips(call.inner) || shapeBottoms(call.inner);
       if (call.name === "ellipse") return ellipseHides(call.inner, hidden) || ellipseMissesLine(call.inner);
       const rawTokens = splitArgs(call.inner).flatMap((part) => splitTopWords(part));
       const roundAt = rawTokens.findIndex((token) => /^round$/i.test(token));
@@ -2715,12 +2757,12 @@ function clipHides(value: string, hidden: Set<string>): boolean {
   return varCalls(value).some((call) => clips.has(call.name) || (Boolean(call.fallback) && clipHides(call.fallback, hidden)));
 }
 
-/** inset(16px 0) and inset(18px 0) take the line from both ends. inset(18px 0 14px 0) does too. inset(15px 0) still reads. inset(18px 0 12px 0) still reads. inset(14px 0) still reads. inset(20px 0 0 0) is one end and still reads. A heading is taller, so this is only the paragraph. */
+/** inset(16px 0) and inset(18px 0) take the line from both ends. inset(18px 0 14px 0) does too. inset(15.5px 0) blanks it. inset(15px 0) still reads. inset(18px 0 12px 0) still reads. inset(14px 0) still reads. inset(20px 0 0 0) is one end and still reads. A heading is taller, so this is only the paragraph. */
 function linePairGhost(topToken: string, bottomToken: string): boolean {
   if (!writingGlyph() || !activeLine) return false;
   const topPx = writingFacePx(topToken);
   const bottomPx = writingFacePx(bottomToken);
-  return topPx != null && bottomPx != null && topPx > 0 && bottomPx > 0 && topPx + bottomPx >= 32;
+  return topPx != null && bottomPx != null && topPx > 0 && bottomPx > 0 && topPx + bottomPx >= 31;
 }
 
 /** inset(1.15em) from the top or the bottom of the writing eats the line. inset(1.1em) and inset(20px) still show the sentence. The writing face is 18px. */
@@ -3588,11 +3630,13 @@ function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): 
         return Math.abs(parsed.n) >= vwLimit;
       }
       const inherits = activeStar || activePaint || activeInk || activeRoot || activeHtml || activePage || activeRepeat || activeDivs >= 1;
+      if ((unit === "em" || unit === "rem") && parsed.n <= -4 && writingGlyph() && !activeStar) return true;
       if ((unit === "em" || unit === "rem") && parsed.n <= -10 && (activePaint || activeInk || activeStar)) return true;
       if (unit === "%" && inherits && parsed.n <= -50) return true;
     }
   }
   const px = lengthDeskPx(value);
+  if (px != null && px <= -56 && writingGlyph() && !activeStar) return true;
   const limit = activeStar || (activeRepeat && activeDivs >= 2) ? 192 : activePaint || activeInk ? 352 : activeRoot || activeHtml ? 480 : 880;
   if (px != null) return Math.abs(px) >= limit;
   const trail = seen ?? new Set<string>();
@@ -6968,8 +7012,25 @@ function borderBlockEats(parts: string[]): (part: string) => boolean {
   };
 }
 
+/** position: relative and left of -100px walk the first words off the sheet. -80px only shortens the first word. An absolute shift is not this. The left is dropped. The position stays. */
+function relativeShiftDrops(parts: string[]): (part: string) => boolean {
+  if (!writingGlyph() || activeStar) return () => false;
+  const relative = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop === "position" && /\brelative\b/i.test(piece.val));
+  });
+  if (!relative) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || piece.prop !== "left") return false;
+    const token = (splitTopWords(piece.val.replace(/!important/gi, "")).find(Boolean) ?? "").trim();
+    const px = lengthDeskPx(token);
+    return px != null && px <= -100;
+  };
+}
+
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts)];
+  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts), relativeShiftDrops(parts)];
   return (part) => drops.some((drop) => drop(part));
 }
 
@@ -7562,7 +7623,7 @@ function matrixShearAmount(value: string, hidden: Set<string>): boolean {
   });
 }
 
-/** matrix(1, 0.55, 0, 1) leaves a scrap of the line. matrix(1, 0.5, 0, 1) and matrix(1, 0.45, 0, 1) still read. A turned matrix was already dropped. */
+/** matrix(1, 0.5, 0, 1) leaves only the last word. matrix(1, 0.45, 0, 1) still reads. A turned matrix was already dropped. */
 function matrixWritingHides(value: string, hidden: Set<string>): boolean {
   if (!activePaint || activeStar) return false;
   return namedFunctionCalls(value, ["matrix"]).some((call) => {
@@ -7576,7 +7637,7 @@ function matrixWritingHides(value: string, hidden: Set<string>): boolean {
     const tilt = Math.abs((Math.atan2(b, a) * 180) / Math.PI);
     const fromFlat = Math.min(tilt, Math.abs(180 - tilt));
     if (fromFlat >= 40 && Math.hypot(a, b) >= 0.4) return true;
-    return Math.max(Math.abs(b), Math.abs(c)) >= 0.55 && Math.hypot(a, b) >= 0.8 && Math.hypot(c, d) >= 0.8;
+    return Math.max(Math.abs(b), Math.abs(c)) >= 0.5 && Math.hypot(a, b) >= 0.8 && Math.hypot(c, d) >= 0.8;
   });
 }
 
@@ -9179,6 +9240,10 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
           next = scrubPseudoCover(next);
           touched = true;
         }
+        if ((activeLine || pseudoOnWriting(looking)) && pseudoGlyphCover(next)) {
+          next = scrubPseudoCover(next);
+          touched = true;
+        }
         if (pseudoBorderCovers(next)) {
           next = scrubPseudoBorder(next);
           touched = true;
@@ -9594,7 +9659,7 @@ function scrubPseudoCover(body: string): string {
     .join("; ");
 }
 
-/** A full-width band at the top of every div, 4em or taller, covers the first line. 2em still leaves it. A band on the writing itself, edged on the left and the right, covers at 1em. 0.8em still leaves the line. A width of 100% with no right edge covers at 1.12em on the writing face. 1.1em and 20px of that band still read. A nested band with both edges covers at 1.15em. 1.1em of that nested band still reads. A band that starts at 240px stays. */
+/** A full-width band at the top of every div, 4em or taller, covers the first line. 2em still leaves it. A band on the writing itself, edged on the left and the right, covers at 1em. 0.8em still leaves the line. A width of 100% with no right edge covers at 1.08em on the writing face. 1em and 1.05em of that band still read. A nested band with both edges covers at 1.15em. 1.1em of that nested band still reads. A band pinned to the bottom of the line covers at 1.1em. 1em there still reads. A band that starts at 240px stays. */
 function pseudoBandCovers(body: string, minPx = 64): boolean {
   const parts = splitCssDeclarations(body)
     .map((part) => part.trim())
@@ -9611,10 +9676,11 @@ function pseudoBandCovers(body: string, minPx = 64): boolean {
   const width = get("width") ?? get("inline-size");
   const fullWidth = Boolean(width && isFullLength(width.val, "x"));
   const top = get("top");
+  const bottom = get("bottom");
   const left = get("left");
   const right = get("right");
   const height = get("height") ?? get("block-size");
-  if (!top || !left || !height) return false;
+  if (!left || !height) return false;
   if (!right && !fullWidth) return false;
   const edge = (value: string) => {
     const token = (splitTopWords(value.replace(/!important/gi, "")).find(Boolean) ?? "").replace(/\s+/g, "");
@@ -9622,15 +9688,18 @@ function pseudoBandCovers(body: string, minPx = 64): boolean {
     const px = lengthDeskPx(token);
     return px != null && Math.abs(px) <= 1;
   };
-  if (!edge(top.val) || !edge(left.val)) return false;
+  if (!edge(left.val)) return false;
   if (right && !edge(right.val)) return false;
   const token = (splitTopWords(height.val.replace(/!important/gi, "")).find(Boolean) ?? "").replace(/\s+/g, "");
   const px = lengthDeskPx(token);
   const spanned = Boolean(right && edge(right.val));
   const writingCall = minPx <= 24;
   const measured = writingCall ? (writingFacePx(token) ?? px) : px;
+  const pinnedTop = Boolean(top && edge(top.val));
+  if (writingCall && !pinnedTop && bottom && edge(bottom.val)) return measured != null && measured >= 19.2 - 1e-9;
+  if (!pinnedTop) return false;
   let need = spanned ? minPx : Math.max(minPx, 24);
-  if (writingCall && !spanned) need = 20.1;
+  if (writingCall && !spanned) need = 19.2;
   else if (writingCall && spanned && minPx >= 20) need = 20.1;
   if (measured != null && measured >= need - 1e-9) return true;
   const pct = percentOf(token);
@@ -9647,6 +9716,29 @@ function pseudoOnWriting(selector: string): boolean {
     if (!head || /[.#\[]/.test(head) || head.includes("::")) return false;
     return /(?:^|[\s>+~])p$/i.test(head);
   });
+}
+
+/** An absolute string in the sheet colour, tall enough to be a line, paints the writing out. A short marker stays. The background is dropped. The words of the pseudo stay. */
+function pseudoGlyphCover(body: string): boolean {
+  const parts = splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const get = (name: string) => parts.map((part) => pieceProp(part)).find((piece) => piece?.prop === name);
+  const position = get("position");
+  if (!position || !/\b(?:fixed|absolute)\b/i.test(position.val)) return false;
+  const content = get("content");
+  if (!content) return false;
+  const quoted = /(["'])([\s\S]*?)\1/.exec(content.val);
+  if (!quoted?.[2] || quoted[2].length < 12) return false;
+  const background = parts.map((part) => pieceProp(part)).find((piece) => piece && (piece.prop === "background" || piece.prop === "background-color"));
+  if (!background) return false;
+  const paint = background.val.replace(/!important/gi, "").trim();
+  if (!colorSitsOnSheet(paint) && !/^#221e1a$/i.test((paint.split(/\s+/)[0] ?? "").replace(/!important/gi, ""))) return false;
+  const size = get("font-size");
+  if (!size) return true;
+  const token = (splitTopWords(size.val.replace(/!important/gi, "")).find(Boolean) ?? "").replace(/\s+/g, "");
+  const px = writingFacePx(token) ?? lengthDeskPx(token);
+  return px != null && px >= 16;
 }
 
 /** A fixed sheet with a viewport border paints over the desk. An 8px frame stays. */
@@ -10017,7 +10109,7 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
       let next = rawBody;
       let touched = false;
       const looseOnly = loosePseudoHead(opened) && !deskPseudoSelector(opened);
-      if (pseudoCovers(next, hidden) || pseudoInsetCovers(next, hidden) || pseudoBandCovers(next) || (pseudoOnWriting(opened) && pseudoBandCovers(next, 16)) || (looseSheetSelector(opened) && elementCovers(next)) || (looseOnly && loosePseudoCovers(next))) {
+      if (pseudoCovers(next, hidden) || pseudoInsetCovers(next, hidden) || pseudoBandCovers(next) || (pseudoOnWriting(opened) && (pseudoBandCovers(next, 16) || pseudoGlyphCover(next))) || (looseSheetSelector(opened) && elementCovers(next)) || (looseOnly && loosePseudoCovers(next))) {
         next = scrubPseudoCover(next);
         touched = true;
       }
@@ -10617,6 +10709,125 @@ function sheetContainerZerosInline(css: string): boolean {
   return sheetContainerMatch(css, containerInlineZeros);
 }
 
+/** Two p rules can hide the line together when neither one does alone. A 30px pad inside a 40px border-box, and a clip margin of -20px, do that. The pad or the margin is dropped. A split line-height stays. */
+function scrubSplitPairs(css: string, hidden: Set<string>): string {
+  type Rule = { selector: string; bodyStart: number; bodyEnd: number; body: string; nested: boolean };
+  const rules: Rule[] = [];
+  const edits: { start: number; end: number; text: string }[] = [];
+  let i = 0;
+  while (i < css.length) {
+    if (css[i] === "@") {
+      const name = /^@(-?[\w-]+)/.exec(css.slice(i));
+      if (!name) {
+        i += 1;
+        continue;
+      }
+      const kind = (name[1] ?? "").replace(/^-webkit-/, "");
+      const j = i + name[0].length;
+      if (/keyframes/i.test(kind) || /^(?:font-face|page|counter-style|property)$/i.test(kind)) {
+        const open = css.indexOf("{", j);
+        const semi = css.indexOf(";", j);
+        if (open < 0 || (semi >= 0 && semi < open)) {
+          i = semi < 0 ? css.length : semi + 1;
+          continue;
+        }
+        const close = matchingBrace(css, open);
+        i = close < 0 ? css.length : close + 1;
+        continue;
+      }
+      if (/^scope$/i.test(kind) || RECURSE_AT.test(kind)) {
+        const open = css.indexOf("{", j);
+        if (open < 0) break;
+        const close = matchingBrace(css, open);
+        if (close < 0) break;
+        const inner = css.slice(open + 1, close);
+        const next = scrubSplitPairs(inner, hidden);
+        if (next !== inner) edits.push({ start: open + 1, end: close, text: next });
+        i = close + 1;
+        continue;
+      }
+      const stmtOpen = css.indexOf("{", j);
+      const stmtSemi = css.indexOf(";", j);
+      if (stmtSemi >= 0 && (stmtOpen < 0 || stmtSemi < stmtOpen)) {
+        i = stmtSemi + 1;
+        continue;
+      }
+      if (stmtOpen >= 0) {
+        const stmtClose = matchingBrace(css, stmtOpen);
+        if (stmtClose < 0) break;
+        i = stmtClose + 1;
+        continue;
+      }
+      break;
+    }
+    const open = css.indexOf("{", i);
+    if (open < 0) break;
+    const close = matchingBrace(css, open);
+    if (close < 0) break;
+    const body = css.slice(open + 1, close);
+    const nested = body.includes("{");
+    rules.push({ selector: css.slice(i, open), bodyStart: open + 1, bodyEnd: close, body, nested });
+    if (nested) {
+      const next = scrubSplitPairs(body, hidden);
+      if (next !== body) edits.push({ start: open + 1, end: close, text: next });
+    }
+    i = close + 1;
+  }
+  const groups = new Map<string, number[]>();
+  rules.forEach((rule, idx) => {
+    if (rule.nested) return;
+    const sel = rule.selector.trim();
+    if (!sel || sel.includes("@")) return;
+    if (!/^p$/i.test(sel.replace(/\s+/g, "")) && !coversLine(sel, null)) return;
+    const key = sel.replace(/\s+/g, " ").trim().toLowerCase();
+    const list = groups.get(key) ?? [];
+    list.push(idx);
+    groups.set(key, list);
+  });
+  for (const idxs of groups.values()) {
+    if (idxs.length < 2) continue;
+    const first = rules[idxs[0] ?? -1];
+    if (!first) continue;
+    const sel = first.selector.trim();
+    const merged = idxs.map((n) => rules[n]?.body ?? "").join(";");
+    const scrubbed = scrubNestedBody(merged, hidden, new Set(), true, null, sel, hideProfiles(sel, null), false);
+    const after = new Set<string>();
+    for (const part of splitCssDeclarations(scrubbed)) {
+      const piece = pieceProp(part.trim());
+      if (piece) after.add(piece.prop);
+    }
+    const gone = new Set<string>();
+    for (const part of splitCssDeclarations(merged)) {
+      const piece = pieceProp(part.trim());
+      if (!piece || after.has(piece.prop)) continue;
+      if (piece.prop.startsWith("padding") || piece.prop === "overflow-clip-margin") gone.add(piece.prop);
+    }
+    if (!gone.size) continue;
+    for (const n of idxs) {
+      const rule = rules[n];
+      if (!rule) continue;
+      let hit = false;
+      for (const part of splitCssDeclarations(rule.body)) {
+        const piece = pieceProp(part.trim());
+        if (piece && gone.has(piece.prop)) hit = true;
+      }
+      if (!hit) continue;
+      const text = splitCssDeclarations(rule.body)
+        .map((part) => part.trim())
+        .filter((part) => {
+          const piece = pieceProp(part);
+          return !piece || !gone.has(piece.prop);
+        })
+        .join("; ");
+      edits.push({ start: rule.bodyStart, end: rule.bodyEnd, text });
+    }
+  }
+  edits.sort((a, b) => b.start - a.start);
+  let out = css;
+  for (const edit of edits) out = out.slice(0, edit.start) + edit.text + out.slice(edit.end);
+  return out;
+}
+
 /** Add-on CSS can restyle the desk. It cannot pull a remote sheet or image, or hide the desk. */
 export function sanitizePluginCss(css: string): string {
   const readable = stripCssComments(decodeCssEscapes(stripCssComments(css), false));
@@ -10636,7 +10847,7 @@ export function sanitizePluginCss(css: string): string {
   containerInlineOpen = Boolean(hidden.containerInline);
   containerInlinePxOpen = hidden.containerInlinePx ?? null;
   containerBlockPxOpen = hidden.containerBlockPx ?? null;
-  return scrubDeskHide(scrubTinyFaces(cleaned, hidden), hidden);
+  return scrubSplitPairs(scrubDeskHide(scrubTinyFaces(cleaned, hidden), hidden), hidden);
 }
 
 function scrubTinyFaceBody(body: string, hidden: Set<string>): string {

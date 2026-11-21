@@ -1,3 +1,25 @@
+# Quire 1.9.82 — The first screen still has the writing
+
+Released 21 November 2026.
+
+1.9.81 still let a centred circle of 60% or less take a run of words, a window at 62% leave a sliver, an ellipse parked under or over the line blank the writing, a clear mask through 62% ghost the line, a 1.1em paper band cover the glyphs, an inset of 15.5px blank the line from both ends, a deep indent or a relative shift walk the first words off, and a shear of 0.5 leave only the last word. Two rules on the same paragraph could do it when neither one did alone. A rule that still shows the writing stays. `circle(62%)` stays. `circle(68%)` stays. A polygon at `60%` and at `58%` stays. `ellipse(50% 22% at 50% 70%)` stays. `ellipse(50% 30% at 50% 40%)` stays. A mask that clears through `60%` stays. `p::after` at `1em` and `1.05em` stays. A nested left-and-right band at `1.1em` stays. `inset(15px 0)` stays. `inset(18px 0 12px 0)` stays. `text-indent: -2.5em` and `-40px` stay. `position: relative; left: -80px` stays. `position: absolute; left: -280px` stays. `matrix(1, 0.45, 0, 1)` stays. A split `line-height: 0.25` stays. Colour stays. A class hook stays. `html { text-indent: -8em }` stays. `* { text-indent: -8em }` stays.
+
+- **A centred circle can no longer clip a run of words.** `circle(40%)`, `circle(46%)`, `circle(60%)`, and `circle(40% at 50% 50%)` are dropped on the writing. `circle(62%)` only shortens the first word, so it stays. `circle(68%)` still shows the sentence. A circle parked off to the side was already dropped. `html { clip-path: circle(40%) }` stays. A class hook stays. Colour stays.
+- **A window under the line can no longer leave a sliver.** `polygon`, `xywh`, and `shape()` that start at `62%` or `65%` are dropped on a paragraph. `60%` and `58%` still show the sentence. A class hook stays. Colour stays.
+- **An ellipse parked under or over the line can no longer blank the writing.** `ellipse(50% 20% at 50% 80%)` and `ellipse(50% 20% at 50% 75%)` are dropped. `ellipse(50% 22% at 50% 10%)` and `ellipse(50% 20% at 50% 22%)` are dropped too. `ellipse(50% 22% at 50% 70%)` still shows the sentence. `ellipse(50% 30% at 50% 40%)` still shows it. A centred `ellipse(50% 20%)` still shows it. A class hook stays. Colour stays.
+- **A clear mask can no longer ghost the line.** A linear mask that is clear through `62%` or `66%` is dropped on the writing. `60%` still shows the sentence. `conic-gradient(from 90deg, transparent 0 70%, #000 0)` is dropped. `270deg` of ink still reads. A radial `ellipse 40% 20%` is dropped. `ellipse 40% 30%` stays. `radial-gradient(circle at 0 0, #000 40%, transparent 40%)` stays. Colour stays.
+- **A 1.1em paper band can no longer cover the glyphs.** `p::after` at `width: 100%` and `height: 1.1em` or `20px` drops the background. The same band pinned to the bottom at `1.1em` drops it too. `1em` and `1.05em` still show the sentence. A nested left-and-right band at `1.1em` still shows it. A paper-coloured `::before` string long enough to be a line drops its background. The words of the pseudo stay. A class hook stays. Colour stays.
+- **An inset of 15.5px can no longer blank the line.** `inset(15.5px 0)` is dropped on a paragraph. `inset(15px 0)` still reads. `inset(18px 0 12px 0)` still reads. `inset(16px 0)` and `inset(18px 0)` stay dropped. A heading stays. A class hook stays. Colour stays.
+- **A deep indent or a relative shift can no longer walk the first words off.** `text-indent: -4em`, `-8em`, and `-56px` are dropped on the writing. `-2.5em` and `-40px` still show the sentence. `-20px` with `overflow: hidden` still shows it. `position: relative; left: -100px` drops the left. `-80px` with relative stays. An absolute `left: -280px` stays. `html` and a star at `-8em` stay. A class hook stays. Colour stays.
+- **A shear of 0.5 can no longer leave only the last word.** `matrix(1, 0.5, 0, 1)` is dropped on the writing. `matrix(1, 0.45, 0, 1)` still reads. `matrix(1, 0.55, 0, 1)` stays dropped. Colour stays.
+- **Two rules on the same paragraph can no longer hide the line together.** `p { height: 40px; overflow: hidden }` beside `p { padding-top: 30px }` drops the pad. `p { overflow: clip }` beside `p { overflow-clip-margin: -20px }` drops the margin. A split `line-height: 0.25` stays. The height and the clip stay. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.81 — The first screen still has the writing
 
 Released 20 November 2026.
