@@ -1,3 +1,24 @@
+# Quire 1.9.83 — The first screen still has the writing
+
+Released 21 November 2026.
+
+1.9.82 still let a clip margin of -1px eat the open line when the paragraph has no set height, and a clipped line-height of 7px leave a hairline. Scored again on the same desk, a few published stays were ghosts: a shear of 0.18, a section scale of 1.2, an inset of 15px from both ends, a window or a clear mask at 60%, a 1em paper band, a shift of -88px, and a lift of -55px. A rule that still shows the writing stays. `overflow-clip-margin: -16px` inside `height: 2em` stays. `line-height: 0.3` with a clip stays. `line-height: 8px` with a clip stays. `matrix(1, 0.15, 0, 1)` stays. `section { transform: scale(1.1) }` stays. `inset(14px 0)` stays. `inset(18px 0 10px 0)` stays. A polygon and a mask at `58%` stay. `p::after` at `0.9em` stays. A bottom band at `1em` stays. A nested left-and-right band at `1.1em` stays. `translateX(-80px)` and `translateX(-70px)` stay. `translateY(-50px)` stays. `position: relative; left: -80px` stays. `circle(62%)` and `circle(61%)` stay. `html { transform: scale(1.9) }` stays. A split `line-height: 0.25` stays. Colour stays. A class hook stays.
+
+- **A clip margin of -1px can no longer eat the open line.** `overflow-clip-margin: -1px` and `-16px`, with `overflow: clip` and no set height, drop the margin. The same pair split across two paragraph rules drops the margin too. `0` still shows the sentence. The same `-16px` and `-1px` inside `height: 2em` still show it. `-18px` inside that pair stays dropped. The clip stays. A class hook stays. Colour stays.
+- **A clipped line of 7px can no longer leave a hairline.** `line-height: 1px`, `7px`, and `0.2em`, with `overflow: hidden` in the same rule, drop the line-height. `8px` and `0.4em` with the same clip still show the sentence. `0.3` with the same clip still shows it. `1px` with no clip stays. A split `line-height: 0.25` stays. A class hook stays. Colour stays.
+- **A shear of 0.18 can no longer walk the line off the sheet.** `matrix(1, 0.18, 0, 1)`, `matrix(1, 0.45, 0, 1)`, and `matrix(1, 0.5, 0, 1)` are dropped on the writing. `matrix(1, 0.15, 0, 1)` still shows fox and the rest of the sentence. Colour stays.
+- **A section scale of 1.2 can no longer walk the sheet off the first screen.** `section { transform: scale(1.2) }` and `scale(1.65)` are dropped. `scale(1.1)` still shows the sentence. `html { transform: scale(1.9) }` stays. Colour stays.
+- **An inset of 15px from both ends can no longer leave a hairline.** `inset(15px 0)`, `inset(15.5px 0)`, and `inset(18px 0 12px 0)` are dropped on a paragraph. `inset(14px 0)` and `inset(18px 0 10px 0)` still read. `inset(20px 0 0 0)` still reads. A heading stays. A class hook stays. Colour stays.
+- **A window or a clear mask at 60% can no longer leave a descender.** `polygon`, `xywh`, and `shape()` that start at `60%` are dropped on a paragraph. A linear mask clear through `60%` is dropped on the writing. `58%` still shows the sentence. A class hook stays. Colour stays.
+- **A 1em paper band can no longer cover the glyphs.** `p::after` at `width: 100%` and `height: 1em` or `1.05em` drops the background. `0.9em` and `0.8em` still show the sentence. A bottom band at `1em` still shows it. A nested left-and-right band at `1.1em` still shows it. A class hook stays. Colour stays.
+- **A shift of -88px, or a lift of -55px, can no longer walk the line off the sheet.** `translateX(-88px)`, `translateX(calc(-180px))`, `translate3d(-200px, 0, 0)`, and `translate: -140px 0` are dropped on the writing. `translateY(-55px)` is dropped. `position: relative; left: -90px` and `inset-inline-start: -120px` drop the shift. The same left split across two paragraph rules drops too. `translateX(-80px)` and `-70px` still show the sentence. `translateY(-50px)` still shows it. `left: -80px` with relative stays. An absolute `left: -280px` stays. A margin stays. `translateX(-25vw)` stays. `html { transform: translateX(-100px) }` stays. A class hook stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.82 — The first screen still has the writing
 
 Released 21 November 2026.
