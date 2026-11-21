@@ -700,7 +700,7 @@ function scaleNumber(token: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** scale(1.5) from the centre walks the writing off the sheet. scale(1.2) still reads. scaleY(0.5) is a ghost. scaleY(0.55) still reads. A stack of divs compounds at 1.15. scale(1.1) on that stack still reads. section scale(1.2) walks the sheet off the first screen. section scale(1.1) still reads. html scale(2) does the same. html scale(1.9) still reads. */
+/** scale(1.5) from the centre walks the writing off the sheet. scale(1.2) still reads. scaleY(0.5) is a ghost. scaleY(0.55) still reads. A stack of divs compounds at 1.15. scale(1.1) on that stack still reads. section scale(1.16) walks the sheet off the first screen. section scale(1.15) still reads. html scale(2) does the same. html scale(1.9) still reads. */
 function axesBlow(x: number, y: number): boolean {
   const writing = (activePaint || activeInk) && !activeStar && !activeRepeat;
   if (writing) {
@@ -709,7 +709,7 @@ function axesBlow(x: number, y: number): boolean {
   }
   if (activeRepeat && activeDivs >= 4 && (x >= 1.15 || y >= 1.15)) return true;
   if (!activeStar && !activePaint && (activeHtml || activeRoot) && (x >= 2 || y >= 2)) return true;
-  if (activePage && !activePaint && !activeRoot && !activeHtml && (x >= 1.2 || y >= 1.7)) return true;
+  if (activePage && !activePaint && !activeRoot && !activeHtml && (x >= 1.16 || y >= 1.7)) return true;
   return false;
 }
 
@@ -1431,9 +1431,31 @@ function maskEllipseMisses(value: string): boolean {
   });
 }
 
+/** A luminance mask of black blanks the line. #080808 still shows the sentence, dim. #060606 does not. A fade that is not one dark colour stays. Alpha black stays. */
+function maskUniformDark(value: string): boolean {
+  const body = value.replace(/!important/gi, "");
+  if (/url\(/i.test(body) || /\btransparent\b/i.test(body)) return false;
+  const colors: string[] = [];
+  colors.push(...(body.match(/#[0-9a-fA-F]{3,8}/g) ?? []));
+  for (const call of namedFunctionCalls(body, ["rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color"])) colors.push(`${call.name}(${call.inner})`);
+  const stripped = body.replace(/#[0-9a-fA-F]{3,8}/g, " ");
+  for (const word of stripped.match(/[A-Za-z]+/g) ?? []) {
+    const lower = word.toLowerCase();
+    if (MASK_SKIP.has(lower) || /^(?:linear|radial|conic|gradient|repeating|url|none|to|luminance|alpha|match|source)$/.test(lower)) continue;
+    if (resolvedInk(word)) colors.push(word);
+  }
+  if (!colors.length) return false;
+  return colors.every((token) => {
+    const rgb = resolvedInk(token);
+    if (!rgb) return false;
+    return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] <= 6;
+  });
+}
+
 /** A custom property set to a clear mask follows that mask. A gradient that still has black stays. A transparent band across the top of the stack does not. */
 function maskHides(value: string, hidden: Set<string>): boolean {
   if (maskIsClear(value) || maskCutsTop(value) || maskRadialSliver(value) || maskConicSliver(value) || maskRepeatHairline(value) || maskEllipseMisses(value)) return true;
+  if (/\bluminance\b/i.test(value) && maskUniformDark(value)) return true;
   const masks = (hidden as HideVars).masks;
   if (!masks) return false;
   return varCalls(value).some((call) => masks.has(call.name) || (Boolean(call.fallback) && maskHides(call.fallback, hidden)));
@@ -3131,13 +3153,14 @@ function planeSpinHides(token: string, hidden: Set<string>): boolean {
   return false;
 }
 
-/** rotate: 40deg on the writing turns the line into a shred. rotate: 24deg still reads. transform: rotate(18deg) and rotate(28deg) still read. transform: rotate(35deg) leaves a scrap. transform: rotate(70deg) is a speck. */
+/** rotate(9deg) on the writing walks The off the sheet. rotate(8deg) still shows the sentence. A stacked box still reads at 28deg. rotate(35deg) on that box is a scrap. rotate(70deg) is a speck. */
 function paintPlaneHides(token: string, hidden: Set<string>): boolean {
   if (!activePaint || activeStar) return false;
   const deg = angleDegrees(token, hidden);
   if (deg == null) return false;
   const m = ((deg % 180) + 180) % 180;
   const acute = Math.min(m, 180 - m);
+  if (writingGlyph()) return acute >= 9;
   return acute >= 35;
 }
 
@@ -4729,6 +4752,28 @@ function decorationDrops(parts: string[], hidden: Set<string>): (part: string) =
   };
 }
 
+/** section { background: #ece6dc !important } paints the sheet the colour of the ink. The same rule without !important still shows the sentence. White, #f4efe6, and a navy sheet stay. A body background stays. */
+function pageInkWash(value: string): boolean {
+  const body = value.replace(/!important/gi, "");
+  if (/url\(/i.test(body)) return false;
+  const ink: [number, number, number] = [236, 230, 220];
+  const colors: string[] = [];
+  colors.push(...(body.match(/#[0-9a-fA-F]{3,8}/g) ?? []));
+  for (const call of namedFunctionCalls(body, COLOR_FNS)) colors.push(`${call.name}(${call.inner})`);
+  const stripped = blankColorFns(body).replace(/#[0-9a-fA-F]{3,8}/g, " ");
+  for (const word of stripped.match(/[A-Za-z]+/g) ?? []) {
+    const lower = word.toLowerCase();
+    if (MASK_SKIP.has(lower) || /^(?:linear|radial|conic|gradient|repeating|url|none|to|scroll|fixed|local|repeat|no-repeat|space|round|center|padding-box|border-box|content-box)$/.test(lower)) continue;
+    if (resolvedInk(word)) colors.push(word);
+  }
+  if (!colors.length) return false;
+  return colors.every((token) => {
+    const rgb = resolvedInk(token);
+    if (!rgb) return false;
+    return Math.max(Math.abs(rgb[0] - ink[0]), Math.abs(rgb[1] - ink[1]), Math.abs(rgb[2] - ink[2])) <= 2;
+  });
+}
+
 function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   const idx = piece.indexOf(":");
   if (idx <= 0) return false;
@@ -4798,6 +4843,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "text-decoration") return valueCanHide(val, hidden, (raw) => decorationShorthandHides(raw, hidden));
   if (prop === "text-indent") return indentPxHides(val, hidden);
   if (prop === "clip-path" || prop === "-webkit-clip-path") return clipHides(val, hidden);
+  if ((prop === "background" || prop === "background-color") && pageDim() && /!important/i.test(val) && pageInkWash(val)) return true;
   if (borderEdgeHides(prop, val)) return true;
   if (prop === "clip") return namedFunctionCalls(val, ["rect"]).some((call) => rectHides(call.inner));
   if (prop === "mask" || prop === "mask-image" || prop === "-webkit-mask" || prop === "-webkit-mask-image") return maskHides(val, hidden);
@@ -6507,7 +6553,7 @@ function floatShrinkDrops(parts: string[], hidden: Set<string>): (part: string) 
 }
 
 /** A background the same colour as the ink paints the line out. Cream and white do that on the dark desk. A gilt face stays. A rule that also sets an ink which still reads on that face stays. */
-/** An inset cream shadow of 20px covers the letters. 16px still leaves them. The sheet frame is the same wash. */
+/** An inset cream shadow of 14px covers the letters. 12px still leaves them. The sheet frame is the same wash. */
 function insetShadowDrops(parts: string[]): (part: string) => boolean {
   if (!activePaint && !activeRecipe && !activeBorder && !(activeRepeat && activeDivs >= 2)) return () => false;
   const wide = (value: string) => {
@@ -6524,7 +6570,7 @@ function insetShadowDrops(parts: string[]): (part: string) => boolean {
     }
     const spread = lengths.length >= 4 ? (lengths[3] ?? 0) : 0;
     const blur = lengths.length >= 3 ? (lengths[2] ?? 0) : 0;
-    return light && (spread >= 20 || blur >= 64);
+    return light && (spread >= 14 || blur >= 64);
   };
   if (!parts.some((part) => {
     const piece = pieceProp(part);
@@ -7026,7 +7072,7 @@ function borderBlockEats(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** position: relative and left of -88px walk The fox off the sheet. -80px still leaves a letter of fox and the rest of the sentence. An absolute shift is not this. The left is dropped. The position stays. */
+/** position: relative and left of -88px walk The fox off the sheet. -80px still leaves a letter of fox and the rest of the sentence. top of -56px leaves a ghost. -55px still shows the sentence. An absolute shift is not this. The shift is dropped. The position stays. */
 function relativeShiftDrops(parts: string[]): (part: string) => boolean {
   if (!writingGlyph() || activeStar) return () => false;
   const relative = parts.some((part) => {
@@ -7034,18 +7080,44 @@ function relativeShiftDrops(parts: string[]): (part: string) => boolean {
     return Boolean(piece && piece.prop === "position" && /\brelative\b/i.test(piece.val));
   });
   if (!relative) return () => false;
+  const shiftPx = (token: string) => {
+    const unit = lengthUnit(token);
+    return unit === "em" || unit === "rem" ? writingFacePx(token) : lengthDeskPx(token);
+  };
   return (part) => {
     const piece = pieceProp(part);
-    if (!piece || (piece.prop !== "left" && piece.prop !== "inset-inline-start")) return false;
-    const token = (splitTopWords(piece.val.replace(/!important/gi, "")).find(Boolean) ?? "").trim();
-    const unit = lengthUnit(token);
-    const px = unit === "em" || unit === "rem" ? writingFacePx(token) : lengthDeskPx(token);
-    return px != null && px <= -88;
+    if (!piece) return false;
+    const plain = piece.val.replace(/!important/gi, "");
+    if (piece.prop === "left" || piece.prop === "inset-inline-start") {
+      const token = (splitTopWords(plain).find(Boolean) ?? "").trim();
+      const px = shiftPx(token);
+      return px != null && px <= -88;
+    }
+    let token = "";
+    if (piece.prop === "top" || piece.prop === "inset-block-start") token = (splitTopWords(plain).find(Boolean) ?? "").trim();
+    else if (piece.prop === "inset" || piece.prop === "inset-block") token = (boxTokens(plain)[0] ?? "").trim();
+    else return false;
+    const px = shiftPx(token);
+    return px != null && px <= -56;
+  };
+}
+
+function luminanceMaskDrops(parts: string[]): (part: string) => boolean {
+  if (!writingGlyph()) return () => false;
+  const luma = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && (piece.prop === "mask-mode" || piece.prop === "-webkit-mask-mode") && /\bluminance\b/i.test(piece.val));
+  });
+  if (!luma) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || (piece.prop !== "mask-image" && piece.prop !== "-webkit-mask-image")) return false;
+    return maskUniformDark(piece.val);
   };
 }
 
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts), relativeShiftDrops(parts)];
+  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts), relativeShiftDrops(parts), luminanceMaskDrops(parts)];
   return (part) => drops.some((drop) => drop(part));
 }
 
@@ -10829,7 +10901,7 @@ function scrubSplitPairs(css: string, hidden: Set<string>): string {
     for (const part of splitCssDeclarations(merged)) {
       const piece = pieceProp(part.trim());
       if (!piece || after.has(piece.prop)) continue;
-      if (piece.prop.startsWith("padding") || piece.prop === "overflow-clip-margin" || piece.prop === "left" || piece.prop === "inset-inline-start" || piece.prop === "transform" || piece.prop === "-webkit-transform" || piece.prop === "translate") gone.add(piece.prop);
+      if (piece.prop.startsWith("padding") || piece.prop === "overflow-clip-margin" || piece.prop === "left" || piece.prop === "inset-inline-start" || piece.prop === "top" || piece.prop === "inset-block-start" || piece.prop === "inset" || piece.prop === "inset-block" || piece.prop === "mask-image" || piece.prop === "-webkit-mask-image" || piece.prop === "transform" || piece.prop === "-webkit-transform" || piece.prop === "translate") gone.add(piece.prop);
     }
     if (!gone.size) continue;
     for (const n of idxs) {

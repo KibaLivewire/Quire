@@ -1,3 +1,22 @@
+# Quire 1.9.84 — The first screen still has the writing
+
+Released 21 November 2026.
+
+1.9.83 still let a section scale of 1.16 walk the sheet off the first screen, a turn of 9deg take The off the sheet, an inset cream shadow of 14px cover the glyphs, a relative lift of -56px leave a ghost, a luminance mask of black blank the line, and `section { background: #ece6dc !important }` paint the sheet the colour of the ink. Scored again on the same desk. A rule that still shows the writing stays. `section { transform: scale(1.15) }` stays. `p { transform: rotate(8deg) }` stays. An inset shadow of 12px stays. `position: relative; top: -55px` stays. A luminance mask of `#080808` and of `#111` stays. `mask-mode: alpha` with black stays. A black-to-white luminance fade stays. `section { background: #ece6dc }` without `!important` stays. `section { background: #fff !important }` stays. `section { background: #f4efe6 !important }` stays. A navy sheet stays. `body { background: #ece6dc !important }` stays. `p { transform: scale(1.2) }` stays. `html { transform: scale(1.9) }` stays. `translateY(-50px)` stays. `margin-top: -70px` stays. Colour stays. A class hook stays.
+
+- **A section scale of 1.16 can no longer walk the sheet off the first screen.** `section { transform: scale(1.16) }` is dropped. `scale(1.15)` and `scale(1.1)` still show the sentence. `p { transform: scale(1.2) }` stays. `html { transform: scale(1.9) }` stays. `html { transform: scale(2) }` stays dropped. Colour stays.
+- **A turn of 9deg can no longer walk The off the sheet.** `rotate(9deg)`, `rotate(10deg)`, `rotate(18deg)`, `rotate(24deg)`, and `rotate(28deg)` are dropped on the writing. `rotate(8deg)` still shows the sentence. A class hook stays. Colour stays.
+- **An inset cream shadow of 14px can no longer cover the glyphs.** `box-shadow: inset 0 0 0 14px #ece6dc` and `16px` are dropped on a paragraph. `12px` and `13px` still show the sentence. `20px` stays dropped. Colour stays.
+- **A relative lift of -56px can no longer leave a ghost.** `position: relative; top: -56px` and `inset-block-start: -56px` drop the shift. The same top split across two paragraph rules drops too. `-55px` still shows the sentence. `left: -80px` with relative stays. `margin-top: -70px` stays. `translateY(-50px)` stays. The position stays. A class hook stays. Colour stays.
+- **A luminance mask of black can no longer blank the line.** `mask-mode: luminance` with `linear-gradient(#000, #000)`, `black`, or `#060606` drops the image. The shorthand `mask: linear-gradient(#000, #000) luminance` is dropped. The same image split across two paragraph rules drops too. `#080808` and `#111` still show the sentence, dim. `#fff` stays. `mask-mode: alpha` with black stays. A fade from `#000` to `#fff` stays. `mask-mode` alone stays. A class hook stays. Colour stays.
+- **An important ink background can no longer paint the sheet the colour of the writing.** `section { background: #ece6dc !important }` and the same `background-color` are dropped. The same rule without `!important` still shows the sentence. `#fff`, `#f4efe6`, and a navy sheet stay. `body` and `html` stay. A class hook stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.83 — The first screen still has the writing
 
 Released 21 November 2026.
