@@ -4740,9 +4740,11 @@ function decorationDrops(parts: string[], hidden: Set<string>): (part: string) =
     const piece = pieceProp(part);
     if (!piece) continue;
     if (piece.prop === "text-decoration-line" && /\bline-through\b/i.test(piece.val)) strike = true;
+    if (piece.prop === "text-decoration" && /\bline-through\b/i.test(piece.val)) strike = true;
     if (piece.prop === "text-decoration-thickness" && valueCanHide(piece.val, hidden, decorationThick)) thick = true;
-    if (piece.prop === "text-decoration-color" && valueCanHide(piece.val, hidden, (raw) => colorIsPageLight(raw.replace(/!important/gi, "").trim()))) light = true;
-    if ((activeStar || activePaint || (activeRepeat && activeDivs >= 2)) && piece.prop === "text-decoration-color" && valueCanHide(piece.val, hidden, (raw) => colorMissesDesk(raw.replace(/!important/gi, "").trim()))) light = true;
+    if (piece.prop === "text-decoration" && valueCanHide(piece.val, hidden, decorationThick)) thick = true;
+    if ((piece.prop === "text-decoration-color" || piece.prop === "text-decoration") && valueCanHide(piece.val, hidden, (raw) => colorIsPageLight(raw.replace(/!important/gi, "").trim()))) light = true;
+    if ((activeStar || activePaint || (activeRepeat && activeDivs >= 2)) && (piece.prop === "text-decoration-color" || piece.prop === "text-decoration") && valueCanHide(piece.val, hidden, (raw) => colorMissesDesk(raw.replace(/!important/gi, "").trim()))) light = true;
   }
   const on = strike && thick && light;
   return (part) => {
@@ -4890,7 +4892,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (SHIFT_PROP.has(prop)) {
     if (verticalPushHides(prop, val)) return true;
     if (inlineInsetHides(prop, val, hidden)) return true;
-    if (paddingViewportHides(prop, val, hidden) || marginViewportHides(prop, val, hidden) || sidePushHides(prop, val, hidden) || sideLengthHides(prop, val, hidden) || paddingStackLength(prop, val)) return true;
+    if (paddingViewportHides(prop, val, hidden) || marginViewportHides(prop, val, hidden) || pageMarginWalks(prop, val, hidden) || sidePushHides(prop, val, hidden) || sideLengthHides(prop, val, hidden) || paddingStackLength(prop, val)) return true;
     return shiftValueCovers(val, hidden);
   }
   if (prop === "mask-composite" || prop === "-webkit-mask-composite") {
@@ -6093,7 +6095,18 @@ function paddingStackLength(prop: string, value: string): boolean {
   });
 }
 
-/** A margin in vh does not collapse on the open sheet. 6vh on a star, or 7vh on every div, walks the line off. 5vh on a star and 6vh on a div still leave a line. One box may still shift. */
+/** A margin of -24vh on the page walks the first line off the screen. -20vh still shows the sentence. A downward margin through 70vh still shows it. 80vh on a paragraph was already dropped. */
+function pageMarginWalks(prop: string, value: string, hidden: Set<string>): boolean {
+  if (!prop.startsWith("margin")) return false;
+  if (!(activePage && !activeStar && !activeRepeat && !activePaint && !activeRoot && !activeHtml)) return false;
+  return axisTokens(prop, value, "v").some((token) =>
+    valueCanHide(token, hidden, (raw) => {
+      const hit = viewportAmount(raw);
+      if (!hit || hit.kind === "h") return false;
+      return hit.n <= -24;
+    }),
+  );
+}
 function marginViewportHides(prop: string, value: string, hidden: Set<string>): boolean {
   if (!prop.startsWith("margin")) return false;
   const limit = activeStar ? 6 : activeRepeat && activeDivs >= 2 ? 7 : 0;
@@ -6965,14 +6978,14 @@ function padClipDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** padding-top of 27px, or 1.5em on the writing face, inside a 40px border-box, clipped, leaves a ghost. 26px and 1.45em still show the sentence. A bottom pad of 1.5em still shows it. The same pad with content-box still shows it. The padding is dropped. The height and the clip stay. */
+/** padding-top of 27px, or 1.5em on the writing face, inside a 40px box, clipped, leaves a ghost. The desk is already border-box, so the add-on does not have to say so. 26px and 1.45em still show the sentence. A bottom pad of 1.5em still shows it. content-box still shows it. The padding is dropped. The height and the clip stay. */
 function eatenLineDrops(parts: string[]): (part: string) => boolean {
   if (!writingGlyph() && !activeInk) return () => false;
-  const border = parts.some((part) => {
+  const content = parts.some((part) => {
     const piece = pieceProp(part);
-    return Boolean(piece && piece.prop === "box-sizing" && /border-box/i.test(piece.val));
+    return Boolean(piece && piece.prop === "box-sizing" && /content-box/i.test(piece.val));
   });
-  if (!border || !parts.some((part) => isBoxClip(part))) return () => false;
+  if (content || !parts.some((part) => isBoxClip(part))) return () => false;
   let size: number | null = null;
   let topPad: number | null = null;
   let bottomPad: number | null = null;
@@ -8060,13 +8073,19 @@ function hidingKeyframeNames(css: string, hidden: Set<string>): Set<string> {
 
 function keyframeHides(part: string, hidden: Set<string>): boolean {
   if (!part.includes(":")) return false;
-  const prev = activeInk;
+  const prevInk = activeInk;
+  const prevPaint = activePaint;
+  const prevLine = activeLine;
   activeInk = true;
+  activePaint = true;
+  activeLine = true;
   try {
     if (declarationHidesDesk(part, hidden)) return true;
     return withSib(HTML_SIB, () => declarationHidesDesk(part, hidden)) && withSib(BODY_SIB, () => declarationHidesDesk(part, hidden));
   } finally {
-    activeInk = prev;
+    activeInk = prevInk;
+    activePaint = prevPaint;
+    activeLine = prevLine;
   }
 }
 

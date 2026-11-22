@@ -1,3 +1,20 @@
+# Quire 1.9.85 — The first screen still has the writing
+
+Released 22 November 2026.
+
+1.9.84 still let a clipped pad eat the line when the add-on never said border-box, a finished animation walk the writing off, a split sheet-coloured strike blank the line, and a section margin of -24vh walk the first line off the screen. Scored again on the same desk. A rule that still shows the writing stays. `padding-top: 26px` and `1.45em` inside a 40px clip stay. `box-sizing: content-box` with a 1.5em pad stays. `translateY(-20px)` in a finished animation stays. `rotate(8deg)` in a finished animation stays. `html` with `rotate(1turn)` stays. A strike of `0.5em` stays. `section { margin-top: -20vh }` stays. `section { margin-top: 70vh }` stays. A class hook stays. Colour stays.
+
+- **A clipped pad can no longer eat the line on the desk's own border-box.** `p { padding-top: 2.2em; height: 2.4em; overflow: hidden }` drops the pad. `height: 40px` with `padding-top: 1.5em`, `27px`, or `32px` and `overflow: hidden` drops the pad. `26px` and `1.45em` still show the sentence. `box-sizing: content-box` still shows it. The height and the clip stay. A class hook stays. Colour stays.
+- **A finished animation can no longer walk the writing off.** A keyframe that ends at `translateY(-200px)` or `rotate(12deg)`, played with `animation: 0s forwards` on a paragraph, drops the animation. `translateY(-20px)` still shows the sentence. `rotate(8deg)` still shows it. `rotate(1turn)` on `html` stays. A class hook stays. Colour stays.
+- **A split sheet-coloured strike can no longer blank the line.** `text-decoration: line-through` with `text-decoration-thickness: 1em` and `text-decoration-color: #221e1a` drops the thickness. `0.5em` still shows the struck sentence. A class hook stays. Colour stays.
+- **A section margin of -24vh can no longer walk the first line off the screen.** `section { margin-top: -24vh }` drops the margin. `-20vh` still shows the sentence. A downward margin through `70vh` still shows it. A class hook at `-40vh` stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.84 — The first screen still has the writing
 
 Released 21 November 2026.
