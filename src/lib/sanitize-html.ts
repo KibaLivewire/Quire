@@ -1273,6 +1273,25 @@ function maskCutsTop(value: string): boolean {
   });
 }
 
+/** A clear band from the left takes The at 6%. 4% only nicks T, so the sentence still shows. From the right, 8% takes the end of page. 6% still shows it. A vertical clear is not this. */
+function maskCutsInline(value: string): boolean {
+  if (!writingGlyph()) return false;
+  const grads = namedFunctionCalls(value, ["linear-gradient", "-webkit-linear-gradient"]);
+  return grads.some((grad) => {
+    const raw = grad.inner.trim();
+    let side: "start" | "end" | null = null;
+    if (/^(?:to\s+right|90deg)\b/i.test(raw)) side = "start";
+    else if (/^(?:to\s+left|(?:-?270|270|-90)deg)\b/i.test(raw)) side = "end";
+    else return false;
+    const inner = stripGradientDirection(raw);
+    const hit = /^transparent(?:\s+0%?)?\s+([0-9.]+)%/i.exec(inner);
+    if (!hit?.[1]) return false;
+    const n = Number(hit[1]);
+    if (!Number.isFinite(n)) return false;
+    return side === "start" ? n >= 6 : n >= 8;
+  });
+}
+
 function stripGradientDirection(inner: string): string {
   return inner.trim().replace(/^(?:to\s+(?:top|bottom|left|right)(?:\s+(?:top|bottom|left|right))?|-?\d+(?:\.\d+)?(?:deg|turn|grad|rad))\s*,\s*/i, "");
 }
@@ -1431,20 +1450,21 @@ function maskEllipseMisses(value: string): boolean {
   });
 }
 
-/** A luminance mask of black blanks the line. #080808 still shows the sentence, dim. #060606 does not. A fade that is not one dark colour stays. Alpha black stays. */
+/** A luminance mask of black blanks the line. #080808 still shows the sentence, dim. #060606 does not. A fade to white stays. Transparent and black are both dark in luminance, so that pair blanks the line too. */
 function maskUniformDark(value: string): boolean {
   const body = value.replace(/!important/gi, "");
-  if (/url\(/i.test(body) || /\btransparent\b/i.test(body)) return false;
+  if (/url\(/i.test(body)) return false;
   const colors: string[] = [];
   colors.push(...(body.match(/#[0-9a-fA-F]{3,8}/g) ?? []));
   for (const call of namedFunctionCalls(body, ["rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color"])) colors.push(`${call.name}(${call.inner})`);
   const stripped = body.replace(/#[0-9a-fA-F]{3,8}/g, " ");
   for (const word of stripped.match(/[A-Za-z]+/g) ?? []) {
     const lower = word.toLowerCase();
-    if (MASK_SKIP.has(lower) || /^(?:linear|radial|conic|gradient|repeating|url|none|to|luminance|alpha|match|source)$/.test(lower)) continue;
+    if (MASK_SKIP.has(lower) || /^(?:linear|radial|conic|gradient|repeating|url|none|to|luminance|alpha|match|source|deg|transparent)$/.test(lower)) continue;
     if (resolvedInk(word)) colors.push(word);
   }
-  if (!colors.length) return false;
+  const clear = /\btransparent\b/i.test(body);
+  if (!colors.length) return clear;
   return colors.every((token) => {
     const rgb = resolvedInk(token);
     if (!rgb) return false;
@@ -1454,7 +1474,7 @@ function maskUniformDark(value: string): boolean {
 
 /** A custom property set to a clear mask follows that mask. A gradient that still has black stays. A transparent band across the top of the stack does not. */
 function maskHides(value: string, hidden: Set<string>): boolean {
-  if (maskIsClear(value) || maskCutsTop(value) || maskRadialSliver(value) || maskConicSliver(value) || maskRepeatHairline(value) || maskEllipseMisses(value)) return true;
+  if (maskIsClear(value) || maskCutsTop(value) || maskCutsInline(value) || maskRadialSliver(value) || maskConicSliver(value) || maskRepeatHairline(value) || maskEllipseMisses(value)) return true;
   if (/\bluminance\b/i.test(value) && maskUniformDark(value)) return true;
   const masks = (hidden as HideVars).masks;
   if (!masks) return false;
@@ -2812,7 +2832,7 @@ function edgeAmount(token: string): { n: number; unit: string } | null {
   return { n, unit: (m[2] ?? "").toLowerCase() };
 }
 
-/** rect() with no width or no height is a zero box. A real rectangle stays. On the writing, a window 13px tall still misses the line. 14px shows it. A percent width with a pixel height is the same window. */
+/** rect() with no width or no height is a zero box. A real rectangle stays. On the writing, a window 13px tall still misses the line. 14px shows it. A percent width with a pixel height is the same window. rect() from the left at 6% takes The. 4% only nicks T. */
 function rectHides(inner: string): boolean {
   const parts = splitArgs(inner)
     .flatMap((part) => part.trim().split(/\s+/))
@@ -2842,7 +2862,16 @@ function rectHides(inner: string): boolean {
   const wide =
     (right.unit === "%" && right.n >= 50 && (left.unit === "%" ? right.n - left.n >= 50 : (left.unit === "px" || left.unit === "") && left.n <= 16)) ||
     ((right.unit === "px" || right.unit === "") && (left.unit === "px" || left.unit === "") && right.n - left.n >= 80);
-  return Boolean((writingGlyph() || activePaint || activePage) && heightPx != null && heightPx > 0 && heightPx <= 13 && wide);
+  if ((writingGlyph() || activePaint || activePage) && heightPx != null && heightPx > 0 && heightPx <= 13 && wide) return true;
+  const asPct = (edge: { n: number; unit: string }) => {
+    if (edge.unit === "%") return edge.n;
+    if (edge.n === 0 && (edge.unit === "" || edge.unit === "px")) return 0;
+    return null;
+  };
+  const topPct = asPct(top);
+  const bottomPct = asPct(bottom);
+  if (writingGlyph() && left.unit === "%" && left.n >= 6 && right.unit === "%" && right.n - left.n >= 40 && topPct != null && bottomPct != null && bottomPct - topPct >= 50) return true;
+  return false;
 }
 
 /** An empty path, or a path that only moves, has no area. A curve stays. A triangle of 36px or less on the writing misses the line. A 40px triangle stays. */
@@ -4754,7 +4783,7 @@ function decorationDrops(parts: string[], hidden: Set<string>): (part: string) =
   };
 }
 
-/** section { background: #ece6dc !important } paints the sheet the colour of the ink. The same rule without !important still shows the sentence. White, #f4efe6, and a navy sheet stay. A body background stays. */
+/** section { background: #ece6dc !important } paints the sheet the colour of the ink. lab(92% 1 4) and oklch(0.93 0.01 90) are the same wash, four channels off. The same rule without !important still shows the sentence. White, #f4efe6, lab(96% 0 0), lab(88% 2 6), and a navy sheet stay. A body background stays. */
 function pageInkWash(value: string): boolean {
   const body = value.replace(/!important/gi, "");
   if (/url\(/i.test(body)) return false;
@@ -4772,7 +4801,7 @@ function pageInkWash(value: string): boolean {
   return colors.every((token) => {
     const rgb = resolvedInk(token);
     if (!rgb) return false;
-    return Math.max(Math.abs(rgb[0] - ink[0]), Math.abs(rgb[1] - ink[1]), Math.abs(rgb[2] - ink[2])) <= 2;
+    return Math.max(Math.abs(rgb[0] - ink[0]), Math.abs(rgb[1] - ink[1]), Math.abs(rgb[2] - ink[2])) <= 4;
   });
 }
 
@@ -4878,6 +4907,8 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
       const px = lengthDeskPx(token);
       if (px == null) return false;
       if (activeStar || (activeRepeat && activeDivs >= 2)) return px >= 0;
+      // 22px on the writing is one letter. 28px still shows the sentence.
+      if (writingGlyph()) return Math.abs(px) <= 22;
       return Math.abs(px) <= 8;
     });
   }
@@ -5860,7 +5891,7 @@ function declaresViewport(value: string): boolean {
   return splitTopWords(value.replace(/!important/gi, "")).some((token) => coversViewport(token));
 }
 
-/** A viewport outline pulled inward covers the writing. An 80px frame does not. On the letters, and on a star that also hits the letters, 16px pulled to -14px covers the line, and so does 0.9em pulled to -0.8em, because the writing face is 18px. 14px pulled to -12px still leaves it, 16px pulled only to -8px still leaves it, and 0.85em pulled to -0.75em still leaves it. On a star, 24px pulled in covers the line, and so does 80px pulled to -70px. */
+/** A viewport outline pulled inward covers the writing. An 80px frame does not. On the letters, and on a star that also hits the letters, 16px pulled to -14px covers the line, and so does 0.9em pulled to -0.8em, because the writing face is 18px. 14px pulled to -12px still leaves it, 16px pulled only to -8px still leaves it, and 0.85em pulled to -0.75em still leaves it. A 40px outline pulled to -16px, -20px, or -30px covers the line. The same 40px pulled only to -12px still leaves it. On a star, 24px pulled in covers the line, and so does 80px pulled to -70px. */
 function outlineDrops(parts: string[]): (part: string) => boolean {
   let wide = false;
   let inset = false;
@@ -5893,10 +5924,11 @@ function outlineDrops(parts: string[]): (part: string) => boolean {
   const starCover = activeStar && px >= 18 && pull >= 16 && pull >= px - 12;
   const stackCover = !activeStar && activeRepeat && activeDivs >= 2 && px >= 24 && pull >= 20 && pull + 8 >= px;
   const lineCover = (activePaint || activeStar) && linePx >= 16 && linePull >= 14 && linePull + 8 >= linePx;
+  const deepPull = activePaint && !activeStar && !activeRepeat && linePull >= 16 && linePx >= 16;
   const boxCover = (activePaint || activePage || activeRepeat || activeRecipe) && px >= 64 && pull + 16 >= px && pull >= 48;
   return (part) => {
-    if (!wide && !starCover && !stackCover && !lineCover && !boxCover) return false;
-    if (wide && !inset && !starCover && !stackCover && !lineCover && !boxCover) return false;
+    if (!wide && !starCover && !stackCover && !lineCover && !boxCover && !deepPull) return false;
+    if (wide && !inset && !starCover && !stackCover && !lineCover && !boxCover && !deepPull) return false;
     const piece = pieceProp(part);
     return Boolean(piece && (piece.prop === "outline" || piece.prop === "outline-width"));
   };

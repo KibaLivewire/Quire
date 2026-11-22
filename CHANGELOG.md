@@ -1,3 +1,21 @@
+# Quire 1.9.86 — The first screen still has the writing
+
+Released 22 November 2026.
+
+1.9.85 still let a clear mask from the side take a word, a `rect()` from the left take The, a lab or oklch wash paint the sheet the colour of the ink, a thick outline pulled in cover the glyphs, and a column a few letters wide shred the line. Scored again on the same desk. A rule that still shows the writing stays. A clear mask of 4% from the left stays. A clear mask of 6% from the right stays. `rect()` at 4% stays. `section { background: lab(96% 0 0) !important }` stays. `lab(88% 2 6)` stays. `#fff` and `#f4efe6` stay. The same wash without `!important` stays. A 40px outline pulled only to -12px stays. `column-width: 28px` and `40px` stay. `column-count: 23` stays. `columns: 16px` stays. A vertical clear through 58% stays. A luminance fade from `#000` to `#fff` stays. `mask-mode: alpha` with transparent and black stays. Colour stays. A class hook stays.
+
+- **A clear mask from the side can no longer take a word.** `linear-gradient(90deg, transparent 0 6%, #000 6%)` and `to right` at 8% or 30% are dropped on the writing. From the right, `270deg`, `to left`, and `-90deg` at 8%, 15%, and 20% are dropped. `mask: linear-gradient(90deg, transparent, black) luminance` is dropped. The same image split across two paragraph rules drops too. 4% from the left still shows the sentence. 6% and 4% from the right still show it. A vertical clear through 58% stays. A fade from `#000` to `#fff` stays. Alpha with transparent and black stays. A class hook stays. Colour stays.
+- **A rect() from the left can no longer take The.** `clip-path: rect(0 100% 100% 6%)`, `10%`, and `15%` are dropped on a paragraph. 4% still shows the sentence. A class hook at 40% stays. Colour stays.
+- **A lab or oklch wash can no longer paint the sheet the colour of the ink.** `section { background: lab(92% 1 4) !important }` and `oklch(0.93 0.01 90) !important` are dropped. The same rule without `!important` still shows the sentence. `lab(96% 0 0)`, `lab(88% 2 6)`, `#fff`, `#f4efe6`, and a navy sheet stay. `body` stays. A class hook stays. Colour stays.
+- **A thick outline pulled in can no longer cover the glyphs.** `outline: 40px` with `outline-offset: -16px`, `-20px`, or `-30px` drops the outline on a paragraph. The offset stays. `-12px` still shows the sentence. A class hook stays. Colour stays.
+- **A column a few letters wide can no longer shred the line.** `column-width: 16px` and `22px` are dropped on the writing. `28px` and `40px` still show the sentence. `column-count: 23` stays. `columns: 16px` stays. A class hook stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.85 — The first screen still has the writing
 
 Released 22 November 2026.
@@ -8,6 +26,7 @@ Released 22 November 2026.
 - **A finished animation can no longer walk the writing off.** A keyframe that ends at `translateY(-200px)` or `rotate(12deg)`, played with `animation: 0s forwards` on a paragraph, drops the animation. `translateY(-20px)` still shows the sentence. `rotate(8deg)` still shows it. `rotate(1turn)` on `html` stays. A class hook stays. Colour stays.
 - **A split sheet-coloured strike can no longer blank the line.** `text-decoration: line-through` with `text-decoration-thickness: 1em` and `text-decoration-color: #221e1a` drops the thickness. `0.5em` still shows the struck sentence. A class hook stays. Colour stays.
 - **A section margin of -24vh can no longer walk the first line off the screen.** `section { margin-top: -24vh }` drops the margin. `-20vh` still shows the sentence. A downward margin through `70vh` still shows it. A class hook at `-40vh` stays. Colour stays.
+
 
 Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
 
