@@ -1,3 +1,23 @@
+# Quire 1.9.87 — The first screen still has the writing
+
+Released 23 November 2026.
+
+1.9.86 still let a 5% clear mask take The, a column of 40px and a columns shorthand of 56px split keeps, a 7px face leave a hairline, all: initial and all: revert paint the line black, a nowrap indent of 60% walk page. off the sheet, a 6rem first letter in the sheet colour cover The fox, and a letter-spacing of -0.3em stack the words into a pile. Scored again on the same desk. A rule that still shows the writing stays. A clear mask of 4% from the left stays. 6% from the right stays. column-width 48px stays. columns 64px stays. A 8px face stays. 5px on html and on a star stays. all: revert-layer and all: unset stay. A nowrap indent of 55% stays. An indent of 60% without nowrap stays. A 3rem first letter stays. A gilt 6rem first letter stays. letter-spacing of -0.25em stays. -5px stays. -0.15lh stays. -0.4cap stays. -0.6ex stays. -0.5ch stays. A class hook stays. Colour stays.
+
+- **A clear mask of 5% from the left can no longer take The.** `linear-gradient(90deg, transparent 0 5%, #000 5%)` is dropped on the writing. 4% still only nicks T. 6% from the right still shows the sentence. A class hook stays. Colour stays.
+- **A column that still splits keeps can no longer shred the line.** `column-width: 40px` and `28px` are dropped on the writing. `48px` still shows the words. `columns: 16px` and `56px` are dropped. `64px` still shows the words. `column-count: 23` stays. A class hook stays. Colour stays.
+- **A 7px face can no longer leave a hairline.** `p { font-size: 7px }` is dropped. `8px` still reads. `html { font-size: 5px }` stays. A star at `5px` stays. Colour stays.
+- **all: initial and all: revert can no longer paint the line black.** They reset the colour scheme, so the ink comes back as black on the dark desk. Both are dropped on the writing and on a star. `all: revert-layer` and `all: unset` still show the sentence. A class hook stays. Colour stays.
+- **A nowrap indent of 60% can no longer walk page. off the sheet.** The indent is dropped. `55%` still shows the sentence. `60%` without nowrap still shows it. A class hook stays. Colour stays.
+- **A 6rem first letter in the sheet colour can no longer cover The fox.** The sheet colour and the sheet background are dropped. The 6rem size stays, so the T is cream and the sentence still shows. A 3rem letter in the sheet colour stays. A gilt 6rem letter stays. A class hook stays. Colour stays.
+- **A letter-spacing of -0.3em can no longer stack the words.** `-0.3em`, `-0.4em`, `-0.4rem`, `-40%`, `-6px`, `-8px`, `-0.2lh`, `-0.4lh`, `-0.5cap`, `-0.4ic`, and `-0.7ex` are dropped on the writing and where the value inherits from html. `-0.25em` still shows the sentence. `-0.2em` stays. `-5px` stays. `-0.15lh` stays. `-0.4cap` stays. `-0.6ex` stays. `-0.5ex` stays. `-0.5ch` stays. `-0.25ic` stays. A class hook stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.86 — The first screen still has the writing
 
 Released 22 November 2026.

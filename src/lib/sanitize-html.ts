@@ -632,11 +632,13 @@ function containerInlineZeroFace(value: string): boolean {
   return /\d(?:\.\d+)?cq(?:w|i|min)\b/i.test(value.replace(/!important/gi, "").replace(/\s+/g, ""));
 }
 
-/** A face of 4px or less leaves no word. 5px still reads. On a star, 0.55em and under leaves no word. 0.65em still reads. em and rem use the 16px root. */
+/** A face of 4px or less leaves no word. 5px on a star or on html still reads. 7px on the writing is a hairline. 8px still reads. On a star, 0.55em and under leaves no word. 0.65em still reads. em and rem use the 16px root. */
 function fontFaceTiny(value: string): boolean {
   const raw = value.replace(/!important/gi, "").trim();
   const px = lengthDeskPx(raw);
   if (px != null && px > 0 && px <= 4) return true;
+  // 7px on the writing is a hairline. 8px still reads. A star at 5px is not this.
+  if (writingGlyph() && px != null && px > 0 && px <= 7) return true;
   if (!activeStar || px == null || px <= 0) return false;
   const unit = lengthUnit(raw);
   return (unit === "em" || unit === "rem") && px <= 8.8 + 1e-6;
@@ -1273,7 +1275,7 @@ function maskCutsTop(value: string): boolean {
   });
 }
 
-/** A clear band from the left takes The at 6%. 4% only nicks T, so the sentence still shows. From the right, 8% takes the end of page. 6% still shows it. A vertical clear is not this. */
+/** A clear band from the left takes The at 5%. 4% only nicks T, so the sentence still shows. From the right, 8% takes the end of page. 6% still shows it. A vertical clear is not this. */
 function maskCutsInline(value: string): boolean {
   if (!writingGlyph()) return false;
   const grads = namedFunctionCalls(value, ["linear-gradient", "-webkit-linear-gradient"]);
@@ -1288,7 +1290,7 @@ function maskCutsInline(value: string): boolean {
     if (!hit?.[1]) return false;
     const n = Number(hit[1]);
     if (!Number.isFinite(n)) return false;
-    return side === "start" ? n >= 6 : n >= 8;
+    return side === "start" ? n >= 5 : n >= 8;
   });
 }
 
@@ -3627,7 +3629,7 @@ function shiftValueCovers(value: string, hidden: Set<string>): boolean {
   return splitTopWords(value.replace(/!important/gi, "")).some((token) => token.toLowerCase() !== "auto" && shiftTokenCovers(token, hidden));
 }
 
-/** A few pixels of letter or word spacing stay. A full shift, a negative that stacks the line, or half an em of letter-spacing, does not. The same stack in ch, cap, ex, or ic does not either. */
+/** A few pixels of letter or word spacing stay. A full shift does not. On the writing, 0.3em of letter-spacing stacks the words. 0.25em still shows the sentence. -6px stacks them. -5px still shows them. -0.2lh stacks them. -0.15lh still shows the sentence. -0.5cap and -0.7ex stack them. -0.4cap and -0.5ex still show the sentence. The same stack in ch does not, from 1ch. */
 function spacingHides(value: string, hidden: Set<string>, limit: number, emLimit = 0): boolean {
   const token = value.replace(/!important/gi, "").trim();
   const px = lengthPx(token);
@@ -3636,9 +3638,12 @@ function spacingHides(value: string, hidden: Set<string>, limit: number, emLimit
   const compact = token.replace(/\s+/g, "");
   const parsed = unit ? parseMathSum(compact, 0) : null;
   if (parsed && parsed.i === compact.length && Number.isFinite(parsed.n) && unit) {
-    if (emLimit > 0 && (unit === "em" || unit === "rem" || unit === "lh" || unit === "rlh" || unit === "ic" || unit === "ric") && parsed.n <= -emLimit) return true;
+    if (emLimit > 0 && (unit === "em" || unit === "rem" || unit === "ic" || unit === "ric") && parsed.n <= -emLimit) return true;
+    if (emLimit > 0 && (unit === "lh" || unit === "rlh") && parsed.n <= -0.2) return true;
     if (emLimit > 0 && unit === "%" && parsed.n <= -(emLimit * 100)) return true;
-    if (emLimit > 0 && (unit === "ch" || unit === "rch" || unit === "cap" || unit === "rcap" || unit === "ex" || unit === "rex") && parsed.n <= -1) return true;
+    if (emLimit > 0 && (unit === "cap" || unit === "rcap") && parsed.n <= -0.5) return true;
+    if (emLimit > 0 && (unit === "ex" || unit === "rex") && parsed.n <= -0.7) return true;
+    if (emLimit > 0 && (unit === "ch" || unit === "rch") && parsed.n <= -1) return true;
     if (emLimit === 0 && (unit === "ic" || unit === "ric" || unit === "lh" || unit === "rlh") && parsed.n <= -6) return true;
     if (emLimit === 0 && (unit === "ch" || unit === "rch" || unit === "cap" || unit === "rcap" || unit === "ex" || unit === "rex") && parsed.n <= -12) return true;
     if ((unit === "em" || unit === "rem") && parsed.n * 16 <= -limit) return true;
@@ -4812,6 +4817,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   const val = piece.slice(idx + 1).trim();
   if (!prop || !val) return false;
   if (wholeFunction(val, "if")) return ifCanHide(val, hidden, (branch) => declarationHidesDesk(`${prop}: ${branch}`, hidden));
+  if (prop === "all") return valueCanHide(val, hidden, (raw) => /^(?:initial|revert)$/i.test(raw.replace(/!important/gi, "").trim()));
   if (prop === "display" || prop === "pointer-events") return valueCanHide(val, hidden, (v) => /\bnone\b/i.test(v));
   if (prop === "visibility") return valueCanHide(val, hidden, (v) => /\b(?:hidden|collapse)\b/i.test(v));
   if (prop === "content-visibility") return valueCanHide(val, hidden, (v) => /\bhidden\b/i.test(v) || ((activePaint || activePage) && /\bauto\b/i.test(v)));
@@ -4859,7 +4865,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   }
   if (prop === "font") return valueCanHide(val, hidden, fontShorthandHides);
   if (prop === "font-size-adjust") return fontAspectHides(val, hidden);
-  if (prop === "letter-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 12, 0.5) || letterSpreadHides(v));
+  if (prop === "letter-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 6, 0.3) || letterSpreadHides(v));
   if (prop === "word-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 96) || wordSpreadHides(v));
   if (prop === "-webkit-text-fill-color" || prop === "text-fill-color") {
     return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw) || colorMissesDesk(raw));
@@ -4907,8 +4913,8 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
       const px = lengthDeskPx(token);
       if (px == null) return false;
       if (activeStar || (activeRepeat && activeDivs >= 2)) return px >= 0;
-      // 22px on the writing is one letter. 28px still shows the sentence.
-      if (writingGlyph()) return Math.abs(px) <= 22;
+      // 40px still splits keeps. 48px shows the words. 22px was already a hairline.
+      if (writingGlyph()) return Math.abs(px) <= 40;
       return Math.abs(px) <= 8;
     });
   }
@@ -4917,6 +4923,8 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
       const px = columnLengthPx(raw);
       if (px == null) return false;
       if (activeStar || (activeRepeat && activeDivs >= 2)) return px <= 200;
+      // 56px still splits keeps. 64px shows the words. 16px is single letters.
+      if (writingGlyph()) return px <= 56;
       return px <= 12;
     });
   }
@@ -6892,7 +6900,7 @@ function columnLengthPx(value: string): number | null {
   return narrowest;
 }
 
-/** columns: 160px on every div leaves the sheet off the first screen. 240px still reads. 12px on the writing shreds the letters. 16px still reads. */
+/** columns: 160px on every div leaves the sheet off the first screen. 240px still reads. 56px on the writing still splits keeps. 64px shows the words. */
 function stackColumnDrops(parts: string[]): (part: string) => boolean {
   if (!(activeRepeat && activeDivs >= 2)) return () => false;
   return (part) => {
@@ -7161,8 +7169,20 @@ function luminanceMaskDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
+/** A nowrap indent of 60% walks page. off the sheet. 55% still shows the sentence. The sheet already clips, so the rule does not have to say overflow. */
+function indentPercentDrops(parts: string[]): (part: string) => boolean {
+  if (!parts.some((part) => isNowrap(part))) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || piece.prop !== "text-indent") return false;
+    const token = piece.val.replace(/!important/gi, "").trim();
+    const pct = percentOf(token);
+    return pct != null && pct >= 0.6;
+  };
+}
+
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts), relativeShiftDrops(parts), luminanceMaskDrops(parts)];
+  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts), relativeShiftDrops(parts), luminanceMaskDrops(parts), indentPercentDrops(parts)];
   return (part) => drops.some((drop) => drop(part));
 }
 
@@ -9801,6 +9821,47 @@ function pseudoInsetCovers(body: string, hidden: Set<string>): boolean {
   return top < 64;
 }
 
+/** A 6rem first letter in the sheet colour covers The fox. 3rem only nicks T. A gilt letter still shows. A class hook stays. */
+function firstLetterSelector(selector: string): boolean {
+  return splitSelectorList(selector).some((part) => {
+    const trimmed = part.trim();
+    if (!/::first-letter\s*$/i.test(trimmed) && !/(?<!:):first-letter\s*$/i.test(trimmed)) return false;
+    const head = trimmed.replace(/::first-letter\s*$/i, "").replace(/:first-letter\s*$/i, "").trim();
+    if (!head || head.includes("::") || /[.#\[]/.test(head)) return false;
+    if (head === "*" || head === "*|*") return true;
+    if (WRITING_TAGS.has(head.toLowerCase())) return true;
+    return selectorMatchesDesk(head) || looseSheetSelector(head);
+  });
+}
+
+function firstLetterCovers(body: string): boolean {
+  const props = splitCssDeclarations(body)
+    .map((part) => pieceProp(part.trim()))
+    .filter((piece): piece is { prop: string; val: string } => Boolean(piece));
+  const size = props.find((piece) => piece.prop === "font-size");
+  if (!size) return false;
+  const token = (splitTopWords(size.val.replace(/!important/gi, "")).find(Boolean) ?? "").replace(/\s+/g, "");
+  const px = writingFacePx(token) ?? lengthDeskPx(token);
+  if (px == null || px < 64) return false;
+  return props.some((piece) => {
+    if (piece.prop !== "color" && piece.prop !== "background" && piece.prop !== "background-color") return false;
+    const paint = (piece.val.replace(/!important/gi, "").trim().split(/\s+/)[0] ?? "").trim();
+    return Boolean(paint) && (pieceIsClearColor(paint) || colorSitsOnSheet(paint));
+  });
+}
+
+function scrubFirstLetter(body: string): string {
+  return splitCssDeclarations(body)
+    .map((part) => part.trim())
+    .filter((part) => {
+      const piece = pieceProp(part);
+      if (!piece || (piece.prop !== "color" && piece.prop !== "background" && piece.prop !== "background-color")) return true;
+      const paint = (piece.val.replace(/!important/gi, "").trim().split(/\s+/)[0] ?? "").trim();
+      return !(paint && (pieceIsClearColor(paint) || colorSitsOnSheet(paint)));
+    })
+    .join("; ");
+}
+
 function scrubPseudoCover(body: string): string {
   return splitCssDeclarations(body)
     .map((part) => part.trim())
@@ -10257,7 +10318,7 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
     const opened = rewriteAmp(selector, scopeSel);
     const rawBody = css.slice(open + 1, close);
     if (selectorMatchesDesk(opened, scopeSel)) out += `${selector}{${scrubNestedBody(rawBody, hidden, anims, true, scopeSel, opened, hideProfiles(opened, scopeSel), stackBefore)}}`;
-    else if (!rawBody.includes("{") && (deskPseudoSelector(opened) || looseSheetSelector(opened) || loosePseudoHead(opened))) {
+    else if (!rawBody.includes("{") && (deskPseudoSelector(opened) || looseSheetSelector(opened) || loosePseudoHead(opened) || firstLetterSelector(opened))) {
       let next = rawBody;
       let touched = false;
       const looseOnly = loosePseudoHead(opened) && !deskPseudoSelector(opened);
@@ -10271,6 +10332,10 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
       }
       if (controlFaceSelector(opened) && controlFaceCovers(next)) {
         next = scrubControlFace(next);
+        touched = true;
+      }
+      if (firstLetterSelector(opened) && firstLetterCovers(next)) {
+        next = scrubFirstLetter(next);
         touched = true;
       }
       if (pseudoBorderCovers(next)) {
