@@ -1,3 +1,28 @@
+# Quire 1.9.89 — The first screen still has the writing
+
+Released 24 November 2026.
+
+1.9.88 still let a clear mask of 4% take The, a two-stop clear do the same, a rect() from the left at 4% take The, word-spacing of -1.2em lose words, letter-spacing of -0.6ch collapse the line, a 24px outline pulled to -14px cover the glyphs, scale(1.4) walk The fox ke off the sheet, translateX(-84px) and a relative left of -84px walk The fo off, a relative top of -55.5px leave a ghost, an absolute left of -120px leave only the tail, canvastext on a light scheme paint the line black, and a nowrap width of 30% clip the end of the line. Scored again on the same desk. A rule that still shows the writing stays. A clear mask of 2% and 2.5% stays. 6% from the right stays. rect() at 2% stays. word-spacing of -1em, -0.8em, -0.5em, -8px, and -16px stays. 16em stays. letter-spacing of -0.5ch and -0.4vw stays. -0.25em stays. A 40px outline pulled only to -12px stays. 16px pulled to -12px stays. An outline with no inward offset stays. scale(1.2) stays. scale(1.3) is not a scored hide and stays. section scale(1.15) stays. html scale(1.9) stays. translateX(-80px) stays. translateY(-50px) stays. relative left -80px stays. relative top -55px stays. absolute left -80px stays. left -22vw stays. top 85vh stays. right 750px stays. color-scheme light alone stays. canvastext alone stays. color-scheme light dark with canvastext stays. nowrap width 45% stays. max-width 18em stays. width 30% without nowrap stays. A nowrap pad of 4.6in stays. A radial hole of 1% stays. A short section stays. A header of 75vh stays. html invert(1) stays. A class hook stays. Colour stays.
+
+- **A clear mask of 4% from the left can no longer take The.** 1.9.87 kept 4%, and 1.9.88 still kept it. Scored again, The is gone. `linear-gradient(90deg, transparent 0 3%, #000 3%)`, `3.5%`, `4%`, and `5%` are dropped on the writing. The two-stop form `transparent 0%, transparent 5%` is the same band, and so is `#0000` and `#00000000`. 2% and 2.5% still only nick T. 6% from the right still shows the sentence. A vertical clear stays. A class hook stays. Colour stays.
+- **A rect() from the left can no longer take The at 4%.** `clip-path: rect(0 100% 100% 3%)`, `4%`, and `5%` are dropped on a paragraph. 2% still shows the sentence. 6% stays dropped. A class hook stays. Colour stays.
+- **Word-spacing of -1.2em can no longer lose words.** `-1.2em` is dropped on the writing and on a star. `-1.5em`, `-2em`, `-24px`, and `-20px` were already dropped as a 20px pile. `-1em` still shows the sentence, smashed. `-0.8em`, `-0.5em`, `-8px`, and `-16px` stay. `16em` stays. `18em` stays dropped. A class hook stays. Colour stays.
+- **Letter-spacing of -0.6ch can no longer collapse the line.** `-0.6ch` and `-0.8ch` are dropped on the writing and where the value inherits from html. `-0.5ch` still shows the sentence. `-0.25em` stays. `-0.4vw` stays. `-0.5vw` stays dropped. A class hook stays. Colour stays.
+- **A 24px outline pulled to -14px can no longer cover the glyphs.** The outline is dropped. The offset stays. A 40px outline pulled only to -12px still shows the sentence. 16px pulled to -12px stays. An outline with no inward offset stays. A class hook stays. Colour stays.
+- **scale(1.4) can no longer walk The fox ke off the sheet.** `p { transform: scale(1.4) }` is dropped. `scale(1.5)` stays dropped. `scale(1.2)` still shows the sentence. `scale(1.3)` is not a scored hide and stays. section `scale(1.15)` stays. html `scale(1.9)` stays. Colour stays.
+- **A shift of -84px can no longer walk The fo off.** `translateX(-84px)` and `translateX(-86px)` are dropped. `position: relative; left: -84px` drops the shift. The position stays. `-80px` still leaves a letter of fox and the rest of the sentence. `translateY(-50px)` stays. `translateY(-55px)` stays dropped. A class hook stays. Colour stays.
+- **A relative lift of -55.5px can no longer leave a ghost.** `position: relative; top: -55.5px` drops the shift. The position stays. `-55px` still shows the sentence. A class hook stays. Colour stays.
+- **An absolute left of -120px can no longer leave only the tail.** `left: -120px`, `-200px`, and `-280px` are dropped on a positioned line. The position stays. `-80px` still shows the sentence. `-22vw` stays. `-25vw` stays dropped. top `85vh` stays. right `750px` stays. A fixed `bottom: 0` stays. A class hook stays. Colour stays.
+- **canvastext on a light scheme can no longer paint the line black.** `color: canvastext` with `color-scheme: light` or `only light` drops the colour. color-scheme stays. canvastext alone still shows the sentence. `color-scheme: light` alone stays. `light dark` with canvastext stays. A real ink colour stays. A class hook stays.
+- **A nowrap width of 30% can no longer clip the end of the line.** The width is dropped. nowrap and the clip stay. `45%` still shows the sentence. `max-width: 14em` and `width: 8em` with nowrap and a clip are dropped. `max-width: 18em` stays. `30%` without nowrap stays. A nowrap pad of 4.6in stays. A class hook stays. Colour stays.
+- **Opening a backup typechecks again.** The zip reader copies each chunk into a fresh byte buffer, so the stored and deflated paths no longer disagree about the buffer type. A backup still round-trips.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.88 — The first screen still has the writing
 
 Released 24 November 2026.

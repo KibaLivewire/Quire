@@ -702,12 +702,12 @@ function scaleNumber(token: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** scale(1.5) from the centre walks the writing off the sheet. scale(1.2) still reads. scaleY(0.5) is a ghost. scaleY(0.55) still reads. A stack of divs compounds at 1.15. scale(1.1) on that stack still reads. section scale(1.16) walks the sheet off the first screen. section scale(1.15) still reads. html scale(2) does the same. html scale(1.9) still reads. */
+/** scale(1.4) from the centre walks The fox ke off the sheet. scale(1.2) still reads. scale(1.5) still walks off. scaleY(0.5) is a ghost. scaleY(0.55) still reads. A stack of divs compounds at 1.15. scale(1.1) on that stack still reads. section scale(1.16) walks the sheet off the first screen. section scale(1.15) still reads. html scale(2) does the same. html scale(1.9) still reads. */
 function axesBlow(x: number, y: number): boolean {
   const writing = (activePaint || activeInk) && !activeStar && !activeRepeat;
   if (writing) {
     if (y > 0 && y < 0.55) return true;
-    if (x >= 1.5 || y >= 1.5) return true;
+    if (x >= 1.4 || y >= 1.5) return true;
   }
   if (activeRepeat && activeDivs >= 4 && (x >= 1.15 || y >= 1.15)) return true;
   if (!activeStar && !activePaint && (activeHtml || activeRoot) && (x >= 2 || y >= 2)) return true;
@@ -1275,7 +1275,7 @@ function maskCutsTop(value: string): boolean {
   });
 }
 
-/** A clear band from the left takes The at 5%. 4% only nicks T, so the sentence still shows. From the right, 8% takes the end of page. 6% still shows it. A vertical clear is not this. */
+/** A clear band from the left takes The at 3%. 2% and 2.5% only nick T, so the sentence still shows. A two-stop clear, transparent then transparent again, is the same band. #0000 and #00000000 are the same clear. From the right, 8% takes the end of page. 6% still shows it. A vertical clear is not this. */
 function maskCutsInline(value: string): boolean {
   if (!writingGlyph()) return false;
   const grads = namedFunctionCalls(value, ["linear-gradient", "-webkit-linear-gradient"]);
@@ -1285,13 +1285,26 @@ function maskCutsInline(value: string): boolean {
     if (/^(?:to\s+right|90deg)\b/i.test(raw)) side = "start";
     else if (/^(?:to\s+left|(?:-?270|270|-90)deg)\b/i.test(raw)) side = "end";
     else return false;
-    const inner = stripGradientDirection(raw);
-    const hit = /^transparent(?:\s+0%?)?\s+([0-9.]+)%/i.exec(inner);
-    if (!hit?.[1]) return false;
-    const n = Number(hit[1]);
-    if (!Number.isFinite(n)) return false;
-    return side === "start" ? n >= 5 : n >= 8;
+    const n = clearBandPercent(stripGradientDirection(raw));
+    if (n == null) return false;
+    return side === "start" ? n >= 3 : n >= 8;
   });
+}
+
+const CLEAR_STOP = String.raw`(?:transparent|#00000000|#0000)`;
+
+/** transparent 0 5% is one stop. transparent 0%, transparent 5% is two. Both name the same clear band. A lone 0% is the start of the two-stop form, not a band of nothing. */
+function clearBandPercent(inner: string): number | null {
+  const text = inner.trim();
+  const pair = new RegExp(`^${CLEAR_STOP}\\s+0%?\\s*,\\s*${CLEAR_STOP}\\s+([0-9.]+)%`, "i").exec(text);
+  if (pair?.[1]) {
+    const n = Number(pair[1]);
+    return Number.isFinite(n) ? n : null;
+  }
+  const single = new RegExp(`^${CLEAR_STOP}(?:\\s+0%?)?\\s+([0-9.]+)%`, "i").exec(text);
+  if (!single?.[1]) return null;
+  const n = Number(single[1]);
+  return Number.isFinite(n) ? n : null;
 }
 
 function stripGradientDirection(inner: string): string {
@@ -2859,7 +2872,7 @@ function edgeAmount(token: string): { n: number; unit: string } | null {
   return { n, unit: (m[2] ?? "").toLowerCase() };
 }
 
-/** rect() with no width or no height is a zero box. A real rectangle stays. On the writing, a window 13px tall still misses the line. 14px shows it. A percent width with a pixel height is the same window. rect() from the left at 6% takes The. 4% only nicks T. */
+/** rect() with no width or no height is a zero box. A real rectangle stays. On the writing, a window 13px tall still misses the line. 14px shows it. A percent width with a pixel height is the same window. rect() from the left at 3% takes The. 2% only nicks T. */
 function rectHides(inner: string): boolean {
   const parts = splitArgs(inner)
     .flatMap((part) => part.trim().split(/\s+/))
@@ -2897,7 +2910,7 @@ function rectHides(inner: string): boolean {
   };
   const topPct = asPct(top);
   const bottomPct = asPct(bottom);
-  if (writingGlyph() && left.unit === "%" && left.n >= 6 && right.unit === "%" && right.n - left.n >= 40 && topPct != null && bottomPct != null && bottomPct - topPct >= 50) return true;
+  if (writingGlyph() && left.unit === "%" && left.n >= 3 && right.unit === "%" && right.n - left.n >= 40 && topPct != null && bottomPct != null && bottomPct - topPct >= 50) return true;
   return false;
 }
 
@@ -3654,7 +3667,7 @@ function shiftValueCovers(value: string, hidden: Set<string>): boolean {
   return splitTopWords(value.replace(/!important/gi, "")).some((token) => token.toLowerCase() !== "auto" && shiftTokenCovers(token, hidden));
 }
 
-/** A few pixels of letter or word spacing stay. A full shift does not. On the writing, 0.3em of letter-spacing stacks the words. 0.25em still shows the sentence. -6px stacks them. -5px still shows them. -0.5vw is -6.4px on this desk and stacks them. -0.4vw still shows them. -0.2lh stacks them. -0.15lh still shows the sentence. -0.5cap and -0.7ex stack them. -0.4cap and -0.5ex still show the sentence. The same stack in ch does not, from 1ch. Word-spacing of -20px piles the words. -16px still shows the sentence. -1em still shows it. */
+/** A few pixels of letter or word spacing stay. A full shift does not. On the writing, 0.3em of letter-spacing stacks the words. 0.25em still shows the sentence. -6px stacks them. -5px still shows them. -0.5vw is -6.4px on this desk and stacks them. -0.4vw still shows them. -0.2lh stacks them. -0.15lh still shows the sentence. -0.5cap and -0.7ex stack them. -0.4cap and -0.5ex still show the sentence. The same stack in ch does, from 0.6ch. -0.5ch still shows the sentence. Word-spacing of -20px piles the words. -16px still shows the sentence. -1em still shows it. -1.2em on the writing loses words. */
 function spacingHides(value: string, hidden: Set<string>, limit: number, emLimit = 0): boolean {
   const token = value.replace(/!important/gi, "").trim();
   const px = lengthPx(token);
@@ -3670,7 +3683,7 @@ function spacingHides(value: string, hidden: Set<string>, limit: number, emLimit
     if (emLimit > 0 && unit === "%" && parsed.n <= -(emLimit * 100)) return true;
     if (emLimit > 0 && (unit === "cap" || unit === "rcap") && parsed.n <= -0.5) return true;
     if (emLimit > 0 && (unit === "ex" || unit === "rex") && parsed.n <= -0.7) return true;
-    if (emLimit > 0 && (unit === "ch" || unit === "rch") && parsed.n <= -1) return true;
+    if (emLimit > 0 && (unit === "ch" || unit === "rch") && parsed.n <= -0.6) return true;
     if (emLimit === 0 && (unit === "ic" || unit === "ric" || unit === "lh" || unit === "rlh") && parsed.n <= -6) return true;
     if (emLimit === 0 && (unit === "ch" || unit === "rch" || unit === "cap" || unit === "rcap" || unit === "ex" || unit === "rex") && parsed.n <= -12) return true;
     if ((unit === "em" || unit === "rem") && parsed.n * 16 <= -limit) return true;
@@ -3701,6 +3714,14 @@ function wordSpreadHides(value: string): boolean {
   const parsed = parseMathSum(token.replace(/\s+/g, ""), 0);
   if (!parsed || parsed.i !== token.replace(/\s+/g, "").length || !Number.isFinite(parsed.n)) return false;
   return parsed.n >= 18;
+}
+
+/** -1em of word-spacing still shows the sentence, smashed. -1.2em loses words. -1.5em is already a 20px pile. -24px is the same pile. -8px, -0.5em, and -0.8em still read. A star does the same, because it hits the letters. 16em still reads. */
+function wordStackHides(value: string): boolean {
+  if (!writingGlyph() && !activeStar) return false;
+  const token = value.replace(/!important/gi, "").trim();
+  const px = writingFacePx(token);
+  return px != null && px <= -21;
 }
 function indentPxHides(value: string, hidden: Set<string>, seen?: Set<string>): boolean {
   const compact = value.replace(/!important/gi, "").replace(/\s+/g, "");
@@ -4893,7 +4914,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "font") return valueCanHide(val, hidden, fontShorthandHides);
   if (prop === "font-size-adjust") return fontAspectHides(val, hidden);
   if (prop === "letter-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 6, 0.3) || letterSpreadHides(v));
-  if (prop === "word-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 20) || wordSpreadHides(v));
+  if (prop === "word-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 20) || wordSpreadHides(v) || wordStackHides(v));
   if (prop === "-webkit-text-fill-color" || prop === "text-fill-color") {
     return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw) || colorMissesDesk(raw));
   }
@@ -5926,7 +5947,7 @@ function declaresViewport(value: string): boolean {
   return splitTopWords(value.replace(/!important/gi, "")).some((token) => coversViewport(token));
 }
 
-/** A viewport outline pulled inward covers the writing. An 80px frame does not. On the letters, and on a star that also hits the letters, 16px pulled to -14px covers the line, and so does 0.9em pulled to -0.8em, because the writing face is 18px. 14px pulled to -12px still leaves it, 16px pulled only to -8px still leaves it, and 0.85em pulled to -0.75em still leaves it. A 40px outline pulled to -16px, -20px, or -30px covers the line. The same 40px pulled only to -12px still leaves it. On a star, 24px pulled in covers the line, and so does 80px pulled to -70px. */
+/** A viewport outline pulled inward covers the writing. An 80px frame does not. On the letters, and on a star that also hits the letters, 16px pulled to -14px covers the line, and so does 24px pulled to -14px, and 0.9em pulled to -0.8em, because the writing face is 18px. 14px pulled to -12px still leaves it, 16px pulled to -12px still leaves it, 16px pulled only to -8px still leaves it, and 0.85em pulled to -0.75em still leaves it. A 40px outline pulled to -16px, -20px, or -30px covers the line. The same 40px pulled only to -12px still leaves it. On a star, 24px pulled in covers the line, and so does 80px pulled to -70px. */
 function outlineDrops(parts: string[]): (part: string) => boolean {
   let wide = false;
   let inset = false;
@@ -5958,7 +5979,7 @@ function outlineDrops(parts: string[]): (part: string) => boolean {
   }
   const starCover = activeStar && px >= 18 && pull >= 16 && pull >= px - 12;
   const stackCover = !activeStar && activeRepeat && activeDivs >= 2 && px >= 24 && pull >= 20 && pull + 8 >= px;
-  const lineCover = (activePaint || activeStar) && linePx >= 16 && linePull >= 14 && linePull + 8 >= linePx;
+  const lineCover = (activePaint || activeStar) && linePx >= 16 && linePull >= 14 && linePull + 10 >= linePx;
   const deepPull = activePaint && !activeStar && !activeRepeat && linePull >= 16 && linePx >= 16;
   const boxCover = (activePaint || activePage || activeRepeat || activeRecipe) && px >= 64 && pull + 16 >= px && pull >= 48;
   return (part) => {
@@ -6732,7 +6753,7 @@ function webkitBoxDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** The writing itself, parked off the first screen. A fixed footer stays. top: -40px on the line is enough. The position stays. left: -20vw still reads. left: -25vw is the same park as -320px. top: 85vh still reads. top: 90vh does not. right: 750px still reads. right: 820px walks off. */
+/** The writing itself, parked off the first screen. A fixed footer stays. top: -40px on the line is enough. The position stays. left: -80px still reads. left: -120px walks The fox kee off. left: -200px and left: -280px leave only the tail. left: -20vw still reads. left: -25vw is the same park as -320px. top: 85vh still reads. top: 90vh does not. right: 750px still reads. right: 820px walks off. */
 function paintShiftDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
   if (!activePaint && !activeInk) return () => false;
   const positioned = parts.some((part) => {
@@ -6752,7 +6773,7 @@ function paintShiftDrops(parts: string[], hidden: Set<string>): (part: string) =
       valueCanHide(token, hidden, (raw) => {
         const plain = raw.replace(/!important/gi, "").trim();
         const px = lengthDeskPx(plain);
-        if (px != null && px <= -300) return true;
+        if (px != null && px <= -120) return true;
         const pct = percentOf(plain);
         return pct != null && pct <= -0.5;
       }),
@@ -7152,7 +7173,7 @@ function borderBlockEats(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** position: relative and left of -88px walk The fox off the sheet. -80px still leaves a letter of fox and the rest of the sentence. top of -56px leaves a ghost. -55px still shows the sentence. An absolute shift is not this. The shift is dropped. The position stays. */
+/** position: relative and left of -84px walk The fo off the sheet. -80px still leaves a letter of fox and the rest of the sentence. top of -55.5px leaves a ghost. -55px still shows the sentence. An absolute shift is not this. The shift is dropped. The position stays. */
 function relativeShiftDrops(parts: string[]): (part: string) => boolean {
   if (!writingGlyph() || activeStar) return () => false;
   const relative = parts.some((part) => {
@@ -7171,14 +7192,14 @@ function relativeShiftDrops(parts: string[]): (part: string) => boolean {
     if (piece.prop === "left" || piece.prop === "inset-inline-start") {
       const token = (splitTopWords(plain).find(Boolean) ?? "").trim();
       const px = shiftPx(token);
-      return px != null && px <= -88;
+      return px != null && px <= -84;
     }
     let token = "";
     if (piece.prop === "top" || piece.prop === "inset-block-start") token = (splitTopWords(plain).find(Boolean) ?? "").trim();
     else if (piece.prop === "inset" || piece.prop === "inset-block") token = (boxTokens(plain)[0] ?? "").trim();
     else return false;
     const px = shiftPx(token);
-    return px != null && px <= -56;
+    return px != null && px <= -55.5;
   };
 }
 
@@ -7233,8 +7254,56 @@ function padNowrapDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
+/** color: canvastext with color-scheme light paints black on the dark sheet. The colour is dropped. color-scheme stays. canvastext alone still reads. color-scheme: light alone still reads. light dark stays. A class hook stays. A real ink colour stays. */
+function schemeInkDrops(parts: string[]): (part: string) => boolean {
+  if (!writingGlyph() && !activeStar) return () => false;
+  const light = parts.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop === "color-scheme" && schemeIsLightOnly(piece.val));
+  });
+  if (!light) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop === "color" && colorIsCanvasText(piece.val));
+  };
+}
+
+function schemeIsLightOnly(value: string): boolean {
+  const words = value.replace(/!important/gi, "").toLowerCase().split(/[\s,]+/).filter(Boolean);
+  if (!words.length || words.includes("dark")) return false;
+  return words.includes("light");
+}
+
+function colorIsCanvasText(value: string): boolean {
+  return /^canvastext$/i.test(value.replace(/!important/gi, "").trim());
+}
+
+/** A nowrap line clipped to 30% loses page. 45% still shows the sentence. 14em and 8em do the same. 18em still shows it. The width is dropped. nowrap, the clip, and the colour stay. A width of 30% without nowrap stays. */
+function nowrapClipDrops(parts: string[]): (part: string) => boolean {
+  if (!writingGlyph()) return () => false;
+  if (!parts.some((part) => isNowrap(part))) return () => false;
+  const clip = parts.some((part) => {
+    const piece = pieceProp(part);
+    if (!piece) return false;
+    const which = overflowClips(piece.prop, piece.val);
+    return which === "both" || which === "inline";
+  });
+  if (!clip) return () => false;
+  return (part) => {
+    const piece = pieceProp(part);
+    if (!piece || !INLINE_SLIVER.has(piece.prop)) return false;
+    const tokens = splitTopWords(piece.val.replace(/!important/gi, "")).filter(Boolean);
+    if (tokens.length !== 1) return false;
+    const token = tokens[0] ?? "";
+    const pct = percentOf(token);
+    if (pct != null && pct > 0 && pct <= 0.3) return true;
+    const px = lengthDeskPx(token);
+    return px != null && px > 0 && px <= 256;
+  };
+}
+
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts), relativeShiftDrops(parts), luminanceMaskDrops(parts), indentPercentDrops(parts), padNowrapDrops(parts)];
+  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts), relativeShiftDrops(parts), luminanceMaskDrops(parts), indentPercentDrops(parts), padNowrapDrops(parts), schemeInkDrops(parts), nowrapClipDrops(parts)];
   return (part) => drops.some((drop) => drop(part));
 }
 
@@ -8003,7 +8072,7 @@ function shiftTokenCovers(token: string, hidden: Set<string>, seen?: Set<string>
   return false;
 }
 
-/** translateX(-88px) walks The fox off the sheet. -80px still leaves a letter and the rest of the sentence. -70px still shows fox. translateY(-55px) clips the line off the top of the sheet. -50px still shows the sentence. A viewport shift is not this. */
+/** translateX(-84px) walks The fo off the sheet. -80px still leaves a letter and the rest of the sentence. -70px still shows fox. translateY(-55px) clips the line off the top of the sheet. -50px still shows the sentence. A viewport shift is not this. */
 function writingNudgeHides(token: string, axis: "x" | "y"): boolean {
   if (!writingGlyph() || activeStar) return false;
   const raw = token.replace(/!important/gi, "").trim();
@@ -8012,7 +8081,7 @@ function writingNudgeHides(token: string, axis: "x" | "y"): boolean {
   const px = unit === "em" || unit === "rem" ? writingFacePx(raw) : lengthDeskPx(raw);
   if (px == null) return false;
   if (axis === "y") return px <= -55;
-  return px <= -88;
+  return px <= -84;
 }
 
 /** A shift of the whole desk moves it off the page. A few pixels stay. A turn stays. */

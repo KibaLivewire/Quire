@@ -96,7 +96,7 @@ export function zipStore(files: { name: string; data: Uint8Array }[]) {
   return new Blob([concat([...locals, central, end])], { type: "application/zip" });
 }
 
-async function inflateRaw(packed: Uint8Array, cap: number): Promise<Uint8Array> {
+async function inflateRaw(packed: Uint8Array<ArrayBufferLike>, cap: number): Promise<Uint8Array<ArrayBuffer>> {
   if (typeof DecompressionStream !== "function") return new Uint8Array();
   const stream = new Blob([new Uint8Array(packed)]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
   const reader = stream.getReader();
@@ -113,7 +113,9 @@ async function inflateRaw(packed: Uint8Array, cap: number): Promise<Uint8Array> 
         await reader.cancel().catch(() => undefined);
         throw new Error("That zip is too large to open.");
       }
-      chunks.push(value);
+      const copy = new Uint8Array(value.byteLength);
+      copy.set(value);
+      chunks.push(copy);
     }
   } catch (error) {
     if (error instanceof Error && error.message === "That zip is too large to open.") throw error;
@@ -231,8 +233,14 @@ export async function unzip(buffer: ArrayBuffer) {
     if (files.size >= MAX_ZIP_FILES) throw new Error("That zip has too many files.");
     const packed = bytes.subarray(entry.dataStart, entry.dataStart + entry.compSize);
     let raw = new Uint8Array();
-    if (entry.method === 0) raw = new Uint8Array(packed);
-    else if (entry.method === 8) raw = await inflateRaw(packed, MAX_ZIP_BYTES - total);
+    if (entry.method === 0) {
+      raw = new Uint8Array(packed.byteLength);
+      raw.set(packed);
+    } else if (entry.method === 8) {
+      const inflated = await inflateRaw(packed, MAX_ZIP_BYTES - total);
+      raw = new Uint8Array(inflated.byteLength);
+      raw.set(inflated);
+    }
     total += raw.byteLength;
     if (total > MAX_ZIP_BYTES) throw new Error("That zip is too large to open.");
     files.set(entry.name, decoder.decode(raw));
