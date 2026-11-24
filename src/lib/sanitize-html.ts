@@ -1343,6 +1343,31 @@ function maskRadialSliver(value: string): boolean {
   });
 }
 
+/** A transparent stop before the ink punches a hole. 2% takes firs out of first. 1% only nicks the i. A solid window of 40% still reads, because the ink comes first. */
+function maskRadialHole(value: string): boolean {
+  if (!writingGlyph()) return false;
+  const grads = namedFunctionCalls(value, ["repeating-radial-gradient", "-webkit-radial-gradient", "radial-gradient"]);
+  return grads.some((grad) => {
+    let sawClear = false;
+    let clearPct = 0;
+    for (const bit of splitArgs(grad.inner)) {
+      const token = bit.trim();
+      if (!token) continue;
+      const clear = /\btransparent\b/i.test(token) && !coloredStop(token);
+      if (clear) {
+        sawClear = true;
+        const pcts = token.match(/([0-9.]+)%/g) ?? [];
+        for (const pct of pcts) clearPct = Math.max(clearPct, Number.parseFloat(pct));
+        continue;
+      }
+      if (!coloredStop(token)) continue;
+      if (!sawClear) return false;
+      return clearPct >= 2;
+    }
+    return false;
+  });
+}
+
 function coloredStop(token: string): boolean {
   return /(?:#[0-9a-f]{3,8}|\b(?:black|white|rgb|hsl|hwb|lab|lch|oklch|oklab|color)\b)/i.test(token);
 }
@@ -1476,7 +1501,7 @@ function maskUniformDark(value: string): boolean {
 
 /** A custom property set to a clear mask follows that mask. A gradient that still has black stays. A transparent band across the top of the stack does not. */
 function maskHides(value: string, hidden: Set<string>): boolean {
-  if (maskIsClear(value) || maskCutsTop(value) || maskCutsInline(value) || maskRadialSliver(value) || maskConicSliver(value) || maskRepeatHairline(value) || maskEllipseMisses(value)) return true;
+  if (maskIsClear(value) || maskCutsTop(value) || maskCutsInline(value) || maskRadialSliver(value) || maskRadialHole(value) || maskConicSliver(value) || maskRepeatHairline(value) || maskEllipseMisses(value)) return true;
   if (/\bluminance\b/i.test(value) && maskUniformDark(value)) return true;
   const masks = (hidden as HideVars).masks;
   if (!masks) return false;
@@ -3629,11 +3654,13 @@ function shiftValueCovers(value: string, hidden: Set<string>): boolean {
   return splitTopWords(value.replace(/!important/gi, "")).some((token) => token.toLowerCase() !== "auto" && shiftTokenCovers(token, hidden));
 }
 
-/** A few pixels of letter or word spacing stay. A full shift does not. On the writing, 0.3em of letter-spacing stacks the words. 0.25em still shows the sentence. -6px stacks them. -5px still shows them. -0.2lh stacks them. -0.15lh still shows the sentence. -0.5cap and -0.7ex stack them. -0.4cap and -0.5ex still show the sentence. The same stack in ch does not, from 1ch. */
+/** A few pixels of letter or word spacing stay. A full shift does not. On the writing, 0.3em of letter-spacing stacks the words. 0.25em still shows the sentence. -6px stacks them. -5px still shows them. -0.5vw is -6.4px on this desk and stacks them. -0.4vw still shows them. -0.2lh stacks them. -0.15lh still shows the sentence. -0.5cap and -0.7ex stack them. -0.4cap and -0.5ex still show the sentence. The same stack in ch does not, from 1ch. Word-spacing of -20px piles the words. -16px still shows the sentence. -1em still shows it. */
 function spacingHides(value: string, hidden: Set<string>, limit: number, emLimit = 0): boolean {
   const token = value.replace(/!important/gi, "").trim();
   const px = lengthPx(token);
   if (px != null && px <= -limit) return true;
+  const view = viewportDeskPx(token);
+  if (view != null && view <= -limit) return true;
   const unit = lengthUnit(token);
   const compact = token.replace(/\s+/g, "");
   const parsed = unit ? parseMathSum(compact, 0) : null;
@@ -4866,7 +4893,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "font") return valueCanHide(val, hidden, fontShorthandHides);
   if (prop === "font-size-adjust") return fontAspectHides(val, hidden);
   if (prop === "letter-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 6, 0.3) || letterSpreadHides(v));
-  if (prop === "word-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 96) || wordSpreadHides(v));
+  if (prop === "word-spacing") return valueCanHide(val, hidden, (v) => spacingHides(v, hidden, 20) || wordSpreadHides(v));
   if (prop === "-webkit-text-fill-color" || prop === "text-fill-color") {
     return valueCanHide(val, hidden, (raw) => pieceIsClearColor(raw) || colorIsPageLight(raw) || colorMissesDesk(raw));
   }
@@ -7181,8 +7208,33 @@ function indentPercentDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
+/** A nowrap pad of 5in walks the end of the line off the sheet. 4.6in still shows the sentence. The pad is dropped. The nowrap stays. A pad without nowrap still wraps into view. */
+function padNowrapDrops(parts: string[]): (part: string) => boolean {
+  if (!writingGlyph() || !parts.some((part) => isNowrap(part))) return () => false;
+  const startWide = (prop: string, value: string) => {
+    const bits = boxTokens(value);
+    if (!bits.length) return false;
+    let tokens: string[] = [];
+    if (prop === "padding-left" || prop === "padding-inline-start") tokens = bits;
+    else if (prop === "padding") {
+      const top = bits[0] ?? "";
+      const right = bits[1] ?? top;
+      tokens = [bits[3] ?? right];
+    } else if (prop === "padding-inline") tokens = [bits[0] ?? ""];
+    else return false;
+    return tokens.some((token) => {
+      const px = lengthDeskPx(token) ?? viewportDeskPx(token);
+      return px != null && px >= 480;
+    });
+  };
+  return (part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && startWide(piece.prop, piece.val));
+  };
+}
+
 function deskExtraDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
-  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts), relativeShiftDrops(parts), luminanceMaskDrops(parts), indentPercentDrops(parts)];
+  const drops = [columnSpreadDrops(parts), writingColumnDrops(parts), stackColumnDrops(parts), trackRowDrops(parts, hidden), containZeroDrops(parts), narrowClipDrops(parts, hidden), originFlingDrops(parts, hidden), blockClipDrops(parts, hidden), percentSizeDrops(parts), offsetPushDrops(parts, hidden), fixedPileDrops(parts), pushPairDrops(parts), rowGapDrops(parts), aspectSliverDrops(parts), maxHeightStarDrops(parts, hidden), maxHeightStackDrops(parts, hidden), shortBoxDrops(parts, hidden), floatShrinkDrops(parts, hidden), inkBackgroundDrops(parts), insetShadowDrops(parts), webkitBoxDrops(parts), paintShiftDrops(parts, hidden), writingPushDrops(parts, hidden), inlineSliverStackDrops(parts, hidden), rootInlineClipDrops(parts, hidden), leadBlockDrops(parts, hidden), paintContainDrops(parts, hidden), pageHeightClipDrops(parts, hidden), pageWidthDrops(parts, hidden), verticalClipDrops(parts, hidden), padClipDrops(parts), clipMarginDrops(parts), eatenLineDrops(parts), borderBlockEats(parts), relativeShiftDrops(parts), luminanceMaskDrops(parts), indentPercentDrops(parts), padNowrapDrops(parts)];
   return (part) => drops.some((drop) => drop(part));
 }
 

@@ -1,3 +1,20 @@
+# Quire 1.9.88 — The first screen still has the writing
+
+Released 24 November 2026.
+
+1.9.87 still let a letter-spacing of -0.5vw pile the line, a word-spacing of -20px and the published stay of -48px pile the words, a nowrap pad of 5in walk page. off the sheet, and a radial hole of transparent before the ink take a run out of the line. Scored again on the same desk. A rule that still shows the writing stays. letter-spacing of -0.4vw stays. -5px stays. word-spacing of -16px stays. -1em stays. -1vw stays. -8ch, -5ic, -4lh, -6cap, and -8ex stay. A nowrap pad of 4.6in stays. A pad of 5in without nowrap stays. A radial hole of 1% stays. A solid window of 40% stays. A class hook stays. Colour stays.
+
+- **A letter-spacing of -0.5vw can no longer pile the line.** `-0.5vw`, `-1vw`, and `calc(-0.55vw)` are -6.4px or tighter on this desk, so they are dropped on the writing and where the value inherits from html. `-0.4vw` still shows the sentence. `-5px` stays. A class hook stays. Colour stays.
+- **A word-spacing of -20px can no longer pile the words.** `-20px`, `-48px`, `-2em`, `-5em`, and `-5vw` are dropped on the writing and where the value inherits from html. `-48px`, `-2em`, and `-5em` were stays. Read again, they leave a fragment. `-16px` still shows the sentence. `-1em` stays. `-1vw` stays. `-0.2em` stays. `-8ch`, `-5ic`, `-4lh`, `-6cap`, and `-8ex` stay. `16em` stays. `18em` stays dropped. A class hook stays. Colour stays.
+- **A nowrap pad of 5in can no longer walk the end of the line off the sheet.** `padding-left: 5in`, `padding-inline-start: 5in`, and `padding: 0 0 0 5in` with `white-space: nowrap` drop the pad. `4.6in` still shows the sentence. `5in` without nowrap still wraps and shows it. `html { padding-left: 400px }` stays. The nowrap stays. A class hook stays. Colour stays.
+- **A radial hole can no longer take a run out of the line.** `radial-gradient(circle at 20% 50%, transparent 2%, #000 3%)`, `10%`, and `40%` are dropped on the writing. `1%` only nicks the i in first. A solid window of `#000 40%` before the clear still shows the sentence. A class hook stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.87 — The first screen still has the writing
 
 Released 23 November 2026.
