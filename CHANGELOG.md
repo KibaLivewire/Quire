@@ -1,3 +1,22 @@
+# Quire 1.9.90 — The first screen still has the writing
+
+Released 25 November 2026.
+
+1.9.89 still let a light scheme on a box around the writing paint canvastext black, the same colour in a text fill, the writing box itself take that colour, a theme hook that beats the sheet flip the scheme, and a nowrap pad of 4.8in walk page. off. Windowtext, menutext, captiontext, infotext, buttonborder, activeborder, inactiveborder, windowframe, and the threed shadows do the same under a light scheme. Scored again on the same desk. A rule that still shows the writing stays. canvastext alone stays. windowtext alone stays. color-scheme light dark stays. A bare html rule stays, because the theme wins. A bare :root rule stays. An attribute with no element stays. html[data-theme="light"] stays. graytext, linktext, visitedtext, and activetext stay. A note stays. The sheet's own colour stays, because the editor sets the ink. A nowrap pad of 4.7in stays. 4.6in stays. A pad of 4.8in without nowrap stays. A class hook stays. Colour stays.
+
+- **A light scheme on another rule can no longer paint the line black.** `body`, `section`, `div`, `*`, `.quire-doc`, `.paper-body`, `.paper-sheet`, and `.quire-page` with `color-scheme: light` drop `color: canvastext`, `buttontext`, and `fieldtext` on the writing. color-scheme stays. A real ink colour stays. The same colours on one rule were already dropped. canvastext alone still shows the sentence. `light dark` stays. A note stays. The header stays. A bare `html` rule stays.
+- **A text fill of those colours can no longer paint the line black.** `-webkit-text-fill-color` and `text-fill-color` drop the same words when the scheme is light. The fill alone still shows the sentence. A real ink colour stays. A note stays.
+- **The writing box can no longer take a light scheme and a system black.** `.quire-doc { color-scheme: light; color: canvastext }` drops the colour. The scheme stays. `.quire-doc p` and `div.quire-doc` do the same. `.quire-doc { color: canvastext }` with no light scheme still shows the sentence. The sheet's own canvastext stays. `:not(.quire-doc)` still hits the paragraph, so that colour is dropped.
+- **A theme hook can no longer flip the sheet and paint those colours black.** `html[data-theme="dark"]`, `html[data-theme]`, `:root[data-theme="dark"]`, and the same hook for navy, leather, and rain drop the system black on the writing. The scheme stays. `html { color-scheme: light }` still loses to the theme, so canvastext stays. `:root` alone stays. `[data-theme="dark"]` without html or :root stays. `html[data-theme="light"]` stays.
+- **A legacy system colour that goes black under a light scheme can no longer hide the line.** `windowtext`, `menutext`, `captiontext`, `infotext`, `buttonborder`, `activeborder`, `inactiveborder`, `windowframe`, `threeddarkshadow`, `threedhighlight`, `threedlightshadow`, and `threedshadow` are dropped on the writing when the scheme is light. The same colour alone still shows the sentence. `light dark` stays. graytext, linktext, visitedtext, and activetext stay.
+- **A nowrap pad of 4.8in can no longer walk page. off the sheet.** `padding-left: 4.8in`, `padding-inline-start: 4.8in`, and the left of the padding shorthand are dropped when the line does not wrap. 4.7in still leaves a scrap of page. 4.6in still shows the sentence. A pad without nowrap stays. The nowrap stays. A class hook stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.89 — The first screen still has the writing
 
 Released 24 November 2026.

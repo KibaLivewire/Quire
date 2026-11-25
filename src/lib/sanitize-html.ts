@@ -5117,6 +5117,10 @@ let containerBlockOpen = false;
 let containerInlineOpen = false;
 let containerInlinePxOpen: number | null = null;
 let containerBlockPxOpen: number | null = null;
+/** A light-only color-scheme on a box that wraps the writing, possibly in another rule. */
+let schemeLightOpen = false;
+/** True when this rule is the editor class. That class sets the ink. The sheet class does not. */
+let activeSchemeTarget = false;
 /** True when the add-on itself positions a box. A percent band then belongs to that box. Otherwise it belongs to the sheet. */
 let bandPositioned = false;
 
@@ -7229,7 +7233,7 @@ function indentPercentDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** A nowrap pad of 5in walks the end of the line off the sheet. 4.6in still shows the sentence. The pad is dropped. The nowrap stays. A pad without nowrap still wraps into view. */
+/** A nowrap pad of 4.8in walks page. off the sheet. 4.7in still leaves a scrap of page. 4.6in still shows the sentence. The pad is dropped. The nowrap stays. A pad without nowrap still wraps into view. */
 function padNowrapDrops(parts: string[]): (part: string) => boolean {
   if (!writingGlyph() || !parts.some((part) => isNowrap(part))) return () => false;
   const startWide = (prop: string, value: string) => {
@@ -7245,7 +7249,7 @@ function padNowrapDrops(parts: string[]): (part: string) => boolean {
     else return false;
     return tokens.some((token) => {
       const px = lengthDeskPx(token) ?? viewportDeskPx(token);
-      return px != null && px >= 480;
+      return px != null && px >= 460;
     });
   };
   return (part) => {
@@ -7254,17 +7258,20 @@ function padNowrapDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** color: canvastext with color-scheme light paints black on the dark sheet. The colour is dropped. color-scheme stays. canvastext alone still reads. color-scheme: light alone still reads. light dark stays. A class hook stays. A real ink colour stays. */
+/** color: canvastext, buttontext, fieldtext, or a legacy system colour that is black under a light scheme, paints black on the dark sheet. The colour is dropped. color-scheme stays. The same colour alone still reads. light dark stays. A light scheme on a note stays. A light scheme on the header stays. The sheet's own colour stays, because the editor sets the ink. A real ink colour stays. The same words in a text fill do the same. */
 function schemeInkDrops(parts: string[]): (part: string) => boolean {
-  if (!writingGlyph() && !activeStar) return () => false;
-  const light = parts.some((part) => {
-    const piece = pieceProp(part);
-    return Boolean(piece && piece.prop === "color-scheme" && schemeIsLightOnly(piece.val));
-  });
+  if (!writingGlyph() && !activeStar && !activeSchemeTarget) return () => false;
+  const light =
+    schemeLightOpen ||
+    parts.some((part) => {
+      const piece = pieceProp(part);
+      return Boolean(piece && piece.prop === "color-scheme" && schemeIsLightOnly(piece.val));
+    });
   if (!light) return () => false;
   return (part) => {
     const piece = pieceProp(part);
-    return Boolean(piece && piece.prop === "color" && colorIsCanvasText(piece.val));
+    if (!piece || !colorIsSchemeBlack(piece.val)) return false;
+    return piece.prop === "color" || piece.prop === "-webkit-text-fill-color" || piece.prop === "text-fill-color";
   };
 }
 
@@ -7274,8 +7281,208 @@ function schemeIsLightOnly(value: string): boolean {
   return words.includes("light");
 }
 
-function colorIsCanvasText(value: string): boolean {
-  return /^canvastext$/i.test(value.replace(/!important/gi, "").trim());
+function colorIsSchemeBlack(value: string): boolean {
+  return /^(?:canvastext|buttontext|fieldtext|windowtext|menutext|captiontext|infotext|buttonborder|activeborder|inactiveborder|threeddarkshadow|threedhighlight|threedlightshadow|threedshadow|windowframe)$/i.test(value.replace(/!important/gi, "").trim());
+}
+
+/** A light scheme on the writing, or on a box around it, makes those system colours black. html loses to the theme, so a bare html rule does not. A theme hook that matches the dark sheet does, because the add-on is applied after the theme. A note does not wrap the writing. The header does not. The sheet, the page body, and the writing box do. */
+function schemeReachesWriting(selector: string): boolean {
+  const sel = selector.trim();
+  if (!sel || sel.includes("@")) return false;
+  if (schemeBeatsTheme(sel)) return true;
+  if (/\.(?:quire-doc|paper-body|paper-sheet|quire-page)\b/.test(sel)) return true;
+  if (coversLine(sel, null) || coversPage(sel, null) || coversInk(sel, null) || editsDesk(sel, null) || repeatsDiv(sel, null)) return true;
+  return splitSelectorList(sel).some((part) => {
+    const text = part.trim();
+    if (!text || text.includes("::")) return false;
+    return selectorMatchesEl(text, BODY_EL, null);
+  });
+}
+
+const DARK_SHEET_THEMES = ["dark", "navy", "leather", "rain"];
+
+/** A data-theme hook aimed at a dark sheet. A light-theme hook does not count. A bare presence matches every theme. */
+function themeAttrHitsDark(selector: string): boolean {
+  const attrs = [...selector.matchAll(/\[\s*data-theme\s*(?:([~|^$*]?=)\s*(?:"([^"]*)"|'([^']*)'|([^\s\]"'\\]+)))?\s*([iIsS])?\s*\]/gi)];
+  if (!attrs.length) return false;
+  for (const attr of attrs) {
+    const op = (attr[1] ?? "").toLowerCase();
+    const raw = attr[2] ?? attr[3] ?? attr[4] ?? "";
+    const insensitive = (attr[5] ?? "").toLowerCase() === "i";
+    if (!op) continue;
+    const value = insensitive ? raw.toLowerCase() : raw;
+    const hit = DARK_SHEET_THEMES.some((theme) => {
+      const t = insensitive ? theme.toLowerCase() : theme;
+      if (!value) return false;
+      if (op === "=" || op === "~=") return t === value;
+      if (op === "|=") return t === value || t.startsWith(`${value}-`);
+      if (op === "^=") return t.startsWith(value);
+      if (op === "$=") return t.endsWith(value);
+      if (op === "*=") return t.includes(value);
+      return false;
+    });
+    if (!hit) return false;
+  }
+  return true;
+}
+
+/** html[data-theme="dark"] is the theme rule. The same specificity, later, wins. A bare html or :root loses. An attribute with no element loses. */
+function schemeBeatsTheme(selector: string): boolean {
+  return splitSelectorList(selector).some((part) => {
+    const text = part.trim();
+    if (!text || text.includes("::") || text.includes("@")) return false;
+    if (!themeAttrHitsDark(text)) return false;
+    if (!selectorMatchesEl(text, HTML_EL, null)) return false;
+    const score = specTuple(text);
+    return score.a > 0 || score.b > 1 || (score.b === 1 && score.c >= 1);
+  });
+}
+
+/** .quire-doc is the writing box. A colour there replaces the ink. :not(.quire-doc) does not. The sheet class does not. */
+function schemePaintsDoc(selector: string): boolean {
+  return splitSelectorList(selector).some((part) => {
+    const text = part.trim();
+    if (!text) return false;
+    const withoutNot = text.replace(/:not\((?:[^()]|\([^()]*\))*\)/gi, "");
+    return /\.quire-doc\b/i.test(withoutNot);
+  });
+}
+
+function schemeInkProp(part: string): boolean {
+  const piece = pieceProp(part);
+  if (!piece || !colorIsSchemeBlack(piece.val)) return false;
+  return piece.prop === "color" || piece.prop === "-webkit-text-fill-color" || piece.prop === "text-fill-color";
+}
+
+/** The editor class is not in the desk tree, so the desk scrub never sees it. A light scheme still turns these colours black on that box. */
+function scrubSchemeInkBody(body: string, inheritedLight: boolean): string {
+  const decls = topLevelDeclarations(body);
+  const selfLight = decls.some((part) => {
+    const piece = pieceProp(part);
+    return Boolean(piece && piece.prop === "color-scheme" && schemeIsLightOnly(piece.val));
+  });
+  const light = inheritedLight || selfLight;
+  if (!body.includes("{")) {
+    if (!light) return body.trim();
+    return decls.filter((part) => !schemeInkProp(part)).join("; ");
+  }
+  let out = "";
+  let i = 0;
+  let buf = "";
+  let quote = "";
+  let paren = 0;
+  while (i < body.length) {
+    const ch = body[i] ?? "";
+    const next = body[i + 1] ?? "";
+    if (quote) {
+      buf += ch;
+      if (ch === "\\" && next) {
+        buf += next;
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      buf += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "(") {
+      paren += 1;
+      buf += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === ")" && paren > 0) {
+      paren -= 1;
+      buf += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "{" && paren === 0) {
+      const close = matchingBrace(body, i);
+      if (close < 0) return body;
+      const inner = scrubSchemeInkBody(body.slice(i + 1, close), light);
+      out += `${buf}{${inner}}`;
+      buf = "";
+      i = close + 1;
+      continue;
+    }
+    if (ch === ";" && paren === 0) {
+      const piece = buf.trim();
+      if (piece && !(light && schemeInkProp(piece))) out += `${piece}; `;
+      buf = "";
+      i += 1;
+      continue;
+    }
+    buf += ch;
+    i += 1;
+  }
+  const tail = buf.trim();
+  if (tail && !(light && schemeInkProp(tail))) out += tail;
+  return out.replace(/;\s*$/g, "").trim();
+}
+
+function eachCssRule(css: string, visit: (selector: string, body: string) => void) {
+  let i = 0;
+  let quote = "";
+  while (i < css.length) {
+    const ch = css[i] ?? "";
+    const next = css[i + 1] ?? "";
+    if (quote) {
+      if (ch === "\\" && next) {
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "@") {
+      const open = css.indexOf("{", i);
+      const semi = css.indexOf(";", i);
+      if (semi >= 0 && (open < 0 || semi < open)) {
+        i = semi + 1;
+        continue;
+      }
+      if (open < 0) break;
+      const close = matchingBrace(css, open);
+      if (close < 0) break;
+      eachCssRule(css.slice(open + 1, close), visit);
+      i = close + 1;
+      continue;
+    }
+    const open = css.indexOf("{", i);
+    if (open < 0) break;
+    const close = matchingBrace(css, open);
+    if (close < 0) break;
+    const selector = css.slice(i, open).trim();
+    const body = css.slice(open + 1, close);
+    if (selector) visit(selector, body);
+    if (body.includes("{")) eachCssRule(body, visit);
+    i = close + 1;
+  }
+}
+
+function collectSchemeLight(css: string): boolean {
+  let hit = false;
+  eachCssRule(css, (selector, body) => {
+    if (hit || !schemeReachesWriting(selector)) return;
+    for (const part of splitCssDeclarations(body)) {
+      const piece = pieceProp(part);
+      if (piece && piece.prop === "color-scheme" && schemeIsLightOnly(piece.val)) hit = true;
+    }
+  });
+  return hit;
 }
 
 /** A nowrap line clipped to 30% loses page. 45% still shows the sentence. 14em and 8em do the same. 18em still shows it. The width is dropped. nowrap, the clip, and the colour stay. A width of 30% without nowrap stays. */
@@ -9397,6 +9604,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   const prevBorder = activeBorder;
   const prevFrame = activeFrameOnly;
   const prevLine = activeLine;
+  const prevSchemeTarget = activeSchemeTarget;
   activeStack = false;
   activeDivs = 0;
   activeRoot = false;
@@ -9406,6 +9614,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
   activeBorder = false;
   activeFrameOnly = false;
   activeLine = false;
+  activeSchemeTarget = false;
   if (desk) {
     const sel = nestingSel ?? "";
     const ink = coversInk(sel, scopeSel);
@@ -9427,6 +9636,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activeBorder = selectorMatchesBorder(sel, scopeSel);
     activeFrameOnly = selectorOnlyFrame(sel, scopeSel);
     activeLine = !activeStar && coversLine(sel, scopeSel);
+    activeSchemeTarget = schemePaintsDoc(sel);
   }
   try {
   const scope = deskClipScope(nestingSel ?? "");
@@ -9586,6 +9796,7 @@ function scrubNestedBody(body: string, hidden: Set<string>, anims: Set<string>, 
     activeBorder = prevBorder;
     activeFrameOnly = prevFrame;
     activeLine = prevLine;
+    activeSchemeTarget = prevSchemeTarget;
   }
 }
 
@@ -10439,6 +10650,7 @@ function scrubLooseDeskRules(css: string, hidden: Set<string>, anims: Set<string
     const opened = rewriteAmp(selector, scopeSel);
     const rawBody = css.slice(open + 1, close);
     if (selectorMatchesDesk(opened, scopeSel)) out += `${selector}{${scrubNestedBody(rawBody, hidden, anims, true, scopeSel, opened, hideProfiles(opened, scopeSel), stackBefore)}}`;
+    else if (schemePaintsDoc(opened)) out += `${selector}{${scrubSchemeInkBody(rawBody, schemeLightOpen)}}`;
     else if (!rawBody.includes("{") && (deskPseudoSelector(opened) || looseSheetSelector(opened) || loosePseudoHead(opened) || firstLetterSelector(opened))) {
       let next = rawBody;
       let touched = false;
@@ -11171,6 +11383,7 @@ export function sanitizePluginCss(css: string): string {
   const readable = stripCssComments(decodeCssEscapes(stripCssComments(css), false));
   const cleaned = scrubThemeVars(scrubAttrUrls(scrubRemoteImageCalls(scrubPluginCss(readable))));
   bandPositioned = /position\s*:\s*(?:relative|absolute|fixed|sticky)\b/i.test(cleaned);
+  schemeLightOpen = collectSchemeLight(cleaned);
   const hidden = collectHideVars(cleaned);
   hidden.perspectives = collectDeskPerspectives(cleaned);
   collectPaintZero(cleaned, hidden);
