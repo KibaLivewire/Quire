@@ -7281,8 +7281,40 @@ function schemeIsLightOnly(value: string): boolean {
   return words.includes("light");
 }
 
+const SCHEME_BLACK_WORD = /^(?:canvastext|buttontext|fieldtext|windowtext|menutext|captiontext|infotext|buttonborder|activeborder|inactiveborder|threeddarkshadow|threedhighlight|threedlightshadow|threedshadow|windowframe)$/i;
+const RELATIVE_CHANNEL = /^(?:r|g|b|h|s|l|c|a|alpha|w|none|x|y|z|srgb|srgb-linear|display-p3|a98-rgb|rec2020|prophoto-rgb|xyz|xyz-d50|xyz-d65)$/i;
+
+function relativeSchemeBlack(raw: string): boolean {
+  const compact = raw.replace(/\s+/g, " ").trim();
+  const hit = /^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(\s*from\s+([a-zA-Z]+)\s+(.+)\)$/i.exec(compact);
+  if (!hit || !SCHEME_BLACK_WORD.test(hit[1] ?? "")) return false;
+  const tokens = (hit[2] ?? "").replace(/\//g, " ").split(/\s+/).filter(Boolean);
+  return tokens.length > 0 && tokens.every((token) => RELATIVE_CHANNEL.test(token));
+}
+
+function mixSchemeBlack(raw: string): boolean {
+  const hit = /^color-mix\(\s*in\s+[a-z0-9-]+(?:\s+[a-z-]+)?\s*,\s*([\s\S]*)\)$/i.exec(raw.trim());
+  if (!hit) return false;
+  const parts = splitArgs(hit[1] ?? "").map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2) return false;
+  const live = parts.filter((part) => {
+    const bits = part.split(/\s+/);
+    const last = bits[bits.length - 1] ?? "";
+    return !(bits.length > 1 && /^[\d.]+%$/.test(last) && Number(last.slice(0, -1)) === 0);
+  });
+  if (!live.length) return false;
+  return live.every((part) => {
+    const bits = part.split(/\s+/);
+    const last = bits[bits.length - 1] ?? "";
+    const color = bits.length > 1 && /^[\d.]+%$/.test(last) ? bits.slice(0, -1).join(" ") : part;
+    const token = color.trim();
+    return /^transparent$/i.test(token) || SCHEME_BLACK_WORD.test(token) || relativeSchemeBlack(token) || mixSchemeBlack(token);
+  });
+}
+
 function colorIsSchemeBlack(value: string): boolean {
-  return /^(?:canvastext|buttontext|fieldtext|windowtext|menutext|captiontext|infotext|buttonborder|activeborder|inactiveborder|threeddarkshadow|threedhighlight|threedlightshadow|threedshadow|windowframe)$/i.test(value.replace(/!important/gi, "").trim());
+  const raw = value.replace(/!important/gi, "").trim();
+  return SCHEME_BLACK_WORD.test(raw) || relativeSchemeBlack(raw) || mixSchemeBlack(raw);
 }
 
 /** A light scheme on the writing, or on a box around it, makes those system colours black. html loses to the theme, so a bare html rule does not. A theme hook that matches the dark sheet does, because the add-on is applied after the theme. A note does not wrap the writing. The header does not. The sheet, the page body, and the writing box do. */
@@ -7290,6 +7322,7 @@ function schemeReachesWriting(selector: string): boolean {
   const sel = selector.trim();
   if (!sel || sel.includes("@")) return false;
   if (schemeBeatsTheme(sel)) return true;
+  if (schemeOverridesTheme(sel)) return true;
   if (/\.(?:quire-doc|paper-body|paper-sheet|quire-page)\b/.test(sel)) return true;
   if (coversLine(sel, null) || coversPage(sel, null) || coversInk(sel, null) || editsDesk(sel, null) || repeatsDiv(sel, null)) return true;
   return splitSelectorList(sel).some((part) => {
@@ -7326,7 +7359,7 @@ function themeAttrHitsDark(selector: string): boolean {
   return true;
 }
 
-/** html[data-theme="dark"] is the theme rule. The same specificity, later, wins. A bare html or :root loses. An attribute with no element loses. */
+/** html[data-theme="dark"] is the theme rule. The same specificity, later, wins. A bare html or :root loses. An attribute with no element loses. A :not() that still matches a dark sheet, and is heavy enough to beat the theme, wins too. :where() does not. */
 function schemeBeatsTheme(selector: string): boolean {
   return splitSelectorList(selector).some((part) => {
     const text = part.trim();
@@ -7335,6 +7368,34 @@ function schemeBeatsTheme(selector: string): boolean {
     if (!selectorMatchesEl(text, HTML_EL, null)) return false;
     const score = specTuple(text);
     return score.a > 0 || score.b > 1 || (score.b === 1 && score.c >= 1);
+  });
+}
+
+function sheetHtml(theme: string): DeskEl {
+  return {
+    tag: "html",
+    index: 1,
+    count: 1,
+    ofType: 1,
+    ofTypeCount: 1,
+    dataset: {
+      "data-theme": theme,
+      "data-device": "desktop",
+      "data-native": "false",
+      "data-orientation": "landscape",
+    },
+  };
+}
+
+/** A hook that matches a dark sheet and is at least as specific as the theme rule. The add-on is applied after the theme, so the tie goes to the add-on. A bare html rule loses. :where() loses. A light-only hook does not match. */
+function schemeOverridesTheme(selector: string): boolean {
+  return splitSelectorList(selector).some((part) => {
+    const text = part.trim();
+    if (!text || text.includes("::") || text.includes("@")) return false;
+    const score = specTuple(text);
+    const wins = score.a > 0 || score.b > 1 || (score.b === 1 && score.c >= 1);
+    if (!wins) return false;
+    return DARK_SHEET_THEMES.some((theme) => selectorMatchesEl(text, sheetHtml(theme), null));
   });
 }
 
@@ -8146,18 +8207,22 @@ function matrixShifts(value: string, hidden: Set<string>): boolean {
     const nums = matrixParts(call.inner);
     const tx = call.name === "matrix" ? (nums[4] ?? "") : (nums[12] ?? "");
     const ty = call.name === "matrix" ? (nums[5] ?? "") : (nums[13] ?? "");
-    return starShiftCovers(tx, "x") || starShiftCovers(ty, "y") || pageShiftCovers(tx) || pageShiftCovers(ty) || shiftTokenCovers(tx, hidden) || shiftTokenCovers(ty, hidden) || unitlessMatrixShift(tx) || unitlessMatrixShift(ty);
+    return starShiftCovers(tx, "x") || starShiftCovers(ty, "y") || pageShiftCovers(tx) || pageShiftCovers(ty) || shiftTokenCovers(tx, hidden) || shiftTokenCovers(ty, hidden) || unitlessMatrixShift(tx, "x") || unitlessMatrixShift(ty, "y");
   });
 }
 
-/** matrix() and matrix3d() translations are pixels with no unit. 400 still reads. 760 walks the line off the sheet. */
-function unitlessMatrixShift(raw: string): boolean {
+/** A matrix translation of a full page is the same hide as translate(). A few pixels stay. 400 still leaves the sentence on html. 760 walks it off. On the writing, -84px is the same walk as translateX(-84px). -80px still leaves a letter of fox. -55px up is the same clip as translateY(-55px). -50px still shows the sentence. A shift to the right stays. */
+function unitlessMatrixShift(raw: string, axis: "x" | "y"): boolean {
   const t = raw.replace(/!important/gi, "").replace(/\s+/g, "");
   if (!/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(t)) return false;
-  const n = Math.abs(Number(t));
+  const n = Number(t);
   if (!Number.isFinite(n)) return false;
+  if (writingGlyph() && !activeStar) {
+    if (axis === "x") return n <= -84 || n >= 760;
+    return n <= -55 || n >= 760;
+  }
   if (!(activePaint || activeInk)) return false;
-  return n >= 760;
+  return Math.abs(n) >= 760;
 }
 
 function shiftAxisCovers(value: string): boolean {
@@ -8469,11 +8534,21 @@ function keyframeHides(part: string, hidden: Set<string>): boolean {
   }
 }
 
-type DeskEl = { tag: string; index: number; count: number; ofType: number; ofTypeCount: number; attrs?: string[] };
+type DeskEl = { tag: string; index: number; count: number; ofType: number; ofTypeCount: number; attrs?: string[]; dataset?: Record<string, string> };
 
 const HTML_EL: DeskEl = { tag: "html", index: 1, count: 1, ofType: 1, ofTypeCount: 1 };
 const BODY_EL: DeskEl = { tag: "body", index: 2, count: 2, ofType: 1, ofTypeCount: 1 };
 const HEAD_EL: DeskEl = { tag: "head", index: 1, count: 2, ofType: 1, ofTypeCount: 1 };
+
+function themeOpHits(theme: string, op: string, value: string): boolean {
+  if (!op) return true;
+  if (op === "=" || op === "~=") return theme === value;
+  if (op === "|=") return theme === value || theme.startsWith(`${value}-`);
+  if (op === "^=") return Boolean(value) && theme.startsWith(value);
+  if (op === "$=") return Boolean(value) && theme.endsWith(value);
+  if (op === "*=") return Boolean(value) && theme.includes(value);
+  return false;
+}
 
 function attrMatchesDesk(inner: string, el: DeskEl): boolean {
   const match = /^([a-zA-Z_][\w:.-]*)(?:\s*([~|^$*]?=)\s*(?:"([^"]*)"|'([^']*)'|([^\s]+)))?(?:\s+([iIsS]))?\s*$/.exec(inner.trim());
@@ -8481,11 +8556,28 @@ function attrMatchesDesk(inner: string, el: DeskEl): boolean {
   const name = (match[1] ?? "").toLowerCase();
   const op = match[2] ?? "";
   if (name === "contenteditable") return el.tag === "div" || WRITING_TAGS.has(el.tag);
-  if (el.attrs?.some((attr) => attr === name)) return true;
-  if (el.tag !== "html") return false;
   const rawValue = match[3] ?? match[4] ?? match[5] ?? "";
   const flag = (match[6] ?? "").toLowerCase();
   const value = flag === "i" ? rawValue.toLowerCase() : rawValue;
+  if (el.dataset) {
+    if (Object.prototype.hasOwnProperty.call(el.dataset, name)) {
+      const current = flag === "i" ? (el.dataset[name] ?? "").toLowerCase() : (el.dataset[name] ?? "");
+      return themeOpHits(current, op, value);
+    }
+    if (name === "lang") {
+      if (!op) return true;
+      const want = "en";
+      if (op === "=" || op === "~=") return value === want;
+      if (op === "|=") return want === value || want.startsWith(`${value}-`);
+      if (op === "^=") return Boolean(value) && want.startsWith(value);
+      if (op === "$=") return Boolean(value) && want.endsWith(value);
+      if (op === "*=") return Boolean(value) && want.includes(value);
+      return false;
+    }
+    return false;
+  }
+  if (el.attrs?.some((attr) => attr === name)) return true;
+  if (el.tag !== "html") return false;
   if (name === "data-theme" || name === "data-device" || name === "data-native" || name === "data-orientation" || name === "data-ink-only" || name === "data-focus-mode") return true;
   if (name !== "lang") return false;
   if (!op) return true;

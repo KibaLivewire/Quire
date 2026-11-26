@@ -1,3 +1,19 @@
+# Quire 1.9.91 — The first screen still has the writing
+
+Released 26 November 2026.
+
+1.9.90 still let a system black written as a mix or a relative colour paint the line black, a theme hook the sheet rule does not beat do the same, and a matrix shift of -84px walk The fo off the sheet. Scored again on the same desk. A rule that still shows the writing stays. color-mix of canvastext with white stays. A relative colour that replaces a channel stays. canvastext alone stays. color-scheme light dark stays. A bare html rule stays, because the theme wins. :where() stays. A hook that does not match the dark sheet stays. A matrix shift of -80px stays. A shift to the right stays. A lift of -50px stays. html at -400px stays. A class hook stays. Colour stays.
+
+- **A mix or a relative colour of a system black can no longer paint the line black.** `color-mix(in srgb, canvastext, canvastext)`, `color-mix(in srgb, windowtext 100%, transparent)`, and `color-mix(in srgb, canvastext 100%, white 0%)` drop the colour when the scheme is light. `rgb(from canvastext r g b)`, `hsl(from windowtext h s l)`, and `oklch(from canvastext l c h)` do the same. color-scheme stays. A real ink colour stays. `color-mix(in srgb, canvastext 80%, white)` still shows the sentence. `rgb(from canvastext 255 g b)` stays. The same colour with no light scheme stays. graytext, linktext, visitedtext, and activetext stay.
+- **A theme hook that still matches a dark sheet can no longer paint those colours black.** `html:not([data-theme=light])`, `html:not([data-theme="light"])`, and `html:not(.nope)` drop canvastext, windowtext, and the other system blacks on the writing. The scheme stays. `html:not([data-theme=dark])` still matches navy, leather, and rain, so that colour is dropped too. `html { color-scheme: light }` still loses to the theme, so canvastext stays. `:where()` stays. `html:not([data-device=desktop])` does not match this desk, so canvastext stays. A light-theme hook stays.
+- **A matrix shift of -84px can no longer walk The fo off the sheet.** `matrix(1, 0, 0, 1, -84, 0)` and `matrix(1, 0, 0, 1, 0, -55)` are dropped on the writing. `-80px` still leaves a letter of fox and the rest of the sentence. A shift of `84px` to the right still shows it. A lift of `-50px` still shows it. `html` at `-400px` stays. A class hook stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.90 — The first screen still has the writing
 
 Released 25 November 2026.
