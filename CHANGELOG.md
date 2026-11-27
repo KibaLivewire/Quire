@@ -1,3 +1,18 @@
+# Quire 1.9.93 — The first screen still has the writing
+
+Released 27 November 2026.
+
+1.9.92 still let a no-repeat mask narrower than the line take page. off the sheet, and a custom property set to -84px walk The fo off the same way translateX(-84px) already could. Scored again on the same desk. A rule that still shows the writing stays. A mask of 39% still leaves a scrap of page. 40% stays. A repeated mask stays. 300px stays. A shift of -80px stays, including through a custom property. A lift of -50px stays. A matrix translation with a unit stays, because it is not a matrix shift. calc(-80) stays. An absolute left of -80px stays. A class hook stays. Colour stays.
+
+- **A no-repeat mask that stops short of the line can no longer take page.** `mask-size: 10% 100%`, `35%`, `38%`, and `286px` are dropped on the writing when the mask does not repeat. The same width in `mask` and `-webkit-mask` is dropped too. A parked `mask-position` of that short window goes with it. `39%` still leaves a scrap of page. `40%` stays. `300px` stays. A repeated mask stays. `100% 100px` stays. A class hook stays.
+- **A custom property can no longer walk the line off by the same amount as a shift.** `translateX(var(--x))` with `--x: -84px`, `translate: var(--x) 0`, `translateX(var(--missing, -84px))`, and `calc(var(--x) * 1px)` are dropped on the writing. `translateY(var(--y))` at `-55px` is dropped. `matrix(1, 0, 0, 1, var(--x), 0)` with `--x: -84` is dropped. `-80px` still leaves a letter of fox. `-50px` still shows the sentence. `--x: -80` in a matrix stays. A matrix translation written with `px` stays. A class hook stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.92 — The first screen still has the writing
 
 Released 27 November 2026.

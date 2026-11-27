@@ -4934,7 +4934,7 @@ function declarationHidesDesk(piece: string, hidden: Set<string>): boolean {
   if (prop === "mask" || prop === "mask-image" || prop === "-webkit-mask" || prop === "-webkit-mask-image") return maskHides(val, hidden);
   if (prop === "translate") {
     const args = splitTopWords(val.replace(/!important/gi, ""));
-    return args.slice(0, 2).some((arg, index) => starShiftToken(arg, index === 0 ? "x" : "y", hidden) || shiftTokenCovers(arg, hidden) || writingNudgeHides(arg, index === 0 ? "x" : "y"));
+    return args.slice(0, 2).some((arg, index) => starShiftToken(arg, index === 0 ? "x" : "y", hidden) || shiftTokenCovers(arg, hidden) || writingNudgeToken(arg, index === 0 ? "x" : "y", hidden));
   }
   if (prop === "position") {
     return valueCanHide(val, hidden, (raw) => {
@@ -5292,7 +5292,24 @@ function maskAxisLong(token: string): boolean {
   return px != null && px >= 400;
 }
 
-/** A no-repeat mask the height of a strip, or a few pixels square, covers none of the writing. A mask that still covers stays. */
+/** 38% of the line leaves page. off the sheet. 39% still leaves a scrap of page. 286px is the same short edge. 300px still reaches it. */
+function maskWidthMissesLine(token: string): boolean {
+  const resolved = resolvedSide(token);
+  if (resolved?.unit === "%") return resolved.n >= 0 && resolved.n <= 38;
+  const px = resolved && resolved.unit ? lengthDeskPx(`${resolved.n}${resolved.unit}`) : lengthDeskPx(token);
+  return px != null && px >= 0 && px <= 286;
+}
+
+/** A mask this tall still holds the first line. A strip does not. */
+function maskHeightCoversLine(token: string): boolean {
+  if (/^(?:auto|cover|contain)$/i.test(token)) return true;
+  const resolved = resolvedSide(token);
+  if (resolved?.unit === "%") return resolved.n >= 12;
+  const px = resolved && resolved.unit ? lengthDeskPx(`${resolved.n}${resolved.unit}`) : lengthDeskPx(token);
+  return px != null && px >= 40;
+}
+
+/** A no-repeat mask the height of a strip, or a few pixels square, covers none of the writing. A width of 38% or 286px leaves page. off the sheet. 39% still leaves a scrap of page. A mask that still covers stays. */
 function maskSizeIsStrip(part: string): boolean {
   const piece = pieceProp(part);
   if (!piece || !MASK_SIZE_PROP.has(piece.prop)) return false;
@@ -5303,7 +5320,8 @@ function maskSizeIsStrip(part: string): boolean {
   const thinW = maskAxisThin(width);
   const thinH = maskAxisThin(height);
   if (thinW && thinH) return true;
-  return (thinW && maskAxisLong(height)) || (thinH && maskAxisLong(width));
+  if ((thinW || maskWidthMissesLine(width)) && (maskAxisLong(height) || maskHeightCoversLine(height))) return true;
+  return thinH && maskAxisLong(width);
 }
 
 function maskStrip(parts: string[], hidden: Set<string>): boolean {
@@ -8276,7 +8294,7 @@ function matrixShifts(value: string, hidden: Set<string>): boolean {
     const nums = matrixParts(call.inner);
     const tx = call.name === "matrix" ? (nums[4] ?? "") : (nums[12] ?? "");
     const ty = call.name === "matrix" ? (nums[5] ?? "") : (nums[13] ?? "");
-    return starShiftCovers(tx, "x") || starShiftCovers(ty, "y") || pageShiftCovers(tx) || pageShiftCovers(ty) || shiftTokenCovers(tx, hidden) || shiftTokenCovers(ty, hidden) || unitlessMatrixShift(tx, "x") || unitlessMatrixShift(ty, "y");
+    return starShiftCovers(tx, "x") || starShiftCovers(ty, "y") || pageShiftCovers(tx) || pageShiftCovers(ty) || shiftTokenCovers(tx, hidden) || shiftTokenCovers(ty, hidden) || unitlessShiftToken(tx, "x", hidden) || unitlessShiftToken(ty, "y", hidden);
   });
 }
 
@@ -8294,6 +8312,13 @@ function unitlessMatrixShift(raw: string, axis: "x" | "y"): boolean {
   }
   if (!(activePaint || activeInk)) return false;
   return Math.abs(n) >= 760;
+}
+
+/** var(--x) set to -84 is the same walk as a unitless matrix shift of -84. -80 stays. A length with a unit is not a matrix translation, so it stays. */
+function unitlessShiftToken(token: string, axis: "x" | "y", hidden: Set<string>): boolean {
+  if (unitlessMatrixShift(token, axis)) return true;
+  const filled = fillVars(token, hidden);
+  return filled !== token && unitlessMatrixShift(filled, axis);
 }
 
 function shiftAxisCovers(value: string): boolean {
@@ -8427,6 +8452,44 @@ function writingNudgeHides(token: string, axis: "x" | "y"): boolean {
   return px <= -84;
 }
 
+/** var(--x) set to -84px is the same walk as translateX(-84px). The fallback is too. -80px still leaves a letter of fox. calc(var(--x) * 1px) is the same length. */
+function writingNudgeToken(token: string, axis: "x" | "y", hidden: Set<string>): boolean {
+  if (writingNudgeHides(token, axis)) return true;
+  const filled = fillVars(token, hidden);
+  return filled !== token && writingNudgeHides(filled, axis);
+}
+
+function fillVars(value: string, hidden: Set<string>, seen?: Set<string>): string {
+  const trail = seen ?? new Set<string>();
+  const defined = (hidden as HideVars).defined;
+  let out = "";
+  let i = 0;
+  while (i < value.length) {
+    const paren = varNameParen(value, i);
+    if (!paren) {
+      out += value[i] ?? "";
+      i += 1;
+      continue;
+    }
+    const end = matchingParen(value, paren);
+    if (end < 0) {
+      out += value[i] ?? "";
+      i += 1;
+      continue;
+    }
+    const parts = splitTopComma(value.slice(paren + 1, end));
+    const name = parts.head.trim();
+    let raw = "";
+    if (name.startsWith("--") && defined?.has(name) && !trail.has(name)) raw = defined.get(name) ?? "";
+    else raw = parts.tail.trim();
+    const next = new Set(trail);
+    if (name.startsWith("--")) next.add(name);
+    out += raw ? fillVars(raw, hidden, next) : "";
+    i = end + 1;
+  }
+  return out;
+}
+
 /** A shift of the whole desk moves it off the page. A few pixels stay. A turn stays. */
 function translateHides(value: string, hidden: Set<string>): boolean {
   const found = namedFunctionCalls(value, ["translate3d", "translatex", "translatey", "translate"]);
@@ -8439,7 +8502,7 @@ function translateHides(value: string, hidden: Set<string>): boolean {
     const axisOf = call.name === "translatey" ? "y" : call.name === "translatex" ? "x" : "";
     return axes.some((arg, index) => {
       const axis = axisOf === "y" || (!axisOf && index === 1) ? "y" : "x";
-      return starShiftToken(arg, axis, hidden) || shiftTokenCovers(arg, hidden) || writingNudgeHides(arg, axis);
+      return starShiftToken(arg, axis, hidden) || shiftTokenCovers(arg, hidden) || writingNudgeToken(arg, axis, hidden);
     });
   });
 }
