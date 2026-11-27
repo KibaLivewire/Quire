@@ -1,3 +1,21 @@
+# Quire 1.9.92 — The first screen still has the writing
+
+Released 27 November 2026.
+
+1.9.91 still let a system black written as a calculation or an opaque alpha paint the line black, a mix of that black with black or with a trace of white do the same, light-dark of that black do the same, a matrix calculation of -84px walk The fo off, and an absolute left of -100px walk The fox keep off. Scored again on the same desk. A rule that still shows the writing stays. color-mix of canvastext 80% with white stays. 85% with white stays. A mix with red stays. A mix with canvas stays. An alpha of 0.5 stays. A relative colour that replaces a channel stays. The same colour with no light scheme stays. A bare html rule stays, because the theme wins. A note stays. graytext stays. light-dark of red stays. calc(-80) stays. An absolute left of -80px stays. A class hook stays. Colour stays.
+
+- **A calculation or an opaque alpha of a system black can no longer paint the line black.** `rgb(from canvastext calc(r) calc(g) calc(b))`, `rgb(from canvastext r g b / 1)`, `rgb(from canvastext r g b / 100%)`, and `rgb(from canvastext r g b / 0.99)` drop the colour when the scheme is light. `hsl(from windowtext h s l / 1)`, `oklch(from canvastext l c h / 100%)`, `lab(from canvastext l a b / 1)`, `oklab(from canvastext l a b / 1)`, and `color(from canvastext srgb r g b / 1)` do the same. The same words in a text fill do the same. color-scheme stays. A real ink colour stays. `rgb(from canvastext r g b / 0.5)` still shows the sentence. `rgb(from canvastext 255 g b)` stays. The same colour with no light scheme stays. graytext stays.
+- **A mix of that black with black, or with only a trace of white, can no longer paint the line black.** `color-mix(in srgb, canvastext, black)`, `color-mix(in srgb, canvastext 50%, #000)`, `color-mix(in srgb, canvastext 90%, white 10%)`, `color-mix(in srgb, canvastext 99%, white 1%)`, and a nested mix of the same black drop the colour. `color-mix(in srgb, canvastext 85%, white 15%)` still shows the sentence. `color-mix(in srgb, canvastext 80%, white)` stays. A mix with red stays. A mix with canvas stays. A class hook stays. Colour stays.
+- **light-dark of a system black can no longer paint the line black.** `light-dark(canvastext, red)` drops the colour when the scheme is light. The scheme stays. `light-dark(red, canvastext)` still shows the sentence, in red. A real ink colour stays.
+- **A matrix calculation of -84 can no longer walk The fo off the sheet.** `matrix(1, 0, 0, 1, calc(-84), 0)` and `matrix3d` with `calc(-84)` are dropped on the writing. `calc(-80)` still leaves a letter of fox and the rest of the sentence. A class hook stays. Colour stays.
+- **An absolute left of -100px can no longer walk The fox keep off.** `left: -100px` is dropped on a positioned line. The position stays. `-80px` still shows the sentence. `-120px` stays dropped. A fixed bottom stays. A class hook stays. Colour stays.
+
+Windows installer: not rebuilt this pass. The published installer remains Quire-Setup-1.9.16.exe.
+
+Play bundle: unchanged, versionName `1.0.1`, versionCode `2`.
+
+---
+
 # Quire 1.9.91 — The first screen still has the writing
 
 Released 26 November 2026.

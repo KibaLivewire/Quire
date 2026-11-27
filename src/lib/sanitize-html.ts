@@ -6757,7 +6757,7 @@ function webkitBoxDrops(parts: string[]): (part: string) => boolean {
   };
 }
 
-/** The writing itself, parked off the first screen. A fixed footer stays. top: -40px on the line is enough. The position stays. left: -80px still reads. left: -120px walks The fox kee off. left: -200px and left: -280px leave only the tail. left: -20vw still reads. left: -25vw is the same park as -320px. top: 85vh still reads. top: 90vh does not. right: 750px still reads. right: 820px walks off. */
+/** The writing itself, parked off the first screen. A fixed footer stays. top: -40px on the line is enough. The position stays. left: -80px still reads. left: -100px walks The fox keep off. left: -120px, -200px, and -280px leave less. left: -20vw still reads. left: -25vw is the same park as -320px. top: 85vh still reads. top: 90vh does not. right: 750px still reads. right: 820px walks off. */
 function paintShiftDrops(parts: string[], hidden: Set<string>): (part: string) => boolean {
   if (!activePaint && !activeInk) return () => false;
   const positioned = parts.some((part) => {
@@ -6777,7 +6777,7 @@ function paintShiftDrops(parts: string[], hidden: Set<string>): (part: string) =
       valueCanHide(token, hidden, (raw) => {
         const plain = raw.replace(/!important/gi, "").trim();
         const px = lengthDeskPx(plain);
-        if (px != null && px <= -120) return true;
+        if (px != null && px <= -100) return true;
         const pct = percentOf(plain);
         return pct != null && pct <= -0.5;
       }),
@@ -7282,39 +7282,108 @@ function schemeIsLightOnly(value: string): boolean {
 }
 
 const SCHEME_BLACK_WORD = /^(?:canvastext|buttontext|fieldtext|windowtext|menutext|captiontext|infotext|buttonborder|activeborder|inactiveborder|threeddarkshadow|threedhighlight|threedlightshadow|threedshadow|windowframe)$/i;
-const RELATIVE_CHANNEL = /^(?:r|g|b|h|s|l|c|a|alpha|w|none|x|y|z|srgb|srgb-linear|display-p3|a98-rgb|rec2020|prophoto-rgb|xyz|xyz-d50|xyz-d65)$/i;
+const RELATIVE_SPACE = /^(?:srgb|srgb-linear|display-p3|a98-rgb|rec2020|prophoto-rgb|xyz|xyz-d50|xyz-d65)$/i;
+
+function channelResolvesBlack(token: string): boolean {
+  const raw = token.trim();
+  if (/^(?:none|r|g|b|h|s|l|c|w|x|y|z|a|alpha)$/i.test(raw)) return true;
+  const calc = /^calc\(([\s\S]*)\)$/i.exec(raw);
+  if (!calc) return false;
+  const expr = (calc[1] ?? "").replace(/\b(?:r|g|b|h|s|l|c|a|alpha|w|x|y|z)\b/gi, "(0)");
+  if (/[a-z]/i.test(expr)) return false;
+  const n = evalArith(expr);
+  return n != null && Math.abs(n) < 1e-6;
+}
+
+function opaqueAlpha(token: string): boolean {
+  const t = token.trim();
+  if (/^(?:a|alpha)$/i.test(t)) return true;
+  if (/^none$/i.test(t)) return false;
+  if (t.endsWith("%")) {
+    const n = Number(t.slice(0, -1));
+    return Number.isFinite(n) && n >= 90;
+  }
+  if (/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(t)) return Number(t) >= 0.9;
+  const calc = /^calc\(([\s\S]*)\)$/i.exec(t);
+  if (!calc) return false;
+  const expr = (calc[1] ?? "").replace(/\b(?:a|alpha)\b/gi, "(1)");
+  if (/[a-z]/i.test(expr)) return false;
+  const n = evalArith(expr);
+  return n != null && n >= 0.9;
+}
 
 function relativeSchemeBlack(raw: string): boolean {
   const compact = raw.replace(/\s+/g, " ").trim();
   const hit = /^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(\s*from\s+([a-zA-Z]+)\s+(.+)\)$/i.exec(compact);
   if (!hit || !SCHEME_BLACK_WORD.test(hit[1] ?? "")) return false;
-  const tokens = (hit[2] ?? "").replace(/\//g, " ").split(/\s+/).filter(Boolean);
-  return tokens.length > 0 && tokens.every((token) => RELATIVE_CHANNEL.test(token));
+  const body = hit[2] ?? "";
+  const slash = body.lastIndexOf("/");
+  const channelText = (slash >= 0 ? body.slice(0, slash) : body).trim();
+  const alpha = slash >= 0 ? body.slice(slash + 1).trim() : "";
+  if (alpha && !opaqueAlpha(alpha)) return false;
+  const tokens = channelText.split(/\s+/).filter(Boolean);
+  if (/^color$/i.test(hit[0].slice(0, 5)) && tokens[0] && RELATIVE_SPACE.test(tokens[0])) tokens.shift();
+  return tokens.length > 0 && tokens.every((token) => channelResolvesBlack(token));
+}
+
+function mixPercent(part: string): { color: string; pct: number | null } {
+  const bits = part.trim().split(/\s+/).filter(Boolean);
+  if (!bits.length) return { color: "", pct: null };
+  const last = bits[bits.length - 1] ?? "";
+  if (bits.length > 1 && /^[\d.]+%$/.test(last)) return { color: bits.slice(0, -1).join(" "), pct: Number(last.slice(0, -1)) };
+  return { color: bits.join(" "), pct: null };
+}
+
+function tokenIsPlainBlack(token: string): boolean {
+  const t = token.replace(/\s+/g, "").toLowerCase();
+  if (t === "black") return true;
+  if (t === "#000" || t === "#000000" || t === "#000000ff") return true;
+  return /^rgba?\((?:0[, ]+){2}0(?:[,/](?:1|100%))?\)$/.test(t);
+}
+
+function tokenIsPlainWhite(token: string): boolean {
+  const t = token.replace(/\s+/g, "").toLowerCase();
+  return t === "white" || t === "#fff" || t === "#ffffff" || t === "#ffffffff" || /^rgba?\((?:255[, ]+){2}255(?:[,/](?:1|100%))?\)$/.test(t);
 }
 
 function mixSchemeBlack(raw: string): boolean {
   const hit = /^color-mix\(\s*in\s+[a-z0-9-]+(?:\s+[a-z-]+)?\s*,\s*([\s\S]*)\)$/i.exec(raw.trim());
   if (!hit) return false;
-  const parts = splitArgs(hit[1] ?? "").map((part) => part.trim()).filter(Boolean);
+  const parts = splitArgs(hit[1] ?? "")
+    .map((part) => mixPercent(part))
+    .filter((part) => part.color);
   if (parts.length < 2) return false;
-  const live = parts.filter((part) => {
-    const bits = part.split(/\s+/);
-    const last = bits[bits.length - 1] ?? "";
-    return !(bits.length > 1 && /^[\d.]+%$/.test(last) && Number(last.slice(0, -1)) === 0);
-  });
+  const live = parts.filter((part) => part.pct == null || part.pct !== 0);
   if (!live.length) return false;
-  return live.every((part) => {
-    const bits = part.split(/\s+/);
-    const last = bits[bits.length - 1] ?? "";
-    const color = bits.length > 1 && /^[\d.]+%$/.test(last) ? bits.slice(0, -1).join(" ") : part;
-    const token = color.trim();
-    return /^transparent$/i.test(token) || SCHEME_BLACK_WORD.test(token) || relativeSchemeBlack(token) || mixSchemeBlack(token);
-  });
+  const blackish = (color: string) => /^transparent$/i.test(color) || SCHEME_BLACK_WORD.test(color) || tokenIsPlainBlack(color) || relativeSchemeBlack(color) || mixSchemeBlack(color);
+  if (live.every((part) => blackish(part.color))) return true;
+  if (live.length !== 2) return false;
+  const black = live.find((part) => blackish(part.color));
+  const white = live.find((part) => tokenIsPlainWhite(part.color));
+  if (!black || !white || black === white) return false;
+  let blackPct = black.pct;
+  let whitePct = white.pct;
+  if (blackPct == null && whitePct == null) {
+    blackPct = 50;
+    whitePct = 50;
+  } else if (blackPct == null) blackPct = 100 - (whitePct ?? 0);
+  else if (whitePct == null) whitePct = 100 - blackPct;
+  return whitePct <= 10 && blackPct >= 90;
+}
+
+function lightDarkSchemeBlack(raw: string): boolean {
+  const hit = /^light-dark\(\s*([\s\S]*)\)$/i.exec(raw.trim());
+  if (!hit) return false;
+  const first = splitArgs(hit[1] ?? "")
+    .map((part) => part.trim())
+    .find(Boolean);
+  if (!first || first === raw.trim()) return false;
+  return colorIsSchemeBlack(first);
 }
 
 function colorIsSchemeBlack(value: string): boolean {
   const raw = value.replace(/!important/gi, "").trim();
-  return SCHEME_BLACK_WORD.test(raw) || relativeSchemeBlack(raw) || mixSchemeBlack(raw);
+  return SCHEME_BLACK_WORD.test(raw) || relativeSchemeBlack(raw) || mixSchemeBlack(raw) || lightDarkSchemeBlack(raw);
 }
 
 /** A light scheme on the writing, or on a box around it, makes those system colours black. html loses to the theme, so a bare html rule does not. A theme hook that matches the dark sheet does, because the add-on is applied after the theme. A note does not wrap the writing. The header does not. The sheet, the page body, and the writing box do. */
@@ -8211,12 +8280,14 @@ function matrixShifts(value: string, hidden: Set<string>): boolean {
   });
 }
 
-/** A matrix translation of a full page is the same hide as translate(). A few pixels stay. 400 still leaves the sentence on html. 760 walks it off. On the writing, -84px is the same walk as translateX(-84px). -80px still leaves a letter of fox. -55px up is the same clip as translateY(-55px). -50px still shows the sentence. A shift to the right stays. */
+/** A matrix translation of a full page is the same hide as translate(). A few pixels stay. 400 still leaves the sentence on html. 760 walks it off. On the writing, -84 and calc(-84) are the same walk as translateX(-84px). calc(-80) still leaves a letter of fox. -55px up is the same clip as translateY(-55px). -50px still shows the sentence. A shift to the right stays. */
 function unitlessMatrixShift(raw: string, axis: "x" | "y"): boolean {
   const t = raw.replace(/!important/gi, "").replace(/\s+/g, "");
-  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(t)) return false;
-  const n = Number(t);
-  if (!Number.isFinite(n)) return false;
+  if (!t) return false;
+  const parsed = parseMathSum(t, 0);
+  if (!parsed || parsed.i !== t.length || !Number.isFinite(parsed.n)) return false;
+  if (Object.entries(parsed.u).some(([, exp]) => exp)) return false;
+  const n = parsed.n;
   if (writingGlyph() && !activeStar) {
     if (axis === "x") return n <= -84 || n >= 760;
     return n <= -55 || n >= 760;
